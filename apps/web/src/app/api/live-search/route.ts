@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import type { SearchRequest, SearchResponse } from "@/types/search";
 
 const MAX_QUERY_LENGTH = 120;
+const DEFAULT_WORKER_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://preventa-worker.vercel.app"
+    : "http://localhost:4000";
 
 export async function POST(request: Request) {
   let body: Partial<SearchRequest>;
@@ -28,7 +32,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const workerUrl = process.env.WORKER_URL ?? "http://localhost:4000";
+  const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
 
   try {
     const response = await fetch(`${workerUrl.replace(/\/$/, "")}/catalog/search`, {
