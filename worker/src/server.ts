@@ -26,6 +26,24 @@ const server = http.createServer(async (request, response) => {
 
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
 
+  if (request.method === "GET" && url.pathname === "/") {
+    sendJson(response, 200, {
+      ok: true,
+      service: "preventistas-worker",
+      message:
+        "Worker online. La interfaz publica esta en el frontend Next.js; este servicio expone endpoints de busqueda.",
+      endpoints: {
+        health: "GET /health",
+        catalog: "GET /catalog",
+        catalogSearch: "POST /catalog/search",
+        catalogSync: "POST /catalog/sync",
+        liveSearch: "POST /search",
+      },
+      catalog: getCatalogMetadata(),
+    });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/health") {
     sendJson(response, 200, { ok: true, catalog: getCatalogMetadata() });
     return;
@@ -48,7 +66,17 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method !== "POST" || url.pathname !== "/search") {
-    sendJson(response, 404, { error: "Endpoint no encontrado." });
+    sendJson(response, 404, {
+      error: "Endpoint no encontrado.",
+      availableEndpoints: [
+        "GET /",
+        "GET /health",
+        "GET /catalog",
+        "POST /catalog/search",
+        "POST /catalog/sync",
+        "POST /search",
+      ],
+    });
     return;
   }
 
