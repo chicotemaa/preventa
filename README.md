@@ -1,0 +1,188 @@
+# Preventistas Live Search MVP
+
+MVP web para buscar productos en vivo en fuentes mayoristas y minoristas configuradas, sin base de datos y sin scraping desde el navegador del usuario.
+
+## Estructura
+
+```text
+apps/web   Next.js App Router + Tailwind
+worker     Servidor HTTP Node.js + Playwright
+```
+
+## Requisitos
+
+- Node.js 18.20+
+- npm
+
+## Instalación
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+## Variables de entorno
+
+Crear `apps/web/.env.local`:
+
+```bash
+WORKER_URL=http://localhost:4000
+```
+
+Crear `worker/.env`:
+
+```bash
+PORT=4000
+HEADLESS=true
+SOURCE_TIMEOUT_MS=20000
+MIN_CONFIDENCE_SCORE=60
+```
+
+## Correr localmente
+
+Terminal 1:
+
+```bash
+npm run dev:worker
+```
+
+Terminal 2:
+
+```bash
+npm run dev:web
+```
+
+Abrir [http://localhost:3000](http://localhost:3000).
+
+## Publicar demo
+
+Para mostrar el MVP conviene desplegar dos servicios:
+
+1. Worker Node.js con Playwright en Render, Fly.io, Railway o cualquier host que soporte Docker.
+2. Frontend Next.js en Vercel.
+
+### 1. Subir el código a GitHub
+
+Crear un repositorio y subir este monorepo. No subir archivos `.env`.
+
+```bash
+git init
+git add .
+git commit -m "MVP preventistas live catalog"
+git branch -M main
+git remote add origin <URL_DEL_REPO>
+git push -u origin main
+```
+
+### 2. Publicar el worker en Render
+
+Este repo incluye `worker/Dockerfile` y `render.yaml`.
+
+En Render:
+
+- Crear un Web Service o Blueprint desde el repo.
+- Usar Docker.
+- Dockerfile path: `./worker/Dockerfile`
+- Docker context: `.`
+- Health check path: `/health`
+- Variables:
+
+```bash
+PORT=4000
+HEADLESS=true
+SOURCE_TIMEOUT_MS=20000
+MIN_CONFIDENCE_SCORE=60
+AUTO_SYNC_ON_STARTUP=true
+```
+
+Cuando Render termine, probar:
+
+```bash
+curl https://TU-WORKER.onrender.com/health
+```
+
+Guardar esa URL para el frontend.
+
+### 3. Publicar el frontend en Vercel
+
+En Vercel:
+
+- Importar el mismo repo.
+- Root Directory: `apps/web`
+- Framework: Next.js
+- Environment Variable:
+
+```bash
+WORKER_URL=https://TU-WORKER.onrender.com
+```
+
+Después de crear o cambiar `WORKER_URL`, redeployar el frontend.
+
+### 4. Probar la demo publicada
+
+Abrir la URL de Vercel y buscar:
+
+```text
+bon o bon
+cofler
+arcor
+la serenisima
+```
+
+Notas para demo:
+
+- Render puede tardar en responder si el servicio está frío.
+- La primera sincronización del worker puede demorar porque abre Playwright y recorre fuentes.
+- Para mostrar más datos reales de mayoristas locales, cargar CSV en `worker/data/imports/*.csv` y redeployar el worker.
+
+## Flujo
+
+1. El frontend llama `POST /api/live-search`.
+2. El endpoint server-side valida la query y llama al worker en `WORKER_URL/search`.
+3. El worker consulta fuentes configuradas con Playwright.
+4. Cada fuente falla o responde de manera independiente.
+5. Los resultados se normalizan, deduplican, filtran por score y ordenan por precio ascendente.
+
+## Fuentes locales
+
+Las fuentes configuradas para el MVP están enfocadas en mayoristas de Resistencia/Chaco:
+
+- Aguiar Resistencia: distribuidor oficial Arcor local, no consultable sin login B2B de Tokin.
+- El Popular Mayorista: fuente local identificada, pero su web publica ofertas por WhatsApp y no un catalogo con precios producto por producto.
+- Goloso Mayorista Integral de Golosinas: identificado como mayorista local, sin catálogo público con precios.
+- Granashop Resistencia: fuente local pública con precios; marcada como minorista porque no es mayorista puro.
+- Maxiconsumo Web: fuente mayorista pública con productos, SKU, imágenes y precios por bulto. Sin login el sitio informa que los precios corresponden a Moreno, por eso se etiqueta como referencia sin login y no como precio local confirmado.
+- Sorpresas SAS / Distribuidora Golda: fuente local en GPedidos; expone rubros y productos, pero no precios públicos comparables.
+- Supermayorista Vital Chaco: configurada pero marcada como no consultable sin login, porque la búsqueda online redirige a autenticación.
+- Yaguar Chaco: fuente mayorista local activa con ofertas públicas de la sucursal Chaco. No es catálogo completo buscable, pero suma productos/precios cuando una marca objetivo aparece publicada.
+- Distribuidora America: configurada como fuente local no consultable para este MVP, porque su catálogo público no corresponde al rubro alimenticio objetivo.
+- CHEEK S.A.: configurada como fuente local no consultable, porque no se encontró catálogo online público vigente.
+
+El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
+
+## Listas locales importadas
+
+Para sumar mayoristas locales que no publican precios web, el worker también lee CSV reales en `worker/data/imports/*.csv`. Los archivos `.example.csv` no se cargan.
+
+Formato:
+
+```csv
+sourceId,storeName,storeType,brand,rawName,price,productUrl,imageUrl
+```
+
+Cada fila real debe completar esos campos. Esto permite convertir listas recibidas por Excel, WhatsApp o PDF a CSV y compararlas en el mismo frontend sin base de datos. No se incluyen productos falsos ocultos en la lógica.
+
+Endpoints del worker:
+
+- `POST /catalog/sync`: recorre automáticamente las marcas objetivo en las fuentes configuradas y reemplaza el snapshot actual.
+- `GET /catalog`: devuelve el snapshot actual.
+- `POST /catalog/search`: busca sobre el snapshot ya scrapeado.
+- `POST /search`: mantiene la búsqueda live puntual para depuración.
+
+Las fuentes están en `worker/src/sources/resistencia.ts`.
+
+Cada fuente puede tener selectores explícitos o quedar sin selectores para usar extracción automática básica. Las URLs y selectores de comercios reales pueden cambiar; este MVP deja la configuración concentrada en un solo archivo para ajustar cada comercio sin tocar el pipeline.
+
+## Sin persistencia
+
+Esta versión no guarda histórico, productos ni precios. Para agregar cache o Supabase más adelante, el punto natural de integración es `runLiveSearch` en `worker/src/search.ts`, antes o después de consultar fuentes.

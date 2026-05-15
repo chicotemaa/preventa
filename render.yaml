@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: preventistas-worker
+    runtime: docker
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: HEADLESS
+        value: true
+      - key: SOURCE_TIMEOUT_MS
+        value: 20000
+      - key: MIN_CONFIDENCE_SCORE
+        value: 60
+      - key: AUTO_SYNC_ON_STARTUP
+        value: true

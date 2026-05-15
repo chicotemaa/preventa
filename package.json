@@ -1,0 +1,19 @@
+{
+  "name": "preventistas-live-search",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "worker"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:worker": "npm run dev --workspace worker",
+    "build": "npm run build --workspace worker && npm run build --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace worker && npm run typecheck --workspace apps/web"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  }
+}
