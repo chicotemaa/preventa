@@ -1,6 +1,8 @@
 # Preventistas Live Search MVP
 
-MVP web para buscar productos en vivo en fuentes mayoristas y minoristas configuradas, sin base de datos y sin scraping desde el navegador del usuario.
+MVP web para informes de precios del NEA argentino. Permite buscar productos en fuentes mayoristas y minoristas configuradas, sin base de datos y sin scraping desde el navegador del usuario.
+
+Alcance del informe: Chaco, Corrientes, Formosa y Misiones.
 
 ## Estructura
 
@@ -26,7 +28,7 @@ npx playwright install chromium
 Crear `apps/web/.env.local`:
 
 ```bash
-WORKER_URL=http://localhost:4000
+WORKER_URL=http://127.0.0.1:4000
 ```
 
 Crear `worker/.env`:
@@ -143,9 +145,9 @@ Notas para demo:
 4. Cada fuente falla o responde de manera independiente.
 5. Los resultados se normalizan, deduplican, filtran por score y ordenan por precio ascendente.
 
-## Fuentes locales
+## Fuentes NEA
 
-Las fuentes configuradas para el MVP están enfocadas en mayoristas de Resistencia/Chaco:
+Las fuentes configuradas para el MVP están enfocadas en el NEA. En esta primera versión las fuentes públicas verificadas quedan concentradas en Chaco/Resistencia, y el pipeline acepta listas importadas de cualquier provincia NEA:
 
 - Aguiar Resistencia: distribuidor oficial Arcor local, no consultable sin login B2B de Tokin.
 - El Popular Mayorista: fuente local identificada, pero su web publica ofertas por WhatsApp y no un catalogo con precios producto por producto.
@@ -162,7 +164,7 @@ El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.js
 
 ## Listas locales importadas
 
-Para sumar mayoristas locales que no publican precios web, el worker también lee CSV reales en `worker/data/imports/*.csv`. Los archivos `.example.csv` no se cargan.
+Para sumar mayoristas del NEA que no publican precios web, el worker también lee CSV reales en `worker/data/imports/*.csv`. Los archivos `.example.csv` no se cargan.
 
 Formato:
 

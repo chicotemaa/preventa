@@ -37,6 +37,12 @@ export type PendingSourceStatus = {
   message: string;
 };
 
+export type CatalogRegion = {
+  id: "nea";
+  name: string;
+  provinces: string[];
+};
+
 export type SearchResponse = {
   query: string;
   normalizedQuery: string;
@@ -49,6 +55,7 @@ export type SearchResponse = {
 
 export type CatalogMetadata = {
   status: "empty" | "syncing" | "ready" | "failed";
+  region: CatalogRegion;
   brands: string[];
   lastSyncedAt: string | null;
   durationMs: number | null;

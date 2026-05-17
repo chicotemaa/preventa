@@ -5,7 +5,7 @@ const MAX_QUERY_LENGTH = 120;
 const DEFAULT_WORKER_URL =
   process.env.NODE_ENV === "production"
     ? "https://preventa-worker.vercel.app"
-    : "http://localhost:4000";
+    : "http://127.0.0.1:4000";
 
 export async function POST(request: Request) {
   let body: Partial<SearchRequest>;

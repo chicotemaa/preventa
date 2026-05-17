@@ -14,6 +14,11 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 2,
 });
 
+const defaultRegion = {
+  name: "NEA argentino",
+  provinces: ["Chaco", "Corrientes", "Formosa", "Misiones"],
+};
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState<SearchResponse | null>(null);
@@ -75,15 +80,17 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-8 md:px-8">
           <div className="flex flex-col gap-2">
             <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#51606f]">
-              Resistencia, Chaco
+              Informe NEA
             </p>
             <h1 className="text-3xl font-semibold text-[#17202a] md:text-4xl">
-              Comparador de catálogo mayorista
+              Comparador mayorista del NEA
             </h1>
             <p className="max-w-3xl text-sm leading-6 text-[#5d6b7a]">
-              Busca sobre el último scrapeo server-side de marcas Bon o Bon,
-              Cofler, Bagley, Arcor, Topline, Mogul, Tofi, Aguila, Rocklets,
-              Tortuguita, Cabsha, Simple y La Serenisima.
+              Informe de precios para preventistas del NEA argentino: Chaco,
+              Corrientes, Formosa y Misiones. Busca sobre el último scrapeo
+              server-side de marcas Bon o Bon, Cofler, Bagley, Arcor, Topline,
+              Mogul, Tofi, Aguila, Rocklets, Tortuguita, Cabsha, Simple y La
+              Serenisima.
             </p>
           </div>
 
@@ -131,7 +138,7 @@ export default function Home() {
           <div className="flex gap-3 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm text-[#73510b]">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              {failedSources.length} fuentes locales no pudieron consultarse.
+              {failedSources.length} fuentes del NEA no pudieron consultarse.
               El detalle queda debajo de los resultados.
             </span>
           </div>
@@ -146,7 +153,7 @@ export default function Home() {
                 </h2>
                 <p className="text-sm text-[#5d6b7a]">
                   {response.results.length} productos encontrados en el
-                  catálogo actual
+                  informe NEA actual
                 </p>
                 {response.catalog ? (
                   <p className="mt-1 text-sm text-[#5d6b7a]">
@@ -155,8 +162,9 @@ export default function Home() {
                       ? new Date(response.catalog.lastSyncedAt).toLocaleString(
                           "es-AR",
                         )
-                      : "sin sincronizar"}{" "}
-                    · estado {response.catalog.status}
+                    : "sin sincronizar"}{" "}
+                    · {regionLabel(response.catalog.region ?? defaultRegion)} ·
+                    estado {response.catalog.status}
                   </p>
                 ) : null}
               </div>
@@ -196,11 +204,18 @@ export default function Home() {
         ) : (
           <div className="rounded-md border border-[#d9dee7] bg-white px-5 py-10 text-center text-[#526170]">
             Ingresá una búsqueda para comparar precios en fuentes activas.
+            <span className="mt-2 block text-sm">
+              Alcance: {regionLabel(defaultRegion)}.
+            </span>
           </div>
         )}
       </section>
     </main>
   );
+}
+
+function regionLabel(region: { name: string; provinces: string[] }) {
+  return `${region.name}: ${region.provinces.join(", ")}`;
 }
 
 function PendingSources({ sources }: { sources: PendingSourceStatus[] }) {

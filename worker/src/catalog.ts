@@ -6,6 +6,7 @@ import { targetBrands, findAllowedBrand, isAllowedBrandProduct } from "./brands.
 import { loadImportedCatalogProducts } from "./imports.js";
 import { calculateConfidenceScore } from "./matching.js";
 import { normalizeProductName, normalizeQuery } from "./normalizers.js";
+import { catalogRegion } from "./region.js";
 import { searchSource } from "./search.js";
 import { scrapingSources } from "./sources/resistencia.js";
 import type {
@@ -22,6 +23,7 @@ const catalogPath = path.resolve(workerRoot, "data/catalog.json");
 
 let currentCatalog: CatalogSnapshot = {
   status: "empty",
+  region: catalogRegion,
   brands: targetBrands.map((brand) => brand.name),
   lastSyncedAt: null,
   durationMs: null,
@@ -36,6 +38,7 @@ export async function loadCatalogFromDisk() {
   try {
     const raw = await readFile(catalogPath, "utf8");
     currentCatalog = JSON.parse(raw) as CatalogSnapshot;
+    currentCatalog.region = catalogRegion;
     currentCatalog.pendingSources = getPendingSources();
 
     if (currentCatalog.productsCount > 0 && currentCatalog.status !== "ready") {
@@ -192,6 +195,7 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
 
     currentCatalog = {
       status: "ready",
+      region: catalogRegion,
       brands: targetBrands.map((brand) => brand.name),
       lastSyncedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
