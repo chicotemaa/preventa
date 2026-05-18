@@ -15,6 +15,10 @@ export function calculateConfidenceScore(
     return 100;
   }
 
+  if (compact(normalizedName).includes(compact(normalizedQuery))) {
+    return 95;
+  }
+
   const queryTokens = tokenize(normalizedQuery);
   const nameTokens = tokenize(normalizedName);
 
@@ -74,7 +78,7 @@ function tokensMatch(queryToken: string, nameToken: string) {
     return true;
   }
 
-  if (queryToken.length < 3 || nameToken.length < 3) {
+  if (queryToken.length <= 3 || nameToken.length <= 3) {
     return false;
   }
 

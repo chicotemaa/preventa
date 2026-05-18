@@ -6,6 +6,9 @@ export type ProductSearchResult = {
   sourceId: string;
   storeName: string;
   storeType: "mayorista" | "minorista";
+  sourceUrl?: string | null;
+  dataOrigin?: string;
+  sourceScope?: string;
   brand?: string;
   rawName: string;
   normalizedName: string;
@@ -19,6 +22,9 @@ export type ProductSearchResult = {
 export type SourceSearchStatus = {
   sourceId: string;
   storeName: string;
+  sourceUrl?: string | null;
+  dataOrigin?: string;
+  sourceScope?: string;
   status: "success" | "failed" | "timeout" | "no_results";
   resultsCount: number;
   errorMessage?: string;
@@ -38,9 +44,10 @@ export type PendingSourceStatus = {
 };
 
 export type CatalogRegion = {
-  id: "nea";
+  id: "argentina" | "nea";
   name: string;
-  provinces: string[];
+  scopeLabel: string;
+  provinces?: string[];
 };
 
 export type SearchResponse = {

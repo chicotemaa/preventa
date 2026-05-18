@@ -8,7 +8,7 @@ import { calculateConfidenceScore } from "./matching.js";
 import { normalizeProductName, normalizeQuery } from "./normalizers.js";
 import { catalogRegion } from "./region.js";
 import { searchSource } from "./search.js";
-import { scrapingSources } from "./sources/resistencia.js";
+import { scrapingSources } from "./sources/argentina.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
@@ -89,7 +89,10 @@ export function searchCatalog(query: string) {
   const results = currentCatalog.products
     .map((product) => ({
       ...product,
-      confidenceScore: calculateConfidenceScore(query, product.rawName),
+      confidenceScore: calculateConfidenceScore(
+        query,
+        getProductMatchText(product),
+      ),
     }))
     .filter((product) => product.confidenceScore >= 45)
     .sort((first, second) => {
@@ -140,10 +143,10 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
         limitResults: false,
       });
       const allowedProducts = result.results
-        .filter((product) => isAllowedBrandProduct(product.rawName))
+        .filter((product) => isAllowedBrandProduct(getProductMatchText(product)))
         .map((product) => ({
           ...product,
-          brand: findAllowedBrand(product.rawName)?.name,
+          brand: findAllowedBrand(getProductMatchText(product))?.name,
         }));
 
       sourceStatuses.push({
@@ -166,8 +169,11 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
 
         seenSearchTerms.add(normalizedSearchTerm);
 
-        for (const source of querySources) {
-          const result = await searchSource(source, searchTerm, browser);
+        const sourceResults = await Promise.all(
+          querySources.map((source) => searchSource(source, searchTerm, browser)),
+        );
+
+        for (const result of sourceResults) {
           sourceStatuses.push({
             ...result.status,
             sourceId: `${result.status.sourceId}:${normalizedSearchTerm}`,
@@ -175,10 +181,14 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
 
           products.push(
             ...result.results
-              .filter((product) => isAllowedBrandProduct(product.rawName))
+              .filter((product) =>
+                isAllowedBrandProduct(getProductMatchText(product)),
+              )
               .map((product) => ({
                 ...product,
-                brand: findAllowedBrand(product.rawName)?.name ?? brand.name,
+                brand:
+                  findAllowedBrand(getProductMatchText(product))?.name ??
+                  brand.name,
               })),
           );
         }
@@ -219,6 +229,14 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
   } finally {
     await browser.close().catch(() => undefined);
   }
+}
+
+function getProductMatchText(product: ProductSearchResult) {
+  if (findAllowedBrand(product.rawName)) {
+    return product.rawName;
+  }
+
+  return [product.brand, product.rawName].filter(Boolean).join(" ");
 }
 
 async function persistCatalog(snapshot: CatalogSnapshot) {

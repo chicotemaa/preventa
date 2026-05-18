@@ -15,8 +15,8 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
 });
 
 const defaultRegion = {
-  name: "NEA argentino",
-  provinces: ["Chaco", "Corrientes", "Formosa", "Misiones"],
+  name: "Argentina",
+  scopeLabel: "Alcance nacional",
 };
 
 export default function Home() {
@@ -80,17 +80,16 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-8 md:px-8">
           <div className="flex flex-col gap-2">
             <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#51606f]">
-              Informe NEA
+              Informe nacional
             </p>
             <h1 className="text-3xl font-semibold text-[#17202a] md:text-4xl">
-              Comparador mayorista del NEA
+              Comparador nacional de precios
             </h1>
             <p className="max-w-3xl text-sm leading-6 text-[#5d6b7a]">
-              Informe de precios para preventistas del NEA argentino: Chaco,
-              Corrientes, Formosa y Misiones. Busca sobre el último scrapeo
-              server-side de marcas Bon o Bon, Cofler, Bagley, Arcor, Topline,
-              Mogul, Tofi, Aguila, Rocklets, Tortuguita, Cabsha, Simple y La
-              Serenisima.
+              Informe de precios para preventistas con alcance nacional. Busca
+              sobre el último scrapeo server-side de marcas Bon o Bon, Cofler,
+              Bagley, Arcor, Topline, Mogul, Tofi, Aguila, Rocklets,
+              Tortuguita, Cabsha, Simple y La Serenisima.
             </p>
           </div>
 
@@ -138,7 +137,7 @@ export default function Home() {
           <div className="flex gap-3 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm text-[#73510b]">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              {failedSources.length} fuentes del NEA no pudieron consultarse.
+              {failedSources.length} fuentes no pudieron consultarse.
               El detalle queda debajo de los resultados.
             </span>
           </div>
@@ -153,7 +152,7 @@ export default function Home() {
                 </h2>
                 <p className="text-sm text-[#5d6b7a]">
                   {response.results.length} productos encontrados en el
-                  informe NEA actual
+                  informe nacional actual
                 </p>
                 {response.catalog ? (
                   <p className="mt-1 text-sm text-[#5d6b7a]">
@@ -214,8 +213,16 @@ export default function Home() {
   );
 }
 
-function regionLabel(region: { name: string; provinces: string[] }) {
-  return `${region.name}: ${region.provinces.join(", ")}`;
+function regionLabel(region: {
+  name: string;
+  scopeLabel?: string;
+  provinces?: string[];
+}) {
+  if (region.scopeLabel) {
+    return `${region.name}: ${region.scopeLabel}`;
+  }
+
+  return `${region.name}: ${(region.provinces ?? []).join(", ")}`;
 }
 
 function PendingSources({ sources }: { sources: PendingSourceStatus[] }) {
@@ -259,6 +266,22 @@ function SourceSummary({ response }: { response: SearchResponse }) {
           <p className="mt-1 text-sm text-[#5d6b7a]">
             {source.resultsCount} resultados · {source.durationMs} ms
           </p>
+          <p className="mt-2 text-xs leading-5 text-[#5d6b7a]">
+            Origen: {source.dataOrigin ?? "Catalogo publico configurado"}.
+          </p>
+          <p className="text-xs leading-5 text-[#5d6b7a]">
+            Alcance: {source.sourceScope ?? "No especificado"}.
+          </p>
+          {source.sourceUrl ? (
+            <a
+              href={source.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex text-xs font-medium text-[#1d5f8f] underline-offset-2 hover:underline"
+            >
+              Ver fuente
+            </a>
+          ) : null}
           {source.errorMessage ? (
             <p className="mt-2 text-xs leading-5 text-[#7a4f11]">
               {source.errorMessage}
@@ -292,6 +315,11 @@ function ResultsTable({ results }: { results: ProductSearchResult[] }) {
                   {result.storeName}
                 </div>
                 <div className="text-xs text-[#667789]">{result.storeType}</div>
+                {result.dataOrigin ? (
+                  <div className="mt-1 max-w-[210px] text-xs leading-4 text-[#667789]">
+                    {result.dataOrigin}
+                  </div>
+                ) : null}
               </td>
               <td className="px-4 py-3 font-medium text-[#36536f]">
                 {result.brand ?? "-"}
@@ -358,6 +386,11 @@ function ResultsCards({ results }: { results: ProductSearchResult[] }) {
               <div className="text-sm font-medium text-[#526170]">
                 {result.storeName} · {result.storeType}
               </div>
+              {result.dataOrigin ? (
+                <div className="mt-1 text-xs leading-4 text-[#667789]">
+                  Origen: {result.dataOrigin}
+                </div>
+              ) : null}
               {result.brand ? (
                 <div className="mt-1 text-sm font-semibold text-[#36536f]">
                   {result.brand}

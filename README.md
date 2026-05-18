@@ -1,8 +1,8 @@
 # Preventistas Live Search MVP
 
-MVP web para informes de precios del NEA argentino. Permite buscar productos en fuentes mayoristas y minoristas configuradas, sin base de datos y sin scraping desde el navegador del usuario.
+MVP web para informes de precios con alcance nacional en Argentina. Permite buscar productos en fuentes mayoristas y minoristas configuradas, sin base de datos y sin scraping desde el navegador del usuario.
 
-Alcance del informe: Chaco, Corrientes, Formosa y Misiones.
+Alcance del informe: Argentina.
 
 ## Estructura
 
@@ -141,35 +141,32 @@ Notas para demo:
 
 1. El frontend llama `POST /api/live-search`.
 2. El endpoint server-side valida la query y llama al worker en `WORKER_URL/search`.
-3. El worker consulta fuentes configuradas con Playwright.
+3. El worker consulta fuentes configuradas server-side con APIs publicas o Playwright.
 4. Cada fuente falla o responde de manera independiente.
 5. Los resultados se normalizan, deduplican, filtran por score y ordenan por precio ascendente.
 
-## Fuentes NEA
+## Fuentes nacionales
 
-Las fuentes configuradas para el MVP están enfocadas en el NEA. En esta primera versión las fuentes públicas verificadas quedan concentradas en Chaco/Resistencia, y el pipeline acepta listas importadas de cualquier provincia NEA:
+Las fuentes activas del MVP tienen alcance nacional o referencia nacional. Cada resultado expone comercio, tipo, origen de datos, URL de fuente y link del producto cuando la fuente lo informa.
 
-- Aguiar Resistencia: distribuidor oficial Arcor local, no consultable sin login B2B de Tokin.
-- El Popular Mayorista: fuente local identificada, pero su web publica ofertas por WhatsApp y no un catalogo con precios producto por producto.
-- Goloso Mayorista Integral de Golosinas: identificado como mayorista local, sin catálogo público con precios.
-- Granashop Resistencia: fuente local pública con precios; marcada como minorista porque no es mayorista puro.
-- Maxiconsumo Web: fuente mayorista pública con productos, SKU, imágenes y precios por bulto. Sin login el sitio informa que los precios corresponden a Moreno, por eso se etiqueta como referencia sin login y no como precio local confirmado.
-- Sorpresas SAS / Distribuidora Golda: fuente local en GPedidos; expone rubros y productos, pero no precios públicos comparables.
-- Supermayorista Vital Chaco: configurada pero marcada como no consultable sin login, porque la búsqueda online redirige a autenticación.
-- Yaguar Chaco: fuente mayorista local activa con ofertas públicas de la sucursal Chaco. No es catálogo completo buscable, pero suma productos/precios cuando una marca objetivo aparece publicada.
-- Distribuidora America: configurada como fuente local no consultable para este MVP, porque su catálogo público no corresponde al rubro alimenticio objetivo.
-- CHEEK S.A.: configurada como fuente local no consultable, porque no se encontró catálogo online público vigente.
+- Carrefour Argentina: API publica VTEX del catalogo web.
+- Jumbo Argentina: API publica VTEX del catalogo web.
+- Disco Argentina: API publica VTEX del catalogo web.
+- Vea Argentina: API publica VTEX del catalogo web.
+- DIA Argentina: API publica VTEX del catalogo DIA Online.
+- Maxiconsumo Web: catalogo publico mayorista, sucursal web Moreno como referencia nacional.
+- Supermayorista Vital Online: fuente relevante configurada como pendiente porque requiere autenticacion para ver catalogo/precios.
 
 El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
 
 ## Listas locales importadas
 
-Para sumar mayoristas del NEA que no publican precios web, el worker también lee CSV reales en `worker/data/imports/*.csv`. Los archivos `.example.csv` no se cargan.
+Para sumar mayoristas que no publican precios web, el worker también lee CSV reales en `worker/data/imports/*.csv`. Los archivos `.example.csv` no se cargan.
 
 Formato:
 
 ```csv
-sourceId,storeName,storeType,brand,rawName,price,productUrl,imageUrl
+sourceId,storeName,storeType,brand,rawName,price,productUrl,imageUrl,sourceUrl,dataOrigin,sourceScope
 ```
 
 Cada fila real debe completar esos campos. Esto permite convertir listas recibidas por Excel, WhatsApp o PDF a CSV y compararlas en el mismo frontend sin base de datos. No se incluyen productos falsos ocultos en la lógica.
@@ -181,7 +178,7 @@ Endpoints del worker:
 - `POST /catalog/search`: busca sobre el snapshot ya scrapeado.
 - `POST /search`: mantiene la búsqueda live puntual para depuración.
 
-Las fuentes están en `worker/src/sources/resistencia.ts`.
+Las fuentes están en `worker/src/sources/argentina.ts`.
 
 Cada fuente puede tener selectores explícitos o quedar sin selectores para usar extracción automática básica. Las URLs y selectores de comercios reales pueden cambiar; este MVP deja la configuración concentrada en un solo archivo para ajustar cada comercio sin tocar el pipeline.
 

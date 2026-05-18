@@ -1,4 +1,5 @@
 import { chromium, type Browser } from "playwright";
+import { extractProductsFromVtexApi } from "./api-extractors.js";
 import { config } from "./config.js";
 import {
   extractProductsAutomatically,
@@ -6,7 +7,12 @@ import {
   extractProductsWithSelectors,
 } from "./extractors.js";
 import { normalizeQuery } from "./normalizers.js";
-import { scrapingSources } from "./sources/resistencia.js";
+import {
+  getDataOrigin,
+  getSourceScope,
+  getSourceUrl,
+} from "./source-metadata.js";
+import { scrapingSources } from "./sources/argentina.js";
 import type {
   ProductSearchResult,
   ScrapingSource,
@@ -24,11 +30,17 @@ type SearchSourceOptions = {
 export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const startedAt = Date.now();
   const normalizedQuery = normalizeQuery(query);
-  const browser = await chromium.launch({ headless: config.headless });
+  const activeSources = getActiveSources();
+  const needsBrowser = activeSources.some(
+    (source) => source.sourceKind !== "vtex_api",
+  );
+  const browser = needsBrowser
+    ? await chromium.launch({ headless: config.headless })
+    : undefined;
 
   try {
     const sourceResults = await Promise.all(
-      getActiveSources().map((source) => searchSource(source, query, browser)),
+      activeSources.map((source) => searchSource(source, query, browser)),
     );
 
     const sources = sourceResults.map((result) => result.status);
@@ -49,7 +61,7 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
       sources,
     };
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 }
 
@@ -76,6 +88,28 @@ export async function searchSource(
         source.disabledReason ?? "Fuente deshabilitada.",
       ),
     };
+  }
+
+  if (source.sourceKind === "vtex_api") {
+    return withTimeout(
+      runApiSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
   }
 
   const ownedBrowser =
@@ -110,6 +144,38 @@ export async function searchSource(
       await ownedBrowser.close().catch(() => undefined);
     }
   }
+}
+
+async function runApiSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const url = buildSearchUrl(source.searchUrlTemplate, query);
+  const rawResults = await extractProductsFromVtexApi(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
 }
 
 async function runSourceSearch(
@@ -175,6 +241,9 @@ function buildStatus(
   return {
     sourceId: source.id,
     storeName: source.storeName,
+    sourceUrl: getSourceUrl(source),
+    dataOrigin: getDataOrigin(source),
+    sourceScope: getSourceScope(source),
     status,
     resultsCount,
     errorMessage,

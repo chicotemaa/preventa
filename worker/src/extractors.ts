@@ -1,6 +1,11 @@
 import type { Page } from "playwright";
 import { calculateConfidenceScore } from "./matching.js";
 import { normalizePrice, normalizeProductName } from "./normalizers.js";
+import {
+  getDataOrigin,
+  getSourceScope,
+  getSourceUrl,
+} from "./source-metadata.js";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
 
 export async function extractProductsWithSelectors(
@@ -35,7 +40,7 @@ export async function extractProductsWithSelectors(
       : await getVariantImageUrl(card, page.url());
 
     results.push(
-      toProductResult(source, query, rawName, price, productUrl, imageUrl),
+      createProductResult(source, query, rawName, price, productUrl, imageUrl),
     );
   }
 
@@ -95,7 +100,7 @@ export async function extractProductsAutomatically(
         return null;
       }
 
-      return toProductResult(
+      return createProductResult(
         source,
         query,
         candidate.name,
@@ -187,7 +192,7 @@ export async function extractProductsFromTextLines(
   });
 
   return candidates.map((candidate) =>
-    toProductResult(
+    createProductResult(
       source,
       query,
       candidate.name,
@@ -198,7 +203,7 @@ export async function extractProductsFromTextLines(
   ).filter((result) => result.price > 0);
 }
 
-function toProductResult(
+export function createProductResult(
   source: ScrapingSource,
   query: string,
   rawName: string,
@@ -210,6 +215,9 @@ function toProductResult(
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
+    sourceUrl: getSourceUrl(source),
+    dataOrigin: getDataOrigin(source),
+    sourceScope: getSourceScope(source),
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,

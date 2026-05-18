@@ -19,7 +19,16 @@ type ImportedRow = Record<string, string>;
 export async function loadImportedCatalogProducts(): Promise<ImportedCatalog> {
   const files = await listImportFiles();
   const products: ProductSearchResult[] = [];
-  const sourceCounts = new Map<string, { storeName: string; count: number }>();
+  const sourceCounts = new Map<
+    string,
+    {
+      storeName: string;
+      sourceUrl: string | null;
+      dataOrigin: string;
+      sourceScope: string;
+      count: number;
+    }
+  >();
 
   for (const fileName of files) {
     const filePath = path.join(importsPath, fileName);
@@ -37,6 +46,9 @@ export async function loadImportedCatalogProducts(): Promise<ImportedCatalog> {
 
       sourceCounts.set(product.sourceId, {
         storeName: product.storeName,
+        sourceUrl: product.sourceUrl ?? null,
+        dataOrigin: product.dataOrigin ?? `CSV importado: ${product.storeName}`,
+        sourceScope: product.sourceScope ?? "Lista importada",
         count: (current?.count ?? 0) + 1,
       });
     }
@@ -48,6 +60,9 @@ export async function loadImportedCatalogProducts(): Promise<ImportedCatalog> {
       ([sourceId, source]) => ({
         sourceId,
         storeName: source.storeName,
+        sourceUrl: source.sourceUrl,
+        dataOrigin: source.dataOrigin,
+        sourceScope: source.sourceScope,
         status: source.count > 0 ? "success" : "no_results",
         resultsCount: source.count,
         durationMs: 0,
@@ -102,6 +117,12 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
     sourceId,
     storeName,
     storeType,
+    sourceUrl: readField(row, "sourceUrl", "source_url") || null,
+    dataOrigin:
+      readField(row, "dataOrigin", "data_origin") ||
+      `CSV importado: ${storeName}`,
+    sourceScope:
+      readField(row, "sourceScope", "source_scope") || "Lista importada",
     brand: brand.name,
     rawName: displayName,
     normalizedName: normalizeProductName(displayName),
