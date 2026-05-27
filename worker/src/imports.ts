@@ -123,6 +123,11 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
       `CSV importado: ${storeName}`,
     sourceScope:
       readField(row, "sourceScope", "source_scope") || "Lista importada",
+    sku: readField(row, "sku", "codigo", "code") || null,
+    barcodes: readField(row, "barcodes", "barcode", "ean", "ean13")
+      .split(/[|;,]/)
+      .map((value) => value.replace(/\D/g, ""))
+      .filter((value) => /^\d{8,14}$/.test(value)),
     brand: brand.name,
     rawName: displayName,
     normalizedName: normalizeProductName(displayName),

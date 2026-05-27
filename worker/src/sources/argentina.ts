@@ -75,6 +75,7 @@ export const scrapingSources: ScrapingSource[] = [
     dataOrigin:
       "HTML del catalogo publico de Maxiconsumo, sucursal web Moreno como referencia",
     sourceScope: "Argentina con sucursal de referencia Moreno",
+    sourceKind: "static_html",
     searchUrlTemplate:
       "https://maxiconsumo.com/sucursal_moreno/catalogsearch/result/?q={query}",
     requiresJavascript: false,

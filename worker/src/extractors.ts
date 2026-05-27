@@ -218,6 +218,8 @@ export function createProductResult(
     sourceUrl: getSourceUrl(source),
     dataOrigin: getDataOrigin(source),
     sourceScope: getSourceScope(source),
+    sku: null,
+    barcodes: [],
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,

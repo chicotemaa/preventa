@@ -1,5 +1,8 @@
 import { chromium, type Browser } from "playwright";
-import { extractProductsFromVtexApi } from "./api-extractors.js";
+import {
+  extractProductsFromStaticHtml,
+  extractProductsFromVtexApi,
+} from "./api-extractors.js";
 import { config } from "./config.js";
 import {
   extractProductsAutomatically,
@@ -32,7 +35,8 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const normalizedQuery = normalizeQuery(query);
   const activeSources = getActiveSources();
   const needsBrowser = activeSources.some(
-    (source) => source.sourceKind !== "vtex_api",
+    (source) =>
+      source.sourceKind !== "vtex_api" && source.sourceKind !== "static_html",
   );
   const browser = needsBrowser
     ? await chromium.launch({ headless: config.headless })
@@ -112,6 +116,28 @@ export async function searchSource(
     });
   }
 
+  if (source.sourceKind === "static_html") {
+    return withTimeout(
+      runStaticHtmlSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
   const ownedBrowser =
     browser ?? (await chromium.launch({ headless: config.headless }));
   const page = await ownedBrowser.newPage();
@@ -144,6 +170,38 @@ export async function searchSource(
       await ownedBrowser.close().catch(() => undefined);
     }
   }
+}
+
+async function runStaticHtmlSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const url = buildSearchUrl(source.searchUrlTemplate, query);
+  const rawResults = await extractProductsFromStaticHtml(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
 }
 
 async function runApiSourceSearch(

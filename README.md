@@ -176,11 +176,22 @@ Endpoints del worker:
 - `POST /catalog/sync`: recorre automáticamente las marcas objetivo en las fuentes configuradas y reemplaza el snapshot actual.
 - `GET /catalog`: devuelve el snapshot actual.
 - `POST /catalog/search`: busca sobre el snapshot ya scrapeado.
+- `POST /catalog/price-list`: recibe una lista de articulos con `rubro`, `description`, `code`, `ean13Di` y `ean13Bu`, y devuelve el mejor precio y precios por fuente.
 - `POST /search`: mantiene la búsqueda live puntual para depuración.
 
 Las fuentes están en `worker/src/sources/argentina.ts`.
 
 Cada fuente puede tener selectores explícitos o quedar sin selectores para usar extracción automática básica. Las URLs y selectores de comercios reales pueden cambiar; este MVP deja la configuración concentrada en un solo archivo para ajustar cada comercio sin tocar el pipeline.
+
+## Importar listas de articulos
+
+El frontend permite importar `.xlsx`, `.xls` o `.csv` con columnas como:
+
+```text
+Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU
+```
+
+La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado, score y precio por comercio. También permite descargar el resultado en CSV.
 
 ## Sin persistencia
 

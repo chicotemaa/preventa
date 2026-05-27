@@ -9,6 +9,8 @@ export type ProductSearchResult = {
   sourceUrl?: string | null;
   dataOrigin?: string;
   sourceScope?: string;
+  sku?: string | null;
+  barcodes?: string[];
   brand?: string;
   rawName: string;
   normalizedName: string;
@@ -58,6 +60,50 @@ export type SearchResponse = {
   results: ProductSearchResult[];
   sources: SourceSearchStatus[];
   catalog?: CatalogMetadata;
+};
+
+export type PriceListInputItem = {
+  rowNumber: number;
+  rubro?: string;
+  description?: string;
+  code?: string;
+  ean13Di?: string;
+  ean13Bu?: string;
+};
+
+export type PriceListSourcePrice = {
+  sourceId: string;
+  storeName: string;
+  storeType: "mayorista" | "minorista";
+  sourceUrl?: string | null;
+  dataOrigin?: string;
+  sourceScope?: string;
+  price: number;
+  currency: "ARS";
+  productName: string;
+  productUrl: string | null;
+  confidenceScore: number;
+};
+
+export type PriceListItemResult = {
+  input: PriceListInputItem;
+  queryUsed: string | null;
+  status: "matched" | "not_found";
+  bestPrice: number | null;
+  bestSource: PriceListSourcePrice | null;
+  sourcePrices: PriceListSourcePrice[];
+  matchedCount: number;
+};
+
+export type PriceListResponse = {
+  searchedAt: string;
+  durationMs: number;
+  itemsCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  sources: SourceSearchStatus[];
+  catalog: CatalogMetadata;
+  results: PriceListItemResult[];
 };
 
 export type CatalogMetadata = {

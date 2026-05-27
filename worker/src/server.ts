@@ -4,6 +4,7 @@ import {
   getCatalogMetadata,
   getCatalogSnapshot,
   loadCatalogFromDisk,
+  matchPriceListItems,
   searchCatalog,
   syncCatalog,
   syncCatalogInBackground,
@@ -13,6 +14,22 @@ import { runLiveSearch } from "./search.js";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
+});
+
+const priceListRequestSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        rowNumber: z.number().int().positive(),
+        rubro: z.string().optional(),
+        description: z.string().optional(),
+        code: z.string().optional(),
+        ean13Di: z.string().optional(),
+        ean13Bu: z.string().optional(),
+      }),
+    )
+    .min(1)
+    .max(250),
 });
 
 const server = http.createServer(async (request, response) => {
@@ -36,6 +53,7 @@ const server = http.createServer(async (request, response) => {
         health: "GET /health",
         catalog: "GET /catalog",
         catalogSearch: "POST /catalog/search",
+        priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         liveSearch: "POST /search",
       },
@@ -65,6 +83,11 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/catalog/price-list") {
+    await handleCatalogPriceList(request, response);
+    return;
+  }
+
   if (request.method !== "POST" || url.pathname !== "/search") {
     sendJson(response, 404, {
       error: "Endpoint no encontrado.",
@@ -73,6 +96,7 @@ const server = http.createServer(async (request, response) => {
         "GET /health",
         "GET /catalog",
         "POST /catalog/search",
+        "POST /catalog/price-list",
         "POST /catalog/sync",
         "POST /search",
       ],
@@ -136,6 +160,32 @@ async function handleCatalogSearch(
         error instanceof Error
           ? error.message
           : "Error interno buscando en catalogo.",
+    });
+  }
+}
+
+async function handleCatalogPriceList(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    const body = await readJsonBody(request);
+    const parsed = priceListRequestSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error: "Lista invalida. Debe incluir entre 1 y 250 articulos.",
+      });
+      return;
+    }
+
+    sendJson(response, 200, matchPriceListItems(parsed.data.items));
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno evaluando la lista.",
     });
   }
 }

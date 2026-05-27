@@ -11,3 +11,4 @@ worker/.env
 npm-debug.log*
 *.tsbuildinfo
 .DS_Store
+.codex-spreadsheet-work/

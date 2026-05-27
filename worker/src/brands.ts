@@ -44,6 +44,66 @@ export const targetBrands: TargetBrand[] = [
     searchTerms: ["la serenisima", "serenisima"],
     aliases: ["la serenisima", "la serenísima", "serenisima", "serenísima"],
   },
+  { name: "Tatin", searchTerms: ["tatin"], aliases: ["tatin"] },
+  {
+    name: "Cereal Mix",
+    searchTerms: ["cereal mix"],
+    aliases: ["cereal mix"],
+  },
+  {
+    name: "La Campagnola",
+    searchTerms: ["la campagnola", "campagnola"],
+    aliases: ["la campagnola", "campagnola"],
+  },
+  {
+    name: "BC",
+    searchTerms: ["bc la campagnola", "bc"],
+    aliases: ["bc"],
+  },
+  {
+    name: "Mister Pops",
+    searchTerms: ["mister pops", "mr pops"],
+    aliases: ["mister pops", "mr pops"],
+  },
+  {
+    name: "Menthoplus",
+    searchTerms: ["menthoplus", "mentho plus"],
+    aliases: ["menthoplus", "mentho plus"],
+  },
+  {
+    name: "Butter Toffees",
+    searchTerms: ["butter toffees", "butter toffi"],
+    aliases: ["butter toffees", "butter toffi"],
+  },
+  { name: "Saladix", searchTerms: ["saladix"], aliases: ["saladix"] },
+  {
+    name: "Serranitas",
+    searchTerms: ["serranitas"],
+    aliases: ["serranitas"],
+  },
+  { name: "Mana", searchTerms: ["mana bagley"], aliases: ["mana"] },
+  {
+    name: "Hogarenas",
+    searchTerms: ["hogarenas", "hogareñas"],
+    aliases: ["hogarenas", "hogareñas"],
+  },
+  {
+    name: "Criollitas",
+    searchTerms: ["criollitas"],
+    aliases: ["criollitas"],
+  },
+  { name: "Traviata", searchTerms: ["traviata"], aliases: ["traviata"] },
+  {
+    name: "Merengadas",
+    searchTerms: ["merengadas"],
+    aliases: ["merengadas"],
+  },
+  { name: "Rumba", searchTerms: ["rumba"], aliases: ["rumba"] },
+  { name: "Sonrisas", searchTerms: ["sonrisas"], aliases: ["sonrisas"] },
+  { name: "Chocolinas", searchTerms: ["chocolinas"], aliases: ["chocolinas"] },
+  { name: "Opera", searchTerms: ["opera bagley"], aliases: ["opera"] },
+  { name: "Kesitas", searchTerms: ["kesitas"], aliases: ["kesitas"] },
+  { name: "Rex", searchTerms: ["rex bagley"], aliases: ["rex"] },
 ];
 
 export function findAllowedBrand(productName: string) {

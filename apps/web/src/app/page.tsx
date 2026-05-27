@@ -1,11 +1,23 @@
 "use client";
 
-import { AlertTriangle, ArrowDownUp, Loader2, Search } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowDownUp,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  Search,
+  Upload,
+} from "lucide-react";
+import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import type {
   PendingSourceStatus,
+  PriceListInputItem,
+  PriceListItemResult,
+  PriceListResponse,
   ProductSearchResult,
   SearchResponse,
+  SourceSearchStatus,
 } from "@/types/search";
 
 const currencyFormatter = new Intl.NumberFormat("es-AR", {
@@ -123,6 +135,8 @@ export default function Home() {
               {isLoading ? "Buscando..." : "Buscar"}
             </button>
           </form>
+
+          <PriceListImport />
         </div>
       </section>
 
@@ -210,6 +224,251 @@ export default function Home() {
         )}
       </section>
     </main>
+  );
+}
+
+function PriceListImport() {
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [itemsCount, setItemsCount] = useState(0);
+  const [response, setResponse] = useState<PriceListResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setFileName(file.name);
+    setResponse(null);
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const items = await parsePriceListFile(file);
+
+      if (items.length === 0) {
+        throw new Error("No se encontraron articulos validos en la planilla.");
+      }
+
+      setItemsCount(items.length);
+      const result = await fetch("/api/price-list", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ items }),
+      });
+      const payload = await result.json();
+
+      if (!result.ok) {
+        throw new Error(payload.error ?? "No se pudo evaluar la lista.");
+      }
+
+      setResponse(payload as PriceListResponse);
+    } catch (caughtError) {
+      setItemsCount(0);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo evaluar la lista.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] p-4">
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-[#17202a]">
+            <FileSpreadsheet className="h-5 w-5 text-[#1d5f8f]" />
+            Evaluar lista de articulos
+          </h2>
+          <p className="mt-1 text-sm text-[#5d6b7a]">
+            Formato esperado: Rubro, Descripcion Larga, Codigo, EAN 13 DI y
+            EAN 13 BU.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#b8c2cf] bg-white px-4 text-sm font-semibold text-[#17202a] transition hover:border-[#1d5f8f]">
+            <Upload className="h-4 w-4" />
+            Importar Excel/CSV
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!response}
+            onClick={() => response && downloadPriceListCsv(response)}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#1d5f8f] px-4 text-sm font-semibold text-white transition hover:bg-[#164d74] disabled:cursor-not-allowed disabled:bg-[#8da9bd]"
+          >
+            <Download className="h-4 w-4" />
+            Descargar CSV
+          </button>
+        </div>
+      </div>
+
+      {fileName ? (
+        <p className="mt-3 text-sm text-[#5d6b7a]">
+          {fileName} {itemsCount > 0 ? `· ${itemsCount} articulos` : ""}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <div className="mt-4 flex items-center gap-2 rounded-md border border-[#d9dee7] bg-white px-4 py-3 text-sm text-[#526170]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Evaluando precios...
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="mt-4 rounded-md border border-[#e0b4ad] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
+          {error}
+        </div>
+      ) : null}
+
+      {response ? <PriceListResults response={response} /> : null}
+    </div>
+  );
+}
+
+function PriceListResults({ response }: { response: PriceListResponse }) {
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      <div className="grid gap-2 md:grid-cols-4">
+        <Metric label="Articulos" value={response.itemsCount} />
+        <Metric label="Con precio" value={response.matchedCount} />
+        <Metric label="Sin precio" value={response.unmatchedCount} />
+        <Metric label="Fuentes" value={response.sources.length} />
+      </div>
+      <div className="overflow-x-auto rounded-md border border-[#d9dee7] bg-white">
+        <table className="min-w-[1200px] border-collapse text-left text-xs">
+          <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
+            <tr>
+              <th className="px-3 py-3">Rubro</th>
+              <th className="px-3 py-3">Descripcion larga</th>
+              <th className="px-3 py-3">Codigo</th>
+              <th className="px-3 py-3">EAN 13 DI</th>
+              <th className="px-3 py-3">Mejor precio</th>
+              <th className="px-3 py-3">Fuente</th>
+              <th className="px-3 py-3">Producto detectado</th>
+              {response.sources.map((source) => (
+                <th key={source.sourceId} className="px-3 py-3">
+                  {source.storeName}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#e5e9ef]">
+            {response.results.map((result) => (
+              <PriceListRow
+                key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
+                result={result}
+                sources={response.sources}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-[#d9dee7] bg-white p-3">
+      <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-semibold text-[#17202a]">{value}</div>
+    </div>
+  );
+}
+
+function PriceListRow({
+  result,
+  sources,
+}: {
+  result: PriceListItemResult;
+  sources: SourceSearchStatus[];
+}) {
+  const pricesBySource = new Map(
+    result.sourcePrices.map((sourcePrice) => [sourcePrice.sourceId, sourcePrice]),
+  );
+
+  return (
+    <tr className="align-top">
+      <td className="max-w-[190px] px-3 py-3 font-medium text-[#17202a]">
+        {result.input.rubro || "-"}
+      </td>
+      <td className="max-w-[280px] px-3 py-3 text-[#17202a]">
+        {result.input.description || "-"}
+      </td>
+      <td className="px-3 py-3 text-[#526170]">{result.input.code || "-"}</td>
+      <td className="px-3 py-3 text-[#526170]">{result.input.ean13Di || "-"}</td>
+      <td className="px-3 py-3 text-sm font-semibold text-[#173d2f]">
+        {result.bestPrice === null
+          ? "-"
+          : currencyFormatter.format(result.bestPrice)}
+      </td>
+      <td className="px-3 py-3">
+        {result.bestSource ? (
+          <div>
+            <div className="font-medium text-[#17202a]">
+              {result.bestSource.storeName}
+            </div>
+            <div className="text-[#667789]">
+              Score {result.bestSource.confidenceScore}
+            </div>
+          </div>
+        ) : (
+          <span className="text-[#8f2d20]">Sin coincidencia</span>
+        )}
+      </td>
+      <td className="max-w-[260px] px-3 py-3 text-[#17202a]">
+        {result.bestSource?.productUrl ? (
+          <a
+            href={result.bestSource.productUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-[#1d5f8f] underline-offset-2 hover:underline"
+          >
+            {result.bestSource.productName}
+          </a>
+        ) : (
+          result.bestSource?.productName ?? "-"
+        )}
+      </td>
+      {sources.map((source) => {
+        const sourcePrice = pricesBySource.get(source.sourceId);
+
+        return (
+          <td key={source.sourceId} className="px-3 py-3">
+            {sourcePrice ? (
+              <div>
+                <div className="font-semibold text-[#173d2f]">
+                  {currencyFormatter.format(sourcePrice.price)}
+                </div>
+                <div className="mt-1 max-w-[180px] text-[#667789]">
+                  {sourcePrice.productName}
+                </div>
+              </div>
+            ) : (
+              <span className="text-[#9aa5b1]">-</span>
+            )}
+          </td>
+        );
+      })}
+    </tr>
   );
 }
 
@@ -473,4 +732,158 @@ function pendingStatusLabel(status: PendingSourceStatus["status"]) {
 
 function resultKey(result: ProductSearchResult) {
   return `${result.sourceId}-${result.normalizedName}-${result.price}`;
+}
+
+async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.read(await file.arrayBuffer(), {
+    type: "array",
+    raw: false,
+  });
+  const sheetName = workbook.SheetNames[0];
+
+  if (!sheetName) {
+    return [];
+  }
+
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    header: 1,
+    defval: "",
+    raw: false,
+  }) as Array<Array<string | number | null>>;
+  const headerIndex = rows.findIndex((row) => {
+    const headers = row.map((cell) => normalizeColumnName(cell));
+    return (
+      headers.includes("rubro") &&
+      headers.some((header) => header.includes("descripcion")) &&
+      headers.some((header) => header === "codigo" || header === "code")
+    );
+  });
+
+  if (headerIndex === -1) {
+    throw new Error(
+      "No se encontraron columnas Rubro, Descripcion Larga y Codigo.",
+    );
+  }
+
+  const headers = rows[headerIndex].map((cell) => normalizeColumnName(cell));
+  const rubroIndex = findColumn(headers, ["rubro"]);
+  const descriptionIndex = findColumn(headers, [
+    "descripcion larga",
+    "descripcion",
+    "description",
+  ]);
+  const codeIndex = findColumn(headers, ["codigo", "code"]);
+  const eanDiIndex = findColumn(headers, ["ean 13 di", "ean13 di", "ean di"]);
+  const eanBuIndex = findColumn(headers, ["ean 13 bu", "ean13 bu", "ean bu"]);
+
+  return rows
+    .slice(headerIndex + 1)
+    .map((row, index) => ({
+      rowNumber: headerIndex + index + 2,
+      rubro: readPriceListCell(row, rubroIndex),
+      description: readPriceListCell(row, descriptionIndex),
+      code: readPriceListCell(row, codeIndex),
+      ean13Di: cleanSpreadsheetIdentifier(readPriceListCell(row, eanDiIndex)),
+      ean13Bu: cleanSpreadsheetIdentifier(readPriceListCell(row, eanBuIndex)),
+    }))
+    .filter(
+      (item) =>
+        Boolean(item.description) ||
+        Boolean(item.code) ||
+        Boolean(item.ean13Di) ||
+        Boolean(item.ean13Bu),
+    );
+}
+
+function downloadPriceListCsv(response: PriceListResponse) {
+  const sourceHeaders = response.sources.map((source) => source.storeName);
+  const headers = [
+    "Rubro",
+    "Descripcion Larga",
+    "Codigo",
+    "EAN 13 DI",
+    "EAN 13 BU",
+    "Mejor precio",
+    "Mejor fuente",
+    "Producto detectado",
+    "Score",
+    "Query usada",
+    ...sourceHeaders,
+  ];
+  const rows = response.results.map((result) => {
+    const pricesBySource = new Map(
+      result.sourcePrices.map((sourcePrice) => [
+        sourcePrice.sourceId,
+        sourcePrice.price.toFixed(2),
+      ]),
+    );
+
+    return [
+      result.input.rubro ?? "",
+      result.input.description ?? "",
+      result.input.code ?? "",
+      result.input.ean13Di ?? "",
+      result.input.ean13Bu ?? "",
+      result.bestPrice === null ? "" : result.bestPrice.toFixed(2),
+      result.bestSource?.storeName ?? "",
+      result.bestSource?.productName ?? "",
+      result.bestSource?.confidenceScore ?? "",
+      result.queryUsed ?? "",
+      ...response.sources.map((source) => pricesBySource.get(source.sourceId) ?? ""),
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map((row) => row.map(csvEscape).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `precios-lista-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeColumnName(value: string | number | null) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findColumn(headers: string[], candidates: string[]) {
+  return headers.findIndex((header) =>
+    candidates.some(
+      (candidate) => header === candidate || header.includes(candidate),
+    ),
+  );
+}
+
+function readPriceListCell(
+  row: Array<string | number | null>,
+  columnIndex: number,
+) {
+  if (columnIndex < 0) {
+    return "";
+  }
+
+  return String(row[columnIndex] ?? "").trim();
+}
+
+function cleanSpreadsheetIdentifier(value: string) {
+  const cleaned = value.replace(/\D/g, "");
+  return cleaned === "0" ? "" : cleaned;
+}
+
+function csvEscape(value: string | number) {
+  const text = String(value);
+
+  if (/[",\n]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+
+  return text;
 }
