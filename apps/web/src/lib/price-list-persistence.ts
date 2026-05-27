@@ -21,6 +21,8 @@ type DecisionStatus =
 
 type PersistenceResult = {
   enabled: boolean;
+  requested?: boolean;
+  saved?: boolean;
   runId?: string;
   errorMessage?: string;
 };
@@ -32,7 +34,7 @@ export async function savePriceListRun(
     process.env.SUPABASE_PERSIST_PRICE_LISTS === "false" ||
     !isSupabaseConfigured()
   ) {
-    return { enabled: false };
+    return { enabled: false, requested: true, saved: false };
   }
 
   const weekStart = getWeekStart(new Date(response.searchedAt));
@@ -63,6 +65,8 @@ export async function savePriceListRun(
   } catch (error) {
     return {
       enabled: true,
+      requested: true,
+      saved: false,
       errorMessage:
         error instanceof Error
           ? error.message
@@ -75,6 +79,8 @@ export async function savePriceListRun(
   if (!runId) {
     return {
       enabled: true,
+      requested: true,
+      saved: false,
       errorMessage: "Supabase no devolvio el ID de la corrida.",
     };
   }
@@ -107,6 +113,8 @@ export async function savePriceListRun(
   } catch (error) {
     return {
       enabled: true,
+      requested: true,
+      saved: false,
       runId,
       errorMessage:
         error instanceof Error
@@ -115,7 +123,7 @@ export async function savePriceListRun(
     };
   }
 
-  return { enabled: true, runId };
+  return { enabled: true, requested: true, saved: true, runId };
 }
 
 async function insertRowsInChunks(table: string, rows: unknown[]) {

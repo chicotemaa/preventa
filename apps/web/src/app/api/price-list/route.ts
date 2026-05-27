@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { savePriceListRun } from "@/lib/price-list-persistence";
-import type { PriceListInputItem, PriceListResponse } from "@/types/search";
+import type {
+  PriceListRequest,
+  PriceListResponse,
+} from "@/types/search";
 
 const DEFAULT_WORKER_URL =
   process.env.NODE_ENV === "production"
@@ -9,10 +12,10 @@ const DEFAULT_WORKER_URL =
 const MAX_ITEMS = 250;
 
 export async function POST(request: Request) {
-  let body: { items?: PriceListInputItem[] };
+  let body: Partial<PriceListRequest>;
 
   try {
-    body = (await request.json()) as { items?: PriceListInputItem[] };
+    body = (await request.json()) as Partial<PriceListRequest>;
   } catch {
     return NextResponse.json({ error: "Body JSON invalido." }, { status: 400 });
   }
@@ -61,7 +64,10 @@ export async function POST(request: Request) {
     }
 
     const data = (await response.json()) as PriceListResponse;
-    const persistence = await savePriceListRun(data);
+    const persistence =
+      body.persist === true
+        ? await savePriceListRun(data)
+        : { enabled: false, requested: false, saved: false };
     return NextResponse.json({ ...data, persistence });
   } catch {
     return NextResponse.json(

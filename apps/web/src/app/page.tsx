@@ -8,6 +8,7 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+import Link from "next/link";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import type {
   PriceListInputItem,
@@ -158,8 +159,8 @@ export default function Home() {
               Compará precios por lista
             </h1>
             <p className="mt-4 max-w-lg text-base leading-7 text-white/88">
-              Importá una planilla y obtené el mejor precio disponible por
-              artículo.
+              Importá la lista semanal, compará referencias y descargá el
+              archivo para cargar precios en ARA.
             </p>
           </div>
 
@@ -247,6 +248,7 @@ function PriceListImport() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
+  const [persistForEvolution, setPersistForEvolution] = useState(false);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -274,7 +276,7 @@ function PriceListImport() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items, persist: persistForEvolution }),
       });
       const payload = await result.json();
 
@@ -310,7 +312,7 @@ function PriceListImport() {
           </h2>
           <p className="mt-1 text-sm text-[#6f625d]">
             Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
-            Precio ARA y Costo.
+            Precio ARA y Costo. Solo se guarda si activás evolución.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -340,10 +342,28 @@ function PriceListImport() {
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#275fbd] bg-[#f5f8ff] px-4 text-sm font-semibold text-[#173e83] transition hover:bg-[#eaf2ff] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99]"
           >
             <Download className="h-4 w-4" />
-            Descargar para ARA
+            Exportar para ARA
           </button>
         </div>
       </div>
+
+      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3">
+        <input
+          type="checkbox"
+          checked={persistForEvolution}
+          onChange={(event) => setPersistForEvolution(event.target.checked)}
+          className="mt-1 h-4 w-4 accent-[#df2e38]"
+        />
+        <span>
+          <span className="block text-sm font-semibold text-[#17202a]">
+            Guardar esta carga para evolución
+          </span>
+          <span className="mt-1 block text-sm text-[#667789]">
+            Activá esto solo cuando quieras dejar la lista como referencia
+            semanal para comparar ARA y fuentes.
+          </span>
+        </span>
+      </label>
 
       {fileName ? (
         <div className="mt-4 rounded-md bg-[#fff8f2] px-4 py-3 text-sm text-[#6f625d]">
@@ -361,6 +381,42 @@ function PriceListImport() {
       {error ? (
         <div className="mt-4 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
           {error}
+        </div>
+      ) : null}
+
+      {response?.persistence?.saved ? (
+        <div className="mt-4 rounded-md border border-[#b7e3ca] bg-[#eefaf3] px-4 py-3 text-sm text-[#16613c]">
+          Carga guardada para evolución.{" "}
+          <Link
+            href="/evolucion"
+            className="font-semibold underline-offset-2 hover:underline"
+          >
+            Ver evolución
+          </Link>
+        </div>
+      ) : null}
+
+      {response?.persistence?.requested &&
+      response.persistence.errorMessage ? (
+        <div className="mt-4 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm text-[#73510b]">
+          La lista se evaluó, pero no se pudo guardar para evolución:{" "}
+          {response.persistence.errorMessage}
+        </div>
+      ) : null}
+
+      {response?.persistence?.requested &&
+      !response.persistence.saved &&
+      !response.persistence.errorMessage ? (
+        <div className="mt-4 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm text-[#73510b]">
+          La lista se evaluó, pero el guardado para evolución no está
+          disponible en este entorno.
+        </div>
+      ) : null}
+
+      {response && !response.persistence?.requested ? (
+        <div className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm text-[#526170]">
+          Esta evaluación no quedó guardada. Para compararla en evolución,
+          activá la opción de guardado antes de importar.
         </div>
       ) : null}
 
@@ -388,10 +444,6 @@ function PriceListResults({
   const visibleResults = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
-  const weeklyAnalysis = useMemo(
-    () => buildWeeklyAnalysis(visibleResults),
-    [visibleResults],
-  );
   const matchedCount = visibleResults.filter(
     (result) => result.bestSource !== null,
   ).length;
@@ -418,8 +470,6 @@ function PriceListResults({
       {updatedAt ? (
         <p className="text-sm text-[#5d6b7a]">Datos actualizados: {updatedAt}</p>
       ) : null}
-
-      <WeeklyAnalysisPanel analysis={weeklyAnalysis} />
 
       <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white md:block">
         <table className="min-w-[1120px] border-collapse text-left text-xs">

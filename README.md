@@ -205,11 +205,13 @@ El frontend permite importar `.xlsx`, `.xls` o `.csv` con columnas como:
 Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio ARA | Costo
 ```
 
-La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado, score y precio por comercio. Si la planilla incluye Precio ARA y Costo, agrega un análisis semanal con semáforo de decisión, resumen por rubro, brechas contra referencia, margen y precio sugerido. También permite descargar el resultado en CSV.
+La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado y precio por comercio. También permite descargar el resultado general o el archivo listo para cargar precios en ARA.
+
+La importación no guarda histórico por defecto. Para alimentar evolución de precios, activar la opción `Guardar esta carga para evolución` antes de importar la lista semanal.
 
 ## Supabase
 
-La integración con Supabase es opcional. Si `SUPABASE_URL` y una clave server-side (`SUPABASE_SECRET_KEY` o `SUPABASE_SERVICE_ROLE_KEY`) están configuradas en `apps/web`, cada importación de lista queda guardada como una corrida semanal.
+La integración con Supabase es opcional. Si `SUPABASE_URL` y una clave server-side (`SUPABASE_SECRET_KEY` o `SUPABASE_SERVICE_ROLE_KEY`) están configuradas en `apps/web`, las listas se guardan solo cuando el usuario activa el guardado para evolución.
 
 Schema versionado:
 
@@ -223,6 +225,12 @@ Tablas principales:
 - `price_list_run_sources`: estado de fuentes consultadas para esa corrida.
 - `price_list_run_items`: artículo, precio ARA, costo, mejor referencia, margen, brecha, precio sugerido y estado de decisión.
 
+Páginas disponibles:
+
+- `/`: carga de lista, comparación y exportación para ARA.
+- `/evolucion`: evolución de precios ARA, referencias y empresas por artículo.
+- `/historial`: detalle de corridas guardadas.
+
 Para aplicar el schema en un proyecto Supabase con CLI:
 
 ```bash
@@ -235,4 +243,4 @@ También se puede copiar el SQL de la migración y ejecutarlo en el SQL editor d
 
 ## Persistencia
 
-Sin variables de Supabase, la app sigue sin guardar histórico, productos ni precios. Con Supabase configurado, se guarda el histórico de listas evaluadas, pero el scraping y el catálogo actual siguen funcionando igual que antes.
+Sin variables de Supabase, la app sigue sin guardar histórico, productos ni precios. Con Supabase configurado, se guarda el histórico únicamente de las cargas marcadas para evolución; la búsqueda puntual y el catálogo actual siguen funcionando igual que antes.

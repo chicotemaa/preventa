@@ -74,6 +74,11 @@ export type PriceListInputItem = {
   currentCost?: number;
 };
 
+export type PriceListRequest = {
+  items: PriceListInputItem[];
+  persist?: boolean;
+};
+
 export type PriceListSourcePrice = {
   sourceId: string;
   storeName: string;
@@ -109,6 +114,8 @@ export type PriceListResponse = {
   results: PriceListItemResult[];
   persistence?: {
     enabled: boolean;
+    requested?: boolean;
+    saved?: boolean;
     runId?: string;
     errorMessage?: string;
   };
@@ -181,6 +188,37 @@ export type PriceListHistoryResponse = {
 export type PriceListRunDetailResponse = {
   enabled: boolean;
   detail: PriceListRunDetail | null;
+  errorMessage?: string;
+};
+
+export type PriceEvolutionPoint = {
+  runId: string;
+  searchedAt: string;
+  createdAt: string;
+  araPrice: number | null;
+  referencePrice: number | null;
+  suggestedPrice: number | null;
+  bestSourceName: string | null;
+  gapPercent: number | null;
+  decisionLabel: string;
+  sourcePrices: PriceListSourcePrice[];
+};
+
+export type PriceEvolutionProduct = {
+  productKey: string;
+  description: string;
+  rubro: string | null;
+  code: string | null;
+  ean13Di: string | null;
+  ean13Bu: string | null;
+  points: PriceEvolutionPoint[];
+  sourceNames: string[];
+};
+
+export type PriceEvolutionResponse = {
+  enabled: boolean;
+  products: PriceEvolutionProduct[];
+  runs: PriceListRunSummary[];
   errorMessage?: string;
 };
 
