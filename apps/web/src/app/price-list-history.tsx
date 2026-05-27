@@ -263,95 +263,111 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
         </div>
       </div>
 
-      <div className="hidden overflow-x-auto md:block">
-        <table className="min-w-[920px] w-full border-collapse text-left text-xs">
-          <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
-            <tr>
-              <th className="px-3 py-3">Artículo</th>
-              <th className="px-3 py-3">ARA</th>
-              <th className="px-3 py-3">Referencia</th>
-              <th className="px-3 py-3">Sugerido</th>
-              <th className="px-3 py-3">Estado</th>
-              <th className="px-3 py-3">Fuente</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#e5e9ef] bg-white">
-            {detail.items.map((item) => (
-              <tr key={item.id}>
-                <td className="max-w-[320px] px-3 py-3">
-                  <div className="font-medium text-[#17202a]">
-                    {item.description || "-"}
-                  </div>
-                  <div className="mt-1 text-[#667789]">
-                    {item.rubro || "Sin rubro"}
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-[#526170]">
-                  {formatCurrency(item.currentPrice)}
-                </td>
-                <td className="px-3 py-3 font-semibold text-[#173d2f]">
-                  {formatCurrency(item.bestPrice)}
-                </td>
-                <td className="px-3 py-3 font-semibold text-[#1d5f8f]">
-                  {formatCurrency(item.suggestedPrice)}
-                </td>
-                <td className="px-3 py-3">
-                  <span className={decisionClassName(item.decisionStatus)}>
-                    {item.decisionLabel}
-                  </span>
-                  {item.gapPercent !== null ? (
-                    <div className="mt-1 text-[#667789]">
-                      {formatSignedPercent(item.gapPercent)}
-                    </div>
-                  ) : null}
-                </td>
-                <td className="max-w-[220px] px-3 py-3 text-[#526170]">
-                  {item.bestProductUrl ? (
-                    <a
-                      href={item.bestProductUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-[#1d5f8f] underline-offset-2 hover:underline"
-                    >
-                      {item.bestSourceName || "Ver fuente"}
-                    </a>
-                  ) : (
-                    item.bestSourceName || "-"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {detail.items.length === 0 ? (
+        <div className="bg-white px-4 py-6 text-sm text-[#526170]">
+          Esta corrida no tiene detalle de artículos guardado.
+        </div>
+      ) : null}
 
-      <div className="grid gap-2 p-3 md:hidden">
-        {detail.items.map((item) => (
-          <article key={`${item.id}-mobile`} className="rounded-md border border-[#d9dee7] bg-white p-3">
-            <div className="font-semibold text-[#17202a]">
-              {item.description || "-"}
-            </div>
-            <div className="mt-1 text-sm text-[#667789]">
-              {item.rubro || "Sin rubro"}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <HistoryValue label="Ref." value={formatCurrency(item.bestPrice)} />
-              <HistoryValue
-                label="Sugerido"
-                value={formatCurrency(item.suggestedPrice)}
-              />
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <span className={decisionClassName(item.decisionStatus)}>
-                {item.decisionLabel}
-              </span>
-              <span className="text-sm text-[#526170]">
-                {item.bestSourceName || "-"}
-              </span>
-            </div>
-          </article>
-        ))}
-      </div>
+      {detail.items.length > 0 ? (
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-[920px] w-full border-collapse text-left text-xs">
+            <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
+              <tr>
+                <th className="px-3 py-3">Artículo</th>
+                <th className="px-3 py-3">ARA</th>
+                <th className="px-3 py-3">Referencia</th>
+                <th className="px-3 py-3">Sugerido</th>
+                <th className="px-3 py-3">Estado</th>
+                <th className="px-3 py-3">Fuente</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5e9ef] bg-white">
+              {detail.items.map((item) => (
+                <tr key={item.id}>
+                  <td className="max-w-[320px] px-3 py-3">
+                    <div className="font-medium text-[#17202a]">
+                      {item.description || "-"}
+                    </div>
+                    <div className="mt-1 text-[#667789]">
+                      {item.rubro || "Sin rubro"}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-[#526170]">
+                    {formatCurrency(item.currentPrice)}
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-[#173d2f]">
+                    {formatCurrency(item.bestPrice)}
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-[#1d5f8f]">
+                    {formatCurrency(item.suggestedPrice)}
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className={decisionClassName(item.decisionStatus)}>
+                      {item.decisionLabel}
+                    </span>
+                    {item.gapPercent !== null ? (
+                      <div className="mt-1 text-[#667789]">
+                        {formatSignedPercent(item.gapPercent)}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="max-w-[220px] px-3 py-3 text-[#526170]">
+                    {item.bestProductUrl ? (
+                      <a
+                        href={item.bestProductUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-[#1d5f8f] underline-offset-2 hover:underline"
+                      >
+                        {item.bestSourceName || "Ver fuente"}
+                      </a>
+                    ) : (
+                      item.bestSourceName || "-"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {detail.items.length > 0 ? (
+        <div className="grid gap-2 p-3 md:hidden">
+          {detail.items.map((item) => (
+            <article
+              key={`${item.id}-mobile`}
+              className="rounded-md border border-[#d9dee7] bg-white p-3"
+            >
+              <div className="font-semibold text-[#17202a]">
+                {item.description || "-"}
+              </div>
+              <div className="mt-1 text-sm text-[#667789]">
+                {item.rubro || "Sin rubro"}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <HistoryValue
+                  label="Ref."
+                  value={formatCurrency(item.bestPrice)}
+                />
+                <HistoryValue
+                  label="Sugerido"
+                  value={formatCurrency(item.suggestedPrice)}
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className={decisionClassName(item.decisionStatus)}>
+                  {item.decisionLabel}
+                </span>
+                <span className="text-sm text-[#526170]">
+                  {item.bestSourceName || "-"}
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

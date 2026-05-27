@@ -8,6 +8,7 @@ import { insertSupabaseRows, isSupabaseConfigured } from "./supabase-admin";
 const MIN_MARGIN_PERCENT = 22;
 const HIGH_PRICE_GAP_PERCENT = 12;
 const OPPORTUNITY_GAP_PERCENT = -8;
+const INSERT_CHUNK_SIZE = 20;
 
 type DecisionStatus =
   | "ready"
@@ -101,7 +102,7 @@ export async function savePriceListRun(
     }
 
     if (itemsPayload.length > 0) {
-      await insertSupabaseRows("price_list_run_items", itemsPayload);
+      await insertRowsInChunks("price_list_run_items", itemsPayload);
     }
   } catch (error) {
     return {
@@ -115,6 +116,15 @@ export async function savePriceListRun(
   }
 
   return { enabled: true, runId };
+}
+
+async function insertRowsInChunks(table: string, rows: unknown[]) {
+  for (let index = 0; index < rows.length; index += INSERT_CHUNK_SIZE) {
+    await insertSupabaseRows(
+      table,
+      rows.slice(index, index + INSERT_CHUNK_SIZE),
+    );
+  }
 }
 
 function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
