@@ -13,6 +13,7 @@ import type {
   PriceListInputItem,
   PriceListItemResult,
   PriceListResponse,
+  PriceListSourcePrice,
   ProductSearchResult,
   SearchResponse,
   SourceSearchStatus,
@@ -394,9 +395,9 @@ function PriceListResults({
               <th className="px-3 py-3">Mejor precio</th>
               <th className="px-3 py-3">Comercio</th>
               <th className="px-3 py-3">Producto encontrado</th>
-              {visibleSources.map((source) => (
+              {visibleSources.map((source, index) => (
                 <th key={source.sourceId} className="px-3 py-3">
-                  {source.storeName}
+                  Comparación {index + 1}
                 </th>
               ))}
             </tr>
@@ -438,12 +439,7 @@ function PriceListRow({
   result: PriceListItemResult;
   sources: SourceSearchStatus[];
 }) {
-  const pricesBySource = new Map(
-    result.sourcePrices.map((sourcePrice) => [
-      sourcePrice.sourceId,
-      sourcePrice,
-    ]),
-  );
+  const sourceComparisons = buildSortedSourceComparisons(result, sources);
   const shouldReview =
     result.bestSource !== null && result.bestSource.confidenceScore < 70;
 
@@ -498,20 +494,25 @@ function PriceListRow({
           result.bestSource?.productName ?? "-"
         )}
       </td>
-      {sources.map((source) => {
-        const sourcePrice = pricesBySource.get(source.sourceId);
-
+      {sourceComparisons.map(({ source, sourcePrice }) => {
         return (
           <td key={source.sourceId} className="px-3 py-3">
             {sourcePrice ? (
-              <span
-                title={sourcePrice.productName}
-                className="font-semibold text-[#173d2f]"
-              >
-                {currencyFormatter.format(sourcePrice.price)}
-              </span>
+              <div title={sourcePrice.productName}>
+                <div className="font-medium text-[#17202a]">
+                  {sourcePrice.storeName}
+                </div>
+                <div className="mt-1 font-semibold text-[#173d2f]">
+                  {currencyFormatter.format(sourcePrice.price)}
+                </div>
+              </div>
             ) : (
-              <span className="text-[#9aa5b1]">-</span>
+              <div>
+                <div className="font-medium text-[#83909d]">
+                  {source.storeName}
+                </div>
+                <div className="mt-1 text-[#9aa5b1]">Sin precio</div>
+              </div>
             )}
           </td>
         );
@@ -611,20 +612,32 @@ function PriceListCards({
                   Ver precios por comercio
                 </summary>
                 <div className="mt-2 divide-y divide-[#e5e9ef] rounded-md border border-[#d9dee7] bg-white">
-                  {result.sourcePrices.map((sourcePrice) => (
-                    <div
-                      key={`${result.input.rowNumber}-${sourcePrice.sourceId}`}
-                      className="flex items-center justify-between gap-3 px-3 py-2"
-                    >
-                      <span>
-                        {sourceNames.get(sourcePrice.sourceId) ??
-                          sourcePrice.storeName}
-                      </span>
-                      <span className="font-semibold text-[#173d2f]">
-                        {currencyFormatter.format(sourcePrice.price)}
-                      </span>
-                    </div>
-                  ))}
+                  {buildSortedSourceComparisons(result, sources).map(
+                    ({ source, sourcePrice }) => (
+                      <div
+                        key={`${result.input.rowNumber}-${source.sourceId}`}
+                        className="flex items-center justify-between gap-3 px-3 py-2"
+                      >
+                        <span>
+                          {sourcePrice
+                            ? sourceNames.get(sourcePrice.sourceId) ??
+                              sourcePrice.storeName
+                            : source.storeName}
+                        </span>
+                        <span
+                          className={
+                            sourcePrice
+                              ? "font-semibold text-[#173d2f]"
+                              : "text-[#9aa5b1]"
+                          }
+                        >
+                          {sourcePrice
+                            ? currencyFormatter.format(sourcePrice.price)
+                            : "-"}
+                        </span>
+                      </div>
+                    ),
+                  )}
                 </div>
               </details>
             ) : null}
@@ -953,12 +966,10 @@ function filterPriceListResultBySourceType(
     return result;
   }
 
-  const sourcePrices = result.sourcePrices.filter(
-    (sourcePrice) => sourcePrice.storeType === sourceFilter,
-  );
-  const bestSource =
-    [...sourcePrices].sort((first, second) => first.price - second.price)[0] ??
-    null;
+  const sourcePrices = result.sourcePrices
+    .filter((sourcePrice) => sourcePrice.storeType === sourceFilter)
+    .sort((first, second) => first.price - second.price);
+  const bestSource = sourcePrices[0] ?? null;
 
   return {
     ...result,
@@ -968,6 +979,50 @@ function filterPriceListResultBySourceType(
     sourcePrices,
     matchedCount: sourcePrices.length,
   };
+}
+
+function buildSortedSourceComparisons(
+  result: PriceListItemResult,
+  sources: SourceSearchStatus[],
+) {
+  const pricesBySource = new Map(
+    result.sourcePrices.map((sourcePrice) => [
+      sourcePrice.sourceId,
+      sourcePrice,
+    ]),
+  );
+
+  return sources
+    .map((source) => ({
+      source,
+      sourcePrice: pricesBySource.get(source.sourceId) ?? null,
+    }))
+    .sort(compareSourceComparisons);
+}
+
+function compareSourceComparisons(
+  first: {
+    source: SourceSearchStatus;
+    sourcePrice: PriceListSourcePrice | null;
+  },
+  second: {
+    source: SourceSearchStatus;
+    sourcePrice: PriceListSourcePrice | null;
+  },
+) {
+  if (first.sourcePrice && second.sourcePrice) {
+    return first.sourcePrice.price - second.sourcePrice.price;
+  }
+
+  if (first.sourcePrice) {
+    return -1;
+  }
+
+  if (second.sourcePrice) {
+    return 1;
+  }
+
+  return first.source.storeName.localeCompare(second.source.storeName, "es");
 }
 
 async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
@@ -1040,7 +1095,7 @@ function downloadPriceListCsv(
   const results = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
-  const sourceHeaders = sources.map((source) => source.storeName);
+  const sourceHeaders = sources.map((_, index) => `Comparacion ${index + 1}`);
   const headers = [
     "Rubro",
     "Descripcion Larga",
@@ -1055,12 +1110,7 @@ function downloadPriceListCsv(
     ...sourceHeaders,
   ];
   const rows = results.map((result) => {
-    const pricesBySource = new Map(
-      result.sourcePrices.map((sourcePrice) => [
-        sourcePrice.sourceId,
-        sourcePrice.price.toFixed(2),
-      ]),
-    );
+    const comparisons = buildSortedSourceComparisons(result, sources);
 
     return [
       result.input.rubro ?? "",
@@ -1073,7 +1123,11 @@ function downloadPriceListCsv(
       result.bestSource?.storeName ?? "",
       result.bestSource?.productName ?? "",
       result.bestSource?.productUrl ?? "",
-      ...sources.map((source) => pricesBySource.get(source.sourceId) ?? ""),
+      ...comparisons.map(({ source, sourcePrice }) =>
+        sourcePrice
+          ? `${sourcePrice.storeName}: ${sourcePrice.price.toFixed(2)}`
+          : `${source.storeName}: Sin precio`,
+      ),
     ];
   });
   const csv = [headers, ...rows]
