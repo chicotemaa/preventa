@@ -67,6 +67,32 @@ export const scrapingSources: ScrapingSource[] = [
     requiresJavascript: false,
   },
   {
+    id: "masonline-changomas-vtex",
+    storeName: "MasOnline / ChangoMas",
+    storeType: "minorista",
+    city: "Argentina",
+    sourceUrl: "https://www.masonline.com.ar/",
+    dataOrigin: "API publica VTEX del catalogo de MasOnline / ChangoMas",
+    sourceScope: "Argentina",
+    sourceKind: "vtex_api",
+    searchUrlTemplate:
+      "https://www.masonline.com.ar/api/catalog_system/pub/products/search?ft={query}&_from=0&_to=24",
+    requiresJavascript: false,
+  },
+  {
+    id: "cordiez-argentina-vtex",
+    storeName: "Cordiez",
+    storeType: "minorista",
+    city: "Argentina",
+    sourceUrl: "https://www.cordiez.com.ar/",
+    dataOrigin: "API publica VTEX del catalogo de Cordiez",
+    sourceScope: "Argentina",
+    sourceKind: "vtex_api",
+    searchUrlTemplate:
+      "https://www.cordiez.com.ar/api/catalog_system/pub/products/search?ft={query}&_from=0&_to=24",
+    requiresJavascript: false,
+  },
+  {
     id: "maxiconsumo-web-moreno",
     storeName: "Maxiconsumo Web",
     storeType: "mayorista",

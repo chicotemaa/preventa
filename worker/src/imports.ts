@@ -23,6 +23,7 @@ export async function loadImportedCatalogProducts(): Promise<ImportedCatalog> {
     string,
     {
       storeName: string;
+      storeType: StoreType;
       sourceUrl: string | null;
       dataOrigin: string;
       sourceScope: string;
@@ -46,6 +47,7 @@ export async function loadImportedCatalogProducts(): Promise<ImportedCatalog> {
 
       sourceCounts.set(product.sourceId, {
         storeName: product.storeName,
+        storeType: product.storeType,
         sourceUrl: product.sourceUrl ?? null,
         dataOrigin: product.dataOrigin ?? `CSV importado: ${product.storeName}`,
         sourceScope: product.sourceScope ?? "Lista importada",
@@ -60,6 +62,7 @@ export async function loadImportedCatalogProducts(): Promise<ImportedCatalog> {
       ([sourceId, source]) => ({
         sourceId,
         storeName: source.storeName,
+        storeType: source.storeType,
         sourceUrl: source.sourceUrl,
         dataOrigin: source.dataOrigin,
         sourceScope: source.sourceScope,

@@ -24,6 +24,7 @@ import type {
   ProductSearchResult,
   ScrapingSource,
   SourceSearchStatus,
+  StoreType,
 } from "./types.js";
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -49,6 +50,10 @@ export async function loadCatalogFromDisk() {
     currentCatalog = JSON.parse(raw) as CatalogSnapshot;
     currentCatalog.region = catalogRegion;
     currentCatalog.pendingSources = getPendingSources();
+    currentCatalog.sources = hydrateSourceStatusStoreTypes(
+      currentCatalog.sources,
+      currentCatalog.products,
+    );
 
     if (currentCatalog.productsCount > 0 && currentCatalog.status !== "ready") {
       currentCatalog.status = "ready";
@@ -502,6 +507,7 @@ function summarizeSourceStatuses(statuses: SourceSearchStatus[]) {
       grouped.set(sourceId, {
         ...status,
         sourceId,
+        storeType: status.storeType ?? inferSourceStatusStoreType(sourceId),
       });
       continue;
     }
@@ -512,10 +518,34 @@ function summarizeSourceStatuses(statuses: SourceSearchStatus[]) {
       resultsCount: existing.resultsCount + status.resultsCount,
       durationMs: existing.durationMs + status.durationMs,
       errorMessage: existing.errorMessage ?? status.errorMessage,
+      storeType:
+        existing.storeType ??
+        status.storeType ??
+        inferSourceStatusStoreType(sourceId),
     });
   }
 
   return Array.from(grouped.values());
+}
+
+function hydrateSourceStatusStoreTypes(
+  statuses: SourceSearchStatus[],
+  products: ProductSearchResult[],
+) {
+  return statuses.map((status) => ({
+    ...status,
+    storeType:
+      status.storeType ??
+      products.find((product) => product.sourceId === status.sourceId)?.storeType ??
+      inferSourceStatusStoreType(status.sourceId),
+  }));
+}
+
+function inferSourceStatusStoreType(sourceId: string): StoreType {
+  return (
+    scrapingSources.find((source) => source.id === sourceId)?.storeType ??
+    "minorista"
+  );
 }
 
 function mergeStatus(

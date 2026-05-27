@@ -24,6 +24,7 @@ export type ProductSearchResult = {
 export type SourceSearchStatus = {
   sourceId: string;
   storeName: string;
+  storeType: "mayorista" | "minorista";
   sourceUrl?: string | null;
   dataOrigin?: string;
   sourceScope?: string;

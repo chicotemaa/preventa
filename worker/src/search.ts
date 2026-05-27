@@ -299,6 +299,7 @@ function buildStatus(
   return {
     sourceId: source.id,
     storeName: source.storeName,
+    storeType: source.storeType,
     sourceUrl: getSourceUrl(source),
     dataOrigin: getDataOrigin(source),
     sourceScope: getSourceScope(source),

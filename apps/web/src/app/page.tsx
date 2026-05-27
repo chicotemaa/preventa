@@ -24,11 +24,15 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 2,
 });
 
+type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchSourceFilter, setSearchSourceFilter] =
+    useState<SourceTypeFilter>("all");
 
   const failedSources = useMemo(
     () =>
@@ -79,34 +83,47 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f7f9]">
-      <section className="border-b border-[#d9dee7] bg-white">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-7 md:px-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#51606f]">
-            Preventa
-          </p>
-          <h1 className="text-3xl font-semibold text-[#17202a] md:text-4xl">
-            Comparador de precios por lista
-          </h1>
-          <p className="max-w-3xl text-sm leading-6 text-[#5d6b7a]">
-            Importá una planilla de artículos y obtené el mejor precio
-            disponible por producto.
-          </p>
+    <main className="min-h-screen bg-[#fff8f2]">
+      <BrandHeader />
+
+      <section className="relative overflow-hidden bg-[#153d7b] text-white">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-cover bg-center opacity-35"
+          style={{
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1800&q=80')",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-[#143a78]/88"
+        />
+        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-7 px-5 py-10 md:grid-cols-[0.88fr_1.12fr] md:px-8 md:py-14">
+          <div className="flex flex-col justify-center">
+            <h1 className="max-w-xl text-4xl font-extrabold leading-[1.05] text-white md:text-5xl">
+              Compará precios por lista
+            </h1>
+            <p className="mt-4 max-w-lg text-base leading-7 text-white/88">
+              Importá una planilla y obtené el mejor precio disponible por
+              artículo.
+            </p>
+          </div>
+
+          <PriceListImport />
         </div>
       </section>
 
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
-        <PriceListImport />
-
-        <section className="rounded-md border border-[#d9dee7] bg-white p-4">
+        <section
+          id="buscar"
+          className="rounded-md border border-[#eadbd3] bg-white p-5 shadow-[0_14px_40px_rgba(77,41,25,0.08)]"
+        >
           <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
             <div>
-              <h2 className="text-base font-semibold text-[#17202a]">
+              <h2 className="text-base font-bold text-[#171717]">
                 Buscar producto puntual
               </h2>
-              <p className="mt-1 text-sm text-[#5d6b7a]">
-                Usalo para revisar un artículo fuera de una lista.
-              </p>
             </div>
           </div>
 
@@ -118,19 +135,19 @@ export default function Home() {
               <span className="sr-only">Buscar producto</span>
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#667789]"
+                className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#df2e38]"
               />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Producto, codigo o EAN"
-                className="h-12 w-full rounded-md border border-[#b8c2cf] bg-white pl-12 pr-4 text-base text-[#17202a] outline-none transition focus:border-[#1d5f8f] focus:ring-4 focus:ring-[#1d5f8f]/15"
+                className="h-12 w-full rounded-md border border-[#dec8bd] bg-[#fffdfa] pl-12 pr-4 text-base text-[#171717] outline-none transition focus:border-[#df2e38] focus:ring-4 focus:ring-[#df2e38]/15"
               />
             </label>
             <button
               type="submit"
               disabled={isLoading}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#1d5f8f] px-5 text-sm font-semibold text-white transition hover:bg-[#164d74] disabled:cursor-not-allowed disabled:bg-[#8da9bd]"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#275fbd] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(39,95,189,0.22)] transition hover:bg-[#173e83] disabled:cursor-not-allowed disabled:bg-[#9ba8bf]"
             >
               {isLoading ? (
                 <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
@@ -142,7 +159,7 @@ export default function Home() {
           </form>
 
           {error ? (
-            <div className="mt-4 rounded-md border border-[#e0b4ad] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
+            <div className="mt-4 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
               {error}
             </div>
           ) : null}
@@ -157,10 +174,49 @@ export default function Home() {
             </div>
           ) : null}
 
-          {response ? <SearchResults response={response} /> : null}
+          {response ? (
+            <SearchResults
+              response={response}
+              sourceFilter={searchSourceFilter}
+              onSourceFilterChange={setSearchSourceFilter}
+            />
+          ) : null}
         </section>
       </section>
     </main>
+  );
+}
+
+function BrandHeader() {
+  return (
+    <header className="sticky top-0 z-30 border-b border-[#f0e1da] bg-white/95 backdrop-blur">
+      <div className="mx-auto flex h-[76px] w-full max-w-6xl items-center justify-between gap-5 px-5 md:px-8">
+        <div className="flex items-center gap-3">
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-md bg-[#df2e38] text-xl font-extrabold text-white shadow-[0_10px_24px_rgba(223,46,56,0.18)]">
+            A
+            <span
+              aria-hidden="true"
+              className="absolute bottom-2 left-1/2 h-1 w-4 -translate-x-1/2 rounded bg-white"
+            />
+          </div>
+          <div>
+            <div className="text-xl font-extrabold leading-none text-[#171717]">
+              ARA
+            </div>
+            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#df2e38]">
+              Distribuidora RAP
+            </div>
+          </div>
+        </div>
+
+        <a
+          href="#lista"
+          className="hidden rounded-md bg-[#df2e38] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#bd1f2a] md:inline-flex"
+        >
+          Importar lista
+        </a>
+      </div>
+    </header>
   );
 }
 
@@ -170,6 +226,7 @@ function PriceListImport() {
   const [response, setResponse] = useState<PriceListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -219,19 +276,24 @@ function PriceListImport() {
   }
 
   return (
-    <section className="rounded-md border border-[#d9dee7] bg-white p-4">
+    <section
+      id="lista"
+      className={`rounded-md border border-white/75 bg-white p-5 text-[#171717] shadow-[0_22px_60px_rgba(18,40,73,0.22)] ${
+        response ? "md:col-span-2" : ""
+      }`}
+    >
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-[#17202a]">
-            <FileSpreadsheet className="h-5 w-5 text-[#1d5f8f]" />
+          <h2 className="flex items-center gap-2 text-lg font-bold text-[#171717]">
+            <FileSpreadsheet className="h-5 w-5 text-[#df2e38]" />
             Importar lista de artículos
           </h2>
-          <p className="mt-1 text-sm text-[#5d6b7a]">
+          <p className="mt-1 text-sm text-[#6f625d]">
             Excel o CSV con Rubro, Descripción Larga, Código y EAN.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#1d5f8f] px-4 text-sm font-semibold text-white transition hover:bg-[#164d74]">
+          <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#df2e38] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(223,46,56,0.22)] transition hover:bg-[#bd1f2a]">
             <Upload className="h-4 w-4" />
             Importar archivo
             <input
@@ -244,8 +306,8 @@ function PriceListImport() {
           <button
             type="button"
             disabled={!response}
-            onClick={() => response && downloadPriceListCsv(response)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#b8c2cf] bg-white px-4 text-sm font-semibold text-[#17202a] transition hover:border-[#1d5f8f] disabled:cursor-not-allowed disabled:text-[#9aa5b1]"
+            onClick={() => response && downloadPriceListCsv(response, sourceFilter)}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-4 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99]"
           >
             <Download className="h-4 w-4" />
             Descargar resultado
@@ -254,31 +316,52 @@ function PriceListImport() {
       </div>
 
       {fileName ? (
-        <div className="mt-4 rounded-md bg-[#f6f7f9] px-4 py-3 text-sm text-[#526170]">
+        <div className="mt-4 rounded-md bg-[#fff8f2] px-4 py-3 text-sm text-[#6f625d]">
           {fileName} {itemsCount > 0 ? `· ${itemsCount} articulos` : ""}
         </div>
       ) : null}
 
       {isLoading ? (
-        <div className="mt-4 flex items-center gap-2 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm text-[#526170]">
+        <div className="mt-4 flex items-center gap-2 rounded-md border border-[#eadbd3] bg-[#fffdfa] px-4 py-3 text-sm text-[#6f625d]">
           <Loader2 className="h-4 w-4 animate-spin" />
           Evaluando precios...
         </div>
       ) : null}
 
       {error ? (
-        <div className="mt-4 rounded-md border border-[#e0b4ad] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
+        <div className="mt-4 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
           {error}
         </div>
       ) : null}
 
-      {response ? <PriceListResults response={response} /> : null}
+      {response ? (
+        <PriceListResults
+          response={response}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={setSourceFilter}
+        />
+      ) : null}
     </section>
   );
 }
 
-function PriceListResults({ response }: { response: PriceListResponse }) {
-  const reviewCount = response.results.filter(
+function PriceListResults({
+  response,
+  sourceFilter,
+  onSourceFilterChange,
+}: {
+  response: PriceListResponse;
+  sourceFilter: SourceTypeFilter;
+  onSourceFilterChange: (filter: SourceTypeFilter) => void;
+}) {
+  const visibleSources = filterSourcesByType(response.sources, sourceFilter);
+  const visibleResults = response.results.map((result) =>
+    filterPriceListResultBySourceType(result, sourceFilter),
+  );
+  const matchedCount = visibleResults.filter(
+    (result) => result.bestSource !== null,
+  ).length;
+  const reviewCount = visibleResults.filter(
     (result) =>
       result.bestSource !== null && result.bestSource.confidenceScore < 70,
   ).length;
@@ -286,10 +369,15 @@ function PriceListResults({ response }: { response: PriceListResponse }) {
 
   return (
     <div className="mt-5 flex flex-col gap-4">
+      <SourceTypeFilterControl
+        value={sourceFilter}
+        onChange={onSourceFilterChange}
+      />
+
       <div className="grid gap-2 md:grid-cols-4">
         <Metric label="Artículos" value={response.itemsCount} />
-        <Metric label="Con precio" value={response.matchedCount} />
-        <Metric label="Sin precio" value={response.unmatchedCount} />
+        <Metric label="Con precio" value={matchedCount} />
+        <Metric label="Sin precio" value={response.itemsCount - matchedCount} />
         <Metric label="A revisar" value={reviewCount} />
       </div>
 
@@ -306,7 +394,7 @@ function PriceListResults({ response }: { response: PriceListResponse }) {
               <th className="px-3 py-3">Mejor precio</th>
               <th className="px-3 py-3">Comercio</th>
               <th className="px-3 py-3">Producto encontrado</th>
-              {response.sources.map((source) => (
+              {visibleSources.map((source) => (
                 <th key={source.sourceId} className="px-3 py-3">
                   {source.storeName}
                 </th>
@@ -314,20 +402,20 @@ function PriceListResults({ response }: { response: PriceListResponse }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#e5e9ef]">
-            {response.results.map((result) => (
+            {visibleResults.map((result) => (
               <PriceListRow
                 key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
                 result={result}
-                sources={response.sources}
+                sources={visibleSources}
               />
             ))}
           </tbody>
         </table>
       </div>
 
-      <PriceListCards results={response.results} sources={response.sources} />
+      <PriceListCards results={visibleResults} sources={visibleSources} />
 
-      <SourcesDetails sources={response.sources} />
+      <SourcesDetails sources={visibleSources} />
     </div>
   );
 }
@@ -547,35 +635,90 @@ function PriceListCards({
   );
 }
 
-function SearchResults({ response }: { response: SearchResponse }) {
+function SearchResults({
+  response,
+  sourceFilter,
+  onSourceFilterChange,
+}: {
+  response: SearchResponse;
+  sourceFilter: SourceTypeFilter;
+  onSourceFilterChange: (filter: SourceTypeFilter) => void;
+}) {
   const updatedAt = formatDate(response.catalog?.lastSyncedAt ?? null);
+  const visibleResults = filterResultsBySourceType(
+    response.results,
+    sourceFilter,
+  );
+  const visibleSources = filterSourcesByType(response.sources, sourceFilter);
 
   return (
     <div className="mt-5 flex flex-col gap-4">
+      <SourceTypeFilterControl
+        value={sourceFilter}
+        onChange={onSourceFilterChange}
+      />
+
       <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
         <div>
           <h3 className="text-lg font-semibold text-[#17202a]">
             Resultados para "{response.query}"
           </h3>
           <p className="text-sm text-[#5d6b7a]">
-            {response.results.length} productos encontrados
+            {visibleResults.length} productos encontrados
             {updatedAt ? ` · actualizado ${updatedAt}` : ""}
           </p>
         </div>
       </div>
 
-      {response.results.length === 0 ? (
+      {visibleResults.length === 0 ? (
         <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-5 py-8 text-center text-[#526170]">
           No se encontraron precios para esta búsqueda.
         </div>
       ) : (
         <>
-          <ResultsTable results={response.results} />
-          <ResultsCards results={response.results} />
+          <ResultsTable results={visibleResults} />
+          <ResultsCards results={visibleResults} />
         </>
       )}
 
-      <SourcesDetails sources={response.sources} />
+      <SourcesDetails sources={visibleSources} />
+    </div>
+  );
+}
+
+function SourceTypeFilterControl({
+  value,
+  onChange,
+}: {
+  value: SourceTypeFilter;
+  onChange: (filter: SourceTypeFilter) => void;
+}) {
+  const options: Array<{ value: SourceTypeFilter; label: string }> = [
+    { value: "all", label: "Todas" },
+    { value: "mayorista", label: "Mayoristas" },
+    { value: "minorista", label: "Minoristas" },
+  ];
+
+  return (
+    <div className="inline-flex w-full rounded-md border border-[#eadbd3] bg-[#fffdfa] p-1 sm:w-fit">
+      {options.map((option) => {
+        const isActive = value === option.value;
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`h-9 flex-1 rounded px-3 text-sm font-semibold transition sm:flex-none ${
+              isActive
+                ? "bg-[#171717] text-white"
+                : "text-[#6f625d] hover:bg-white hover:text-[#171717]"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -757,6 +900,53 @@ function resultKey(result: ProductSearchResult) {
   return `${result.sourceId}-${result.normalizedName}-${result.price}`;
 }
 
+function filterSourcesByType(
+  sources: SourceSearchStatus[],
+  sourceFilter: SourceTypeFilter,
+) {
+  if (sourceFilter === "all") {
+    return sources;
+  }
+
+  return sources.filter((source) => source.storeType === sourceFilter);
+}
+
+function filterResultsBySourceType(
+  results: ProductSearchResult[],
+  sourceFilter: SourceTypeFilter,
+) {
+  if (sourceFilter === "all") {
+    return results;
+  }
+
+  return results.filter((result) => result.storeType === sourceFilter);
+}
+
+function filterPriceListResultBySourceType(
+  result: PriceListItemResult,
+  sourceFilter: SourceTypeFilter,
+): PriceListItemResult {
+  if (sourceFilter === "all") {
+    return result;
+  }
+
+  const sourcePrices = result.sourcePrices.filter(
+    (sourcePrice) => sourcePrice.storeType === sourceFilter,
+  );
+  const bestSource =
+    [...sourcePrices].sort((first, second) => first.price - second.price)[0] ??
+    null;
+
+  return {
+    ...result,
+    status: bestSource ? "matched" : "not_found",
+    bestSource,
+    bestPrice: bestSource?.price ?? null,
+    sourcePrices,
+    matchedCount: sourcePrices.length,
+  };
+}
+
 async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), {
@@ -819,8 +1009,15 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
     );
 }
 
-function downloadPriceListCsv(response: PriceListResponse) {
-  const sourceHeaders = response.sources.map((source) => source.storeName);
+function downloadPriceListCsv(
+  response: PriceListResponse,
+  sourceFilter: SourceTypeFilter,
+) {
+  const sources = filterSourcesByType(response.sources, sourceFilter);
+  const results = response.results.map((result) =>
+    filterPriceListResultBySourceType(result, sourceFilter),
+  );
+  const sourceHeaders = sources.map((source) => source.storeName);
   const headers = [
     "Rubro",
     "Descripcion Larga",
@@ -834,7 +1031,7 @@ function downloadPriceListCsv(response: PriceListResponse) {
     "Link producto",
     ...sourceHeaders,
   ];
-  const rows = response.results.map((result) => {
+  const rows = results.map((result) => {
     const pricesBySource = new Map(
       result.sourcePrices.map((sourcePrice) => [
         sourcePrice.sourceId,
@@ -853,9 +1050,7 @@ function downloadPriceListCsv(response: PriceListResponse) {
       result.bestSource?.storeName ?? "",
       result.bestSource?.productName ?? "",
       result.bestSource?.productUrl ?? "",
-      ...response.sources.map(
-        (source) => pricesBySource.get(source.sourceId) ?? "",
-      ),
+      ...sources.map((source) => pricesBySource.get(source.sourceId) ?? ""),
     ];
   });
   const csv = [headers, ...rows]

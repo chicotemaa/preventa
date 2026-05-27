@@ -28,6 +28,7 @@ export type ProductSearchResult = {
 export type SourceSearchStatus = {
   sourceId: string;
   storeName: string;
+  storeType: StoreType;
   sourceUrl?: string | null;
   dataOrigin?: string;
   sourceScope?: string;
