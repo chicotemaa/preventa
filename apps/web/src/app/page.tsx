@@ -24,8 +24,62 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   currency: "ARS",
   maximumFractionDigits: 2,
 });
+const percentFormatter = new Intl.NumberFormat("es-AR", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+});
+const MIN_MARGIN_PERCENT = 22;
+const HIGH_PRICE_GAP_PERCENT = 12;
+const OPPORTUNITY_GAP_PERCENT = -8;
 
 type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
+type PriceDecisionStatus =
+  | "ready"
+  | "review_match"
+  | "no_reference"
+  | "missing_own_price"
+  | "low_margin"
+  | "above_reference"
+  | "opportunity";
+
+type PriceDecisionAnalysis = {
+  result: PriceListItemResult;
+  status: PriceDecisionStatus;
+  statusLabel: string;
+  currentPrice: number | null;
+  currentCost: number | null;
+  referencePrice: number | null;
+  marginPercent: number | null;
+  gapPercent: number | null;
+  suggestedPrice: number | null;
+};
+
+type WeeklyAnalysis = {
+  total: number;
+  withReference: number;
+  withoutReference: number;
+  withOwnPrice: number;
+  lowMargin: number;
+  opportunities: number;
+  aboveReference: number;
+  ready: number;
+  review: number;
+  decisions: PriceDecisionAnalysis[];
+  statusCounts: Array<{
+    status: PriceDecisionStatus;
+    label: string;
+    count: number;
+  }>;
+  rubros: Array<{
+    rubro: string;
+    total: number;
+    withReference: number;
+    withoutReference: number;
+    lowMargin: number;
+    opportunities: number;
+  }>;
+  topGaps: PriceDecisionAnalysis[];
+};
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -290,7 +344,8 @@ function PriceListImport() {
             Importar lista de artículos
           </h2>
           <p className="mt-1 text-sm text-[#6f625d]">
-            Excel o CSV con Rubro, Descripción Larga, Código y EAN.
+            Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
+            Precio ARA y Costo.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -359,6 +414,10 @@ function PriceListResults({
   const visibleResults = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
+  const weeklyAnalysis = useMemo(
+    () => buildWeeklyAnalysis(visibleResults),
+    [visibleResults],
+  );
   const matchedCount = visibleResults.filter(
     (result) => result.bestSource !== null,
   ).length;
@@ -385,6 +444,8 @@ function PriceListResults({
       {updatedAt ? (
         <p className="text-sm text-[#5d6b7a]">Datos actualizados: {updatedAt}</p>
       ) : null}
+
+      <WeeklyAnalysisPanel analysis={weeklyAnalysis} />
 
       <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white md:block">
         <table className="min-w-[1120px] border-collapse text-left text-xs">
@@ -428,6 +489,226 @@ function Metric({ label, value }: { label: string; value: number }) {
         {label}
       </div>
       <div className="mt-1 text-2xl font-semibold text-[#17202a]">{value}</div>
+    </div>
+  );
+}
+
+function WeeklyAnalysisPanel({ analysis }: { analysis: WeeklyAnalysis }) {
+  return (
+    <section className="pt-1">
+      <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
+        <div>
+          <h3 className="text-base font-bold text-[#17202a]">
+            Análisis semanal
+          </h3>
+          <p className="mt-1 text-sm text-[#667789]">
+            Semáforo de decisión, resumen por rubro y brechas contra referencias.
+          </p>
+        </div>
+        <div className="text-sm font-medium text-[#526170]">
+          {analysis.withOwnPrice}/{analysis.total} con precio ARA
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-4">
+        <Metric label="Listos" value={analysis.ready} />
+        <Metric label="Oportunidades" value={analysis.opportunities} />
+        <Metric label="Margen bajo" value={analysis.lowMargin} />
+        <Metric label="Muy arriba" value={analysis.aboveReference} />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <DecisionStatusChart analysis={analysis} />
+        <RubroSummaryTable analysis={analysis} />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <GapAnalysisTable analysis={analysis} />
+        <DecisionTable analysis={analysis} />
+      </div>
+    </section>
+  );
+}
+
+function DecisionStatusChart({ analysis }: { analysis: WeeklyAnalysis }) {
+  return (
+    <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3">
+      <h4 className="text-sm font-semibold text-[#17202a]">
+        Semáforo de decisión
+      </h4>
+      <div className="mt-3 flex flex-col gap-3">
+        {analysis.statusCounts.map((item) => {
+          const percent = analysis.total > 0 ? (item.count / analysis.total) * 100 : 0;
+
+          return (
+            <div key={item.status}>
+              <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                <span className="font-medium text-[#526170]">{item.label}</span>
+                <span className="text-[#667789]">
+                  {item.count} · {formatPercent(percent)}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[#e5e9ef]">
+                <div
+                  className={`h-full rounded-full ${decisionBarClassName(item.status)}`}
+                  style={{ width: `${percent > 0 ? Math.max(3, percent) : 0}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RubroSummaryTable({ analysis }: { analysis: WeeklyAnalysis }) {
+  return (
+    <div className="rounded-md border border-[#e5e9ef] bg-white">
+      <div className="border-b border-[#e5e9ef] px-3 py-3">
+        <h4 className="text-sm font-semibold text-[#17202a]">
+          Resumen por rubro
+        </h4>
+      </div>
+      <div className="max-h-[280px] overflow-auto">
+        <table className="w-full border-collapse text-left text-xs">
+          <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
+            <tr>
+              <th className="px-3 py-2">Rubro</th>
+              <th className="px-3 py-2">Art.</th>
+              <th className="px-3 py-2">Con ref.</th>
+              <th className="px-3 py-2">Sin ref.</th>
+              <th className="px-3 py-2">Margen bajo</th>
+              <th className="px-3 py-2">Oportunidad</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#e5e9ef]">
+            {analysis.rubros.map((rubro) => (
+              <tr key={rubro.rubro}>
+                <td className="max-w-[220px] px-3 py-2 font-medium text-[#17202a]">
+                  {rubro.rubro}
+                </td>
+                <td className="px-3 py-2 text-[#526170]">{rubro.total}</td>
+                <td className="px-3 py-2 text-[#173d2f]">
+                  {rubro.withReference}
+                </td>
+                <td className="px-3 py-2 text-[#8f2d20]">
+                  {rubro.withoutReference}
+                </td>
+                <td className="px-3 py-2 text-[#8f2d20]">
+                  {rubro.lowMargin}
+                </td>
+                <td className="px-3 py-2 text-[#73510b]">
+                  {rubro.opportunities}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function GapAnalysisTable({ analysis }: { analysis: WeeklyAnalysis }) {
+  return (
+    <div className="rounded-md border border-[#e5e9ef] bg-white">
+      <div className="border-b border-[#e5e9ef] px-3 py-3">
+        <h4 className="text-sm font-semibold text-[#17202a]">
+          Mayores brechas
+        </h4>
+      </div>
+      {analysis.topGaps.length === 0 ? (
+        <div className="px-3 py-5 text-sm text-[#667789]">
+          Agregá una columna de precio ARA para calcular brechas.
+        </div>
+      ) : (
+        <div className="max-h-[280px] overflow-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
+              <tr>
+                <th className="px-3 py-2">Artículo</th>
+                <th className="px-3 py-2">ARA</th>
+                <th className="px-3 py-2">Ref.</th>
+                <th className="px-3 py-2">Brecha</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5e9ef]">
+              {analysis.topGaps.map((decision) => (
+                <tr key={`${decision.result.input.rowNumber}-gap`}>
+                  <td className="max-w-[260px] px-3 py-2 font-medium text-[#17202a]">
+                    {decision.result.input.description || "-"}
+                  </td>
+                  <td className="px-3 py-2 text-[#526170]">
+                    {formatCurrencyValue(decision.currentPrice)}
+                  </td>
+                  <td className="px-3 py-2 text-[#526170]">
+                    {formatCurrencyValue(decision.referencePrice)}
+                  </td>
+                  <td className={`px-3 py-2 font-semibold ${gapTextClassName(decision.gapPercent)}`}>
+                    {formatSignedPercent(decision.gapPercent)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DecisionTable({ analysis }: { analysis: WeeklyAnalysis }) {
+  const decisions = analysis.decisions
+    .filter((decision) => decision.status !== "ready")
+    .slice(0, 12);
+
+  return (
+    <div className="rounded-md border border-[#e5e9ef] bg-white">
+      <div className="border-b border-[#e5e9ef] px-3 py-3">
+        <h4 className="text-sm font-semibold text-[#17202a]">
+          Productos a revisar
+        </h4>
+      </div>
+      {decisions.length === 0 ? (
+        <div className="px-3 py-5 text-sm text-[#667789]">
+          No hay alertas abiertas para el filtro actual.
+        </div>
+      ) : (
+        <div className="max-h-[280px] overflow-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
+              <tr>
+                <th className="px-3 py-2">Artículo</th>
+                <th className="px-3 py-2">Estado</th>
+                <th className="px-3 py-2">Sugerido</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5e9ef]">
+              {decisions.map((decision) => (
+                <tr key={`${decision.result.input.rowNumber}-decision`}>
+                  <td className="max-w-[280px] px-3 py-2">
+                    <div className="font-medium text-[#17202a]">
+                      {decision.result.input.description || "-"}
+                    </div>
+                    <div className="mt-1 text-[#667789]">
+                      {decision.result.input.rubro || "Sin rubro"}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={decisionBadgeClassName(decision.status)}>
+                      {decision.statusLabel}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-semibold text-[#173d2f]">
+                    {formatCurrencyValue(decision.suggestedPrice)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -1025,6 +1306,276 @@ function compareSourceComparisons(
   return first.source.storeName.localeCompare(second.source.storeName, "es");
 }
 
+function buildWeeklyAnalysis(results: PriceListItemResult[]): WeeklyAnalysis {
+  const decisions = results.map(analyzePriceDecision);
+  const rubros = summarizeRubros(decisions);
+  const statusCounts = buildDecisionStatusCounts(decisions);
+  const topGaps = decisions
+    .filter((decision) => decision.gapPercent !== null)
+    .sort(
+      (first, second) =>
+        Math.abs(second.gapPercent ?? 0) - Math.abs(first.gapPercent ?? 0),
+    )
+    .slice(0, 8);
+
+  return {
+    total: decisions.length,
+    withReference: decisions.filter((decision) => decision.referencePrice !== null)
+      .length,
+    withoutReference: decisions.filter(
+      (decision) => decision.referencePrice === null,
+    ).length,
+    withOwnPrice: decisions.filter((decision) => decision.currentPrice !== null)
+      .length,
+    lowMargin: decisions.filter((decision) => decision.status === "low_margin")
+      .length,
+    opportunities: decisions.filter((decision) => decision.status === "opportunity")
+      .length,
+    aboveReference: decisions.filter(
+      (decision) => decision.status === "above_reference",
+    ).length,
+    ready: decisions.filter((decision) => decision.status === "ready").length,
+    review: decisions.filter((decision) => decision.status !== "ready").length,
+    decisions,
+    statusCounts,
+    rubros,
+    topGaps,
+  };
+}
+
+function analyzePriceDecision(
+  result: PriceListItemResult,
+): PriceDecisionAnalysis {
+  const currentPrice = normalizeOptionalNumber(result.input.currentPrice);
+  const currentCost = normalizeOptionalNumber(result.input.currentCost);
+  const referencePrice = normalizeOptionalNumber(result.bestPrice);
+  const marginPercent =
+    currentPrice && currentCost ? ((currentPrice - currentCost) / currentPrice) * 100 : null;
+  const gapPercent =
+    currentPrice && referencePrice
+      ? ((currentPrice - referencePrice) / referencePrice) * 100
+      : null;
+  const suggestedPrice = calculateSuggestedPrice(
+    currentPrice,
+    currentCost,
+    referencePrice,
+  );
+  const status = getPriceDecisionStatus(
+    result,
+    currentPrice,
+    referencePrice,
+    marginPercent,
+    gapPercent,
+  );
+
+  return {
+    result,
+    status,
+    statusLabel: getDecisionStatusLabel(status),
+    currentPrice,
+    currentCost,
+    referencePrice,
+    marginPercent,
+    gapPercent,
+    suggestedPrice,
+  };
+}
+
+function getPriceDecisionStatus(
+  result: PriceListItemResult,
+  currentPrice: number | null,
+  referencePrice: number | null,
+  marginPercent: number | null,
+  gapPercent: number | null,
+): PriceDecisionStatus {
+  if (!referencePrice) {
+    return "no_reference";
+  }
+
+  if (!currentPrice) {
+    return "missing_own_price";
+  }
+
+  if (result.bestSource && result.bestSource.confidenceScore < 70) {
+    return "review_match";
+  }
+
+  if (marginPercent !== null && marginPercent < MIN_MARGIN_PERCENT) {
+    return "low_margin";
+  }
+
+  if (gapPercent !== null && gapPercent > HIGH_PRICE_GAP_PERCENT) {
+    return "above_reference";
+  }
+
+  if (gapPercent !== null && gapPercent < OPPORTUNITY_GAP_PERCENT) {
+    return "opportunity";
+  }
+
+  return "ready";
+}
+
+function calculateSuggestedPrice(
+  currentPrice: number | null,
+  currentCost: number | null,
+  referencePrice: number | null,
+) {
+  if (!currentPrice && !referencePrice && !currentCost) {
+    return null;
+  }
+
+  const marginFloor = currentCost
+    ? currentCost / (1 - MIN_MARGIN_PERCENT / 100)
+    : null;
+  const target = Math.max(
+    referencePrice ?? 0,
+    marginFloor ?? 0,
+    currentPrice ?? 0,
+  );
+
+  return roundPriceForList(target);
+}
+
+function roundPriceForList(value: number) {
+  const step = value < 1_000 ? 10 : value < 10_000 ? 50 : 100;
+  return Math.ceil(value / step) * step;
+}
+
+function summarizeRubros(decisions: PriceDecisionAnalysis[]) {
+  const rubros = new Map<WeeklyAnalysis["rubros"][number]["rubro"], WeeklyAnalysis["rubros"][number]>();
+
+  for (const decision of decisions) {
+    const rubro = decision.result.input.rubro || "Sin rubro";
+    const current = rubros.get(rubro) ?? {
+      rubro,
+      total: 0,
+      withReference: 0,
+      withoutReference: 0,
+      lowMargin: 0,
+      opportunities: 0,
+    };
+
+    current.total += 1;
+    current.withReference += decision.referencePrice !== null ? 1 : 0;
+    current.withoutReference += decision.referencePrice === null ? 1 : 0;
+    current.lowMargin += decision.status === "low_margin" ? 1 : 0;
+    current.opportunities += decision.status === "opportunity" ? 1 : 0;
+    rubros.set(rubro, current);
+  }
+
+  return Array.from(rubros.values()).sort((first, second) => {
+    if (second.lowMargin !== first.lowMargin) {
+      return second.lowMargin - first.lowMargin;
+    }
+
+    if (second.withoutReference !== first.withoutReference) {
+      return second.withoutReference - first.withoutReference;
+    }
+
+    return first.rubro.localeCompare(second.rubro, "es");
+  });
+}
+
+function buildDecisionStatusCounts(decisions: PriceDecisionAnalysis[]) {
+  const statusOrder: PriceDecisionStatus[] = [
+    "ready",
+    "opportunity",
+    "above_reference",
+    "low_margin",
+    "missing_own_price",
+    "review_match",
+    "no_reference",
+  ];
+
+  return statusOrder.map((status) => ({
+    status,
+    label: getDecisionStatusLabel(status),
+    count: decisions.filter((decision) => decision.status === status).length,
+  }));
+}
+
+function getDecisionStatusLabel(status: PriceDecisionStatus) {
+  const labels: Record<PriceDecisionStatus, string> = {
+    ready: "Listo",
+    review_match: "Revisar match",
+    no_reference: "Sin referencia",
+    missing_own_price: "Falta precio ARA",
+    low_margin: "Margen bajo",
+    above_reference: "Muy arriba",
+    opportunity: "Oportunidad",
+  };
+
+  return labels[status];
+}
+
+function decisionBarClassName(status: PriceDecisionStatus) {
+  const colors: Record<PriceDecisionStatus, string> = {
+    ready: "bg-[#1f8a5b]",
+    review_match: "bg-[#d68b14]",
+    no_reference: "bg-[#8b96a5]",
+    missing_own_price: "bg-[#6b7c8f]",
+    low_margin: "bg-[#c0392b]",
+    above_reference: "bg-[#d65f21]",
+    opportunity: "bg-[#2d74c4]",
+  };
+
+  return colors[status];
+}
+
+function decisionBadgeClassName(status: PriceDecisionStatus) {
+  const base = "inline-flex rounded px-2 py-1 text-[11px] font-semibold";
+  const colors: Record<PriceDecisionStatus, string> = {
+    ready: "bg-[#e4f6ed] text-[#16613c]",
+    review_match: "bg-[#fff8e6] text-[#73510b]",
+    no_reference: "bg-[#eef1f4] text-[#526170]",
+    missing_own_price: "bg-[#eef1f4] text-[#526170]",
+    low_margin: "bg-[#fff1ef] text-[#8f2d20]",
+    above_reference: "bg-[#fff1ef] text-[#8f2d20]",
+    opportunity: "bg-[#eaf2ff] text-[#1d5f8f]",
+  };
+
+  return `${base} ${colors[status]}`;
+}
+
+function gapTextClassName(value: number | null) {
+  if (value === null) {
+    return "text-[#526170]";
+  }
+
+  if (value > HIGH_PRICE_GAP_PERCENT) {
+    return "text-[#8f2d20]";
+  }
+
+  if (value < OPPORTUNITY_GAP_PERCENT) {
+    return "text-[#1d5f8f]";
+  }
+
+  return "text-[#173d2f]";
+}
+
+function formatCurrencyValue(value: number | null) {
+  return value === null ? "-" : currencyFormatter.format(value);
+}
+
+function formatPercent(value: number) {
+  return `${percentFormatter.format(value)}%`;
+}
+
+function formatSignedPercent(value: number | null) {
+  if (value === null) {
+    return "-";
+  }
+
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${formatPercent(value)}`;
+}
+
+function normalizeOptionalNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
 async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), {
@@ -1067,6 +1618,20 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   const codeIndex = findColumn(headers, ["codigo", "code"]);
   const eanDiIndex = findColumn(headers, ["ean 13 di", "ean13 di", "ean di"]);
   const eanBuIndex = findColumn(headers, ["ean 13 bu", "ean13 bu", "ean bu"]);
+  const currentPriceIndex = findColumn(headers, [
+    "precio ara",
+    "precio actual",
+    "precio lista",
+    "precio venta",
+    "precio publico",
+    "precio final",
+  ]);
+  const currentCostIndex = findColumn(headers, [
+    "costo",
+    "costo actual",
+    "costo unitario",
+    "precio costo",
+  ]);
 
   return rows
     .slice(headerIndex + 1)
@@ -1077,6 +1642,10 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
       code: readPriceListCell(row, codeIndex),
       ean13Di: cleanSpreadsheetIdentifier(readPriceListCell(row, eanDiIndex)),
       ean13Bu: cleanSpreadsheetIdentifier(readPriceListCell(row, eanBuIndex)),
+      currentPrice: parseSpreadsheetAmount(
+        readPriceListCell(row, currentPriceIndex),
+      ),
+      currentCost: parseSpreadsheetAmount(readPriceListCell(row, currentCostIndex)),
     }))
     .filter(
       (item) =>
@@ -1102,6 +1671,12 @@ function downloadPriceListCsv(
     "Codigo",
     "EAN 13 DI",
     "EAN 13 BU",
+    "Precio ARA",
+    "Costo",
+    "Margen actual %",
+    "Brecha vs referencia %",
+    "Precio sugerido",
+    "Estado decision",
     "Estado",
     "Mejor precio",
     "Mejor fuente",
@@ -1111,6 +1686,7 @@ function downloadPriceListCsv(
   ];
   const rows = results.map((result) => {
     const comparisons = buildSortedSourceComparisons(result, sources);
+    const decision = analyzePriceDecision(result);
 
     return [
       result.input.rubro ?? "",
@@ -1118,6 +1694,12 @@ function downloadPriceListCsv(
       result.input.code ?? "",
       result.input.ean13Di ?? "",
       result.input.ean13Bu ?? "",
+      result.input.currentPrice?.toFixed(2) ?? "",
+      result.input.currentCost?.toFixed(2) ?? "",
+      decision.marginPercent === null ? "" : decision.marginPercent.toFixed(2),
+      decision.gapPercent === null ? "" : decision.gapPercent.toFixed(2),
+      decision.suggestedPrice === null ? "" : decision.suggestedPrice.toFixed(2),
+      decision.statusLabel,
       result.status === "matched" ? "Con precio" : "Sin precio",
       result.bestPrice === null ? "" : result.bestPrice.toFixed(2),
       result.bestSource?.storeName ?? "",
@@ -1173,6 +1755,38 @@ function readPriceListCell(
 function cleanSpreadsheetIdentifier(value: string) {
   const cleaned = value.replace(/\D/g, "");
   return cleaned === "0" ? "" : cleaned;
+}
+
+function parseSpreadsheetAmount(value: string) {
+  const cleaned = value
+    .replace(/\s/g, "")
+    .replace(/[^\d.,-]/g, "")
+    .replace(/(?!^)-/g, "");
+
+  if (!cleaned || cleaned === "-" || cleaned === "," || cleaned === ".") {
+    return undefined;
+  }
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalSeparator =
+    lastComma > lastDot && cleaned.length - lastComma <= 3
+      ? ","
+      : lastDot > lastComma && cleaned.length - lastDot <= 3
+        ? "."
+        : null;
+  let normalized = cleaned;
+
+  if (decimalSeparator === ",") {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (decimalSeparator === ".") {
+    normalized = cleaned.replace(/,/g, "");
+  } else {
+    normalized = cleaned.replace(/[.,]/g, "");
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function csvEscape(value: string | number) {

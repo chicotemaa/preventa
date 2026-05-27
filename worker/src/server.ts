@@ -26,6 +26,8 @@ const priceListRequestSchema = z.object({
         code: z.string().optional(),
         ean13Di: z.string().optional(),
         ean13Bu: z.string().optional(),
+        currentPrice: z.number().positive().optional(),
+        currentCost: z.number().positive().optional(),
       }),
     )
     .min(1)

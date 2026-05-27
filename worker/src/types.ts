@@ -74,6 +74,8 @@ export type PriceListInputItem = {
   code?: string;
   ean13Di?: string;
   ean13Bu?: string;
+  currentPrice?: number;
+  currentCost?: number;
 };
 
 export type PriceListSourcePrice = {
