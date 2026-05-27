@@ -23,14 +23,19 @@ export async function insertSupabaseRows<T>(
   const search = options.select
     ? `?select=${encodeURIComponent(options.select)}`
     : "";
+  const headers: Record<string, string> = {
+    apikey: serverKey,
+    "content-type": "application/json",
+    prefer: `return=${options.returning ?? "minimal"}`,
+  };
+
+  if (!isSupabasePlatformKey(serverKey)) {
+    headers.authorization = `Bearer ${serverKey}`;
+  }
+
   const response = await fetch(`${normalizedUrl}/rest/v1/${table}${search}`, {
     method: "POST",
-    headers: {
-      apikey: serverKey,
-      authorization: `Bearer ${serverKey}`,
-      "content-type": "application/json",
-      prefer: `return=${options.returning ?? "minimal"}`,
-    },
+    headers,
     body: JSON.stringify(rows),
     cache: "no-store",
   });
@@ -51,4 +56,8 @@ export async function insertSupabaseRows<T>(
 
 function getSupabaseServerKey() {
   return process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+}
+
+function isSupabasePlatformKey(key: string) {
+  return key.startsWith("sb_secret_") || key.startsWith("sb_publishable_");
 }

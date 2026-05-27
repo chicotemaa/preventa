@@ -12,3 +12,4 @@ npm-debug.log*
 *.tsbuildinfo
 .DS_Store
 .codex-spreadsheet-work/
+.vercel
