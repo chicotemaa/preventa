@@ -128,6 +128,15 @@ export async function extractProductsFromTextLines(
       "nuestros productos!",
       "y muchos más...",
       "y muchos mas...",
+      "disponible",
+      "sin stock",
+      "stock disponible",
+      "unidad",
+      "unidades",
+      "precio",
+      "precio caja",
+      "agregar",
+      "destacado",
     ]);
     const lines = (document.body.innerText ?? "")
       .split("\n")
@@ -174,13 +183,7 @@ export async function extractProductsFromTextLines(
         const candidate = linesToSearch[index];
         const normalizedCandidate = candidate.toLowerCase();
 
-        if (
-          candidate.includes("$") ||
-          ignoredLines.has(normalizedCandidate) ||
-          candidate.length < 4 ||
-          candidate.length > 160 ||
-          /^[\d\s.,%-]+$/.test(candidate)
-        ) {
+        if (isNonProductLine(candidate, ignoredLines)) {
           continue;
         }
 
@@ -188,6 +191,23 @@ export async function extractProductsFromTextLines(
       }
 
       return null;
+    }
+
+    function isNonProductLine(candidate: string, ignoredLines: Set<string>) {
+      const normalizedCandidate = candidate.toLowerCase();
+
+      return (
+        candidate.includes("$") ||
+        ignoredLines.has(normalizedCandidate) ||
+        candidate.length < 4 ||
+        candidate.length > 160 ||
+        /^[\d\s.,%-]+$/.test(candidate) ||
+        /^x\s?\d+$/i.test(candidate) ||
+        /^(caj[oó]n|pack|botella|retornable|descartable|porr[oó]n)\b/i.test(
+          candidate,
+        ) ||
+        /\b(caj[oó]n|pack)\s*x?\s*\d+\s*u?\.?$/i.test(candidate)
+      );
     }
   });
 

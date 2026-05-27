@@ -107,17 +107,37 @@ export const targetBrands: TargetBrand[] = [
 ];
 
 export function findAllowedBrand(productName: string) {
+  return targetBrands.find((brand) => productMatchesTargetBrand(productName, brand));
+}
+
+export function productMatchesTargetBrand(
+  productName: string,
+  brand: TargetBrand,
+) {
   const normalizedProductName = normalizeProductName(productName);
 
-  return targetBrands.find((brand) =>
-    brand.aliases.some((alias) =>
-      normalizedProductName.includes(normalizeProductName(alias)),
-    ),
+  return brand.aliases.some((alias) =>
+    productNameMatchesAlias(normalizedProductName, normalizeProductName(alias)),
   );
 }
 
 export function isAllowedBrandProduct(productName: string) {
   return Boolean(findAllowedBrand(productName)) && !isExcludedProductName(productName);
+}
+
+function productNameMatchesAlias(
+  normalizedProductName: string,
+  normalizedAlias: string,
+) {
+  if (!normalizedAlias) {
+    return false;
+  }
+
+  if (normalizedAlias.includes(" ")) {
+    return normalizedProductName.includes(normalizedAlias);
+  }
+
+  return normalizedProductName.split(/\s+/).includes(normalizedAlias);
 }
 
 function isExcludedProductName(productName: string) {

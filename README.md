@@ -145,17 +145,24 @@ Notas para demo:
 4. Cada fuente falla o responde de manera independiente.
 5. Los resultados se normalizan, deduplican, filtran por score y ordenan por precio ascendente.
 
-## Fuentes nacionales
+## Fuentes activas
 
-Las fuentes activas del MVP tienen alcance nacional o referencia nacional. Cada resultado expone comercio, tipo, origen de datos, URL de fuente y link del producto cuando la fuente lo informa.
+Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA. Cada resultado expone comercio, tipo, origen de datos, URL de fuente y link del producto cuando la fuente lo informa.
 
 - Carrefour Argentina: API publica VTEX del catalogo web.
 - Jumbo Argentina: API publica VTEX del catalogo web.
 - Disco Argentina: API publica VTEX del catalogo web.
 - Vea Argentina: API publica VTEX del catalogo web.
 - DIA Argentina: API publica VTEX del catalogo DIA Online.
+- MasOnline / ChangoMas: API publica VTEX del catalogo web.
+- Cordiez: API publica VTEX del catalogo web.
 - Maxiconsumo Web: catalogo publico mayorista, sucursal web Moreno como referencia nacional.
-- Supermayorista Vital Online: fuente relevante configurada como pendiente porque requiere autenticacion para ver catalogo/precios.
+- Red Norte Distribuidora: catalogo publico online con alcance Chaco/Corrientes.
+- Sabor y Aroma Mayorista: HTML publico de tienda mayorista en Formosa.
+- Fresh Distribuidora: catalogo publico WooCommerce de Resistencia.
+- Distribuidora Centenario: catalogo publico de bebidas mayoristas en Corrientes.
+
+Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Aguiar, Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Yaguar Chaco, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
 
 El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
 

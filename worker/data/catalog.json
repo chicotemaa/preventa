@@ -40,10 +40,43 @@
     "Kesitas",
     "Rex"
   ],
-  "lastSyncedAt": "2026-05-27T18:07:31.306Z",
-  "durationMs": 74315,
-  "productsCount": 1100,
+  "lastSyncedAt": "2026-05-27T19:20:25.457Z",
+  "durationMs": 73647,
+  "productsCount": 1097,
   "sources": [
+    {
+      "sourceId": "rednorte-nea",
+      "storeName": "Red Norte Distribuidora",
+      "storeType": "mayorista",
+      "sourceUrl": "https://www.rednorte.com.ar/",
+      "dataOrigin": "Catalogo publico online de Red Norte, mayorista y minorista para Chaco y Corrientes",
+      "sourceScope": "NEA: Chaco y Corrientes",
+      "status": "no_results",
+      "resultsCount": 0,
+      "durationMs": 4737
+    },
+    {
+      "sourceId": "fresh-resistencia",
+      "storeName": "Fresh Distribuidora",
+      "storeType": "mayorista",
+      "sourceUrl": "https://distribuidorafresh.com.ar/",
+      "dataOrigin": "Catalogo publico WooCommerce de Fresh Distribuidora expuesto en datos de producto",
+      "sourceScope": "NEA: Resistencia, Chaco",
+      "status": "no_results",
+      "resultsCount": 0,
+      "durationMs": 2164
+    },
+    {
+      "sourceId": "centenario-bebidas-corrientes",
+      "storeName": "Distribuidora Centenario",
+      "storeType": "mayorista",
+      "sourceUrl": "https://www.centenariobebidas.com/",
+      "dataOrigin": "Catalogo publico renderizado de Distribuidora Centenario, bebidas al por mayor",
+      "sourceScope": "NEA: Corrientes",
+      "status": "no_results",
+      "resultsCount": 0,
+      "durationMs": 3424
+    },
     {
       "sourceId": "carrefour-argentina-vtex",
       "storeName": "Carrefour Argentina",
@@ -53,7 +86,7 @@
       "sourceScope": "Argentina",
       "status": "success",
       "resultsCount": 183,
-      "durationMs": 29202
+      "durationMs": 24745
     },
     {
       "sourceId": "jumbo-argentina-vtex",
@@ -63,8 +96,8 @@
       "dataOrigin": "API publica VTEX del catalogo de Jumbo Argentina",
       "sourceScope": "Argentina",
       "status": "success",
-      "resultsCount": 156,
-      "durationMs": 27993
+      "resultsCount": 157,
+      "durationMs": 24700
     },
     {
       "sourceId": "disco-argentina-vtex",
@@ -74,8 +107,8 @@
       "dataOrigin": "API publica VTEX del catalogo de Disco Argentina",
       "sourceScope": "Argentina",
       "status": "success",
-      "resultsCount": 154,
-      "durationMs": 28621
+      "resultsCount": 155,
+      "durationMs": 28357
     },
     {
       "sourceId": "vea-argentina-vtex",
@@ -86,7 +119,7 @@
       "sourceScope": "Argentina",
       "status": "success",
       "resultsCount": 139,
-      "durationMs": 25105
+      "durationMs": 19991
     },
     {
       "sourceId": "dia-argentina-vtex",
@@ -97,7 +130,7 @@
       "sourceScope": "Argentina",
       "status": "success",
       "resultsCount": 117,
-      "durationMs": 27470
+      "durationMs": 21489
     },
     {
       "sourceId": "masonline-changomas-vtex",
@@ -108,7 +141,7 @@
       "sourceScope": "Argentina",
       "status": "success",
       "resultsCount": 152,
-      "durationMs": 23383
+      "durationMs": 22398
     },
     {
       "sourceId": "cordiez-argentina-vtex",
@@ -119,7 +152,7 @@
       "sourceScope": "Argentina",
       "status": "success",
       "resultsCount": 176,
-      "durationMs": 41846
+      "durationMs": 27491
     },
     {
       "sourceId": "maxiconsumo-web-moreno",
@@ -130,7 +163,18 @@
       "sourceScope": "Argentina con sucursal de referencia Moreno",
       "status": "success",
       "resultsCount": 102,
-      "durationMs": 60164
+      "durationMs": 62712
+    },
+    {
+      "sourceId": "sabor-y-aroma-formosa",
+      "storeName": "Sabor y Aroma Mayorista",
+      "storeType": "mayorista",
+      "sourceUrl": "https://ventamayorista.saboryaroma.com/",
+      "dataOrigin": "HTML publico de la tienda mayorista Sabor y Aroma",
+      "sourceScope": "NEA: Formosa",
+      "status": "no_results",
+      "resultsCount": 0,
+      "durationMs": 16737
     }
   ],
   "pendingSources": [
@@ -139,7 +183,56 @@
       "storeName": "Supermayorista Vital Online",
       "storeType": "mayorista",
       "status": "requires_login",
-      "message": "La tienda online requiere autenticacion para consultar catalogo y precios."
+      "message": "La tienda online requiere autenticacion o seleccion de cuenta/sucursal para consultar catalogo y precios confiables."
+    },
+    {
+      "sourceId": "aguiar-arcor-resistencia",
+      "storeName": "Aguiar Resistencia",
+      "storeType": "mayorista",
+      "status": "requires_login",
+      "message": "Distribuidor oficial Arcor local; la compra online se realiza por Tokin y requiere credenciales B2B."
+    },
+    {
+      "sourceId": "rj-aguiar-sa",
+      "storeName": "Ricardo J. Aguiar S.A.",
+      "storeType": "mayorista",
+      "status": "no_public_prices",
+      "message": "Mayorista local relevante para Arcor/Bagley, pero no expone catalogo publico con precios producto por producto."
+    },
+    {
+      "sourceId": "sorpresas-golda-gpedidos",
+      "storeName": "Sorpresas SAS / Distribuidora Golda",
+      "storeType": "mayorista",
+      "status": "no_public_prices",
+      "message": "Publica rubros y productos en GPedidos, pero los precios no quedan expuestos publicamente para comparar."
+    },
+    {
+      "sourceId": "yaguar-chaco-ofertas",
+      "storeName": "Yaguar Chaco Ofertas",
+      "storeType": "mayorista",
+      "status": "no_public_prices",
+      "message": "Publica ofertas en PDF/folleto; queda pendiente un extractor PDF/OCR para convertirlas en precios comparables."
+    },
+    {
+      "sourceId": "mariano-santos-corrientes",
+      "storeName": "Mariano Santos Mayorista",
+      "storeType": "mayorista",
+      "status": "no_public_prices",
+      "message": "Publica catalogos en PDF; queda pendiente extractor PDF/OCR porque no hay HTML publico con precios."
+    },
+    {
+      "sourceId": "jotabe-nea",
+      "storeName": "Distribuidora Jota Be",
+      "storeType": "mayorista",
+      "status": "no_public_prices",
+      "message": "Mayorista regional identificado, pero no expone catalogo publico con precios para scraping."
+    },
+    {
+      "sourceId": "el-popular-mayorista",
+      "storeName": "El Popular Mayorista",
+      "storeType": "mayorista",
+      "status": "no_public_prices",
+      "message": "Mayorista local con ofertas por canales comerciales, sin catalogo publico itemizado con precios."
     }
   ],
   "products": [
@@ -565,6 +658,26 @@
       "currency": "ARS",
       "productUrl": "https://www.vea.com.ar/jugo-manzana-roja-7-gr-bc/p",
       "imageUrl": "https://jumboargentina.vteximg.com.br/arquivos/ids/665691/Jugo-En-Polvo-Bc-Manzana-Roja-7gr-1-878198.jpg?v=637670794015230000",
+      "confidenceScore": 100
+    },
+    {
+      "sourceId": "dia-argentina-vtex",
+      "storeName": "DIA Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
+      "sourceScope": "Argentina",
+      "sku": "77940131",
+      "barcodes": [
+        "77940131"
+      ],
+      "brand": "Arcor",
+      "rawName": "Turrón Arcor con Maní 25 Gr.",
+      "normalizedName": "turron arcor con mani 25 gr.",
+      "price": 440,
+      "currency": "ARS",
+      "productUrl": "https://diaonline.supermercadosdia.com.ar/turron-arcor-con-mani-25-gr-17929/p",
+      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/307587/Turron-Arcor-con-Mani-25-Gr-_1.jpg?v=638599332120700000",
       "confidenceScore": 100
     },
     {
@@ -4021,24 +4134,6 @@
       "brand": "Bagley"
     },
     {
-      "sourceId": "maxiconsumo-web-moreno",
-      "storeName": "Maxiconsumo Web",
-      "storeType": "mayorista",
-      "sourceUrl": "https://maxiconsumo.com/",
-      "dataOrigin": "HTML del catalogo publico de Maxiconsumo, sucursal web Moreno como referencia",
-      "sourceScope": "Argentina con sucursal de referencia Moreno",
-      "sku": "21401",
-      "barcodes": [],
-      "rawName": "BOLSA VIRUTEX BCA 40x40 20 UN",
-      "normalizedName": "bolsa virutex bca 40x40 20",
-      "price": 1199.9,
-      "currency": "ARS",
-      "productUrl": "https://maxiconsumo.com/sucursal_moreno/bolsa-virutex-bca-40x40-20-un-21401.html",
-      "imageUrl": "https://maxiconsumo.com/media/catalog/product/cache/f6b8d111adccee08c5421b7e0568bbfd/2/1/21401_1732076454673d63a62c24f5.09735332.jpg",
-      "confidenceScore": 100,
-      "brand": "BC"
-    },
-    {
       "sourceId": "vea-argentina-vtex",
       "storeName": "Vea Argentina",
       "storeType": "minorista",
@@ -4648,6 +4743,26 @@
       "imageUrl": "https://maxiconsumo.com/media/catalog/product/cache/f6b8d111adccee08c5421b7e0568bbfd/2/0/20829_1732076441673d63998b6f60.97006670.jpg",
       "confidenceScore": 100,
       "brand": "Aguila"
+    },
+    {
+      "sourceId": "carrefour-argentina-vtex",
+      "storeName": "Carrefour Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://www.carrefour.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
+      "sourceScope": "Argentina",
+      "sku": "740382",
+      "barcodes": [
+        "7790040143807"
+      ],
+      "brand": "Bon o Bon",
+      "rawName": "Galletitas rellenas Bon o Bon Cofler 85 g.",
+      "normalizedName": "galletitas rellenas bon o bon cofler 85 g.",
+      "price": 1269,
+      "currency": "ARS",
+      "productUrl": "https://www.carrefour.com.ar/galletitas-rellenas-bon-o-bon-cofler-85-g-740382/p",
+      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/515298/7790040143807_E01.jpg?v=638500828922000000",
+      "confidenceScore": 100
     },
     {
       "sourceId": "masonline-changomas-vtex",
@@ -5768,6 +5883,26 @@
       "confidenceScore": 100
     },
     {
+      "sourceId": "dia-argentina-vtex",
+      "storeName": "DIA Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
+      "sourceScope": "Argentina",
+      "sku": "7793360132384",
+      "barcodes": [
+        "7793360132384"
+      ],
+      "brand": "La Campagnola",
+      "rawName": "Arvejas Secas La Campagnola 300 Gr.",
+      "normalizedName": "arvejas secas campagnola 300 gr.",
+      "price": 1408,
+      "currency": "ARS",
+      "productUrl": "https://diaonline.supermercadosdia.com.ar/arvejas-secas-la-campagnola-300-gr-46164/p",
+      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/348407/Arvejas-Secas-La-Campagnola-300-Gr-_1.jpg?v=638793570127930000",
+      "confidenceScore": 90
+    },
+    {
       "sourceId": "cordiez-argentina-vtex",
       "storeName": "Cordiez",
       "storeType": "minorista",
@@ -5826,26 +5961,6 @@
       "currency": "ARS",
       "productUrl": "https://www.cordiez.com.ar/lentejas-arcor-300-gr/p",
       "imageUrl": "https://arcordiezb2c.vteximg.com.br/arquivos/ids/188089/Lentejas-Arcor-300-Gr-1-22785.jpg?v=639046281755200000",
-      "confidenceScore": 100
-    },
-    {
-      "sourceId": "carrefour-argentina-vtex",
-      "storeName": "Carrefour Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.carrefour.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
-      "sourceScope": "Argentina",
-      "sku": "346232",
-      "barcodes": [
-        "7790580567903"
-      ],
-      "brand": "Arcor",
-      "rawName": "Tomate perita Arcor 400 g.",
-      "normalizedName": "tomate perita arcor 400 g.",
-      "price": 1439,
-      "currency": "ARS",
-      "productUrl": "https://www.carrefour.com.ar/tomate-perita-arcor-400-g/p",
-      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/381324/7790580567903_01.jpg?v=638315050563400000",
       "confidenceScore": 100
     },
     {
@@ -6833,26 +6948,6 @@
       "sourceUrl": "https://www.cordiez.com.ar/",
       "dataOrigin": "API publica VTEX del catalogo de Cordiez",
       "sourceScope": "Argentina",
-      "sku": "443531",
-      "barcodes": [
-        "7790040143531"
-      ],
-      "brand": "Bagley",
-      "rawName": "Galletas Amor Bagley 110 Gr",
-      "normalizedName": "galletas amor bagley 110 gr",
-      "price": 1538.9,
-      "currency": "ARS",
-      "productUrl": "https://www.cordiez.com.ar/galletas-amor-bagley-110-gr/p",
-      "imageUrl": "https://arcordiezb2c.vteximg.com.br/arquivos/ids/184356/Galletas-Amor-Bagley-110-Gr-1-20699.jpg?v=638520861768000000",
-      "confidenceScore": 100
-    },
-    {
-      "sourceId": "cordiez-argentina-vtex",
-      "storeName": "Cordiez",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.cordiez.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Cordiez",
-      "sourceScope": "Argentina",
       "sku": "133488",
       "barcodes": [
         "7790040133488"
@@ -6864,6 +6959,26 @@
       "currency": "ARS",
       "productUrl": "https://www.cordiez.com.ar/galletas-frambuesa-sonrisas-bagley-108-gr/p",
       "imageUrl": "https://arcordiezb2c.vteximg.com.br/arquivos/ids/163956/Galletas-Frambuesa-Sonrisas-108-Gr-1-6487.jpg?v=637584138008300000",
+      "confidenceScore": 100
+    },
+    {
+      "sourceId": "cordiez-argentina-vtex",
+      "storeName": "Cordiez",
+      "storeType": "minorista",
+      "sourceUrl": "https://www.cordiez.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de Cordiez",
+      "sourceScope": "Argentina",
+      "sku": "443531",
+      "barcodes": [
+        "7790040143531"
+      ],
+      "brand": "Bagley",
+      "rawName": "Galletas Amor Bagley 110 Gr",
+      "normalizedName": "galletas amor bagley 110 gr",
+      "price": 1538.9,
+      "currency": "ARS",
+      "productUrl": "https://www.cordiez.com.ar/galletas-amor-bagley-110-gr/p",
+      "imageUrl": "https://arcordiezb2c.vteximg.com.br/arquivos/ids/184356/Galletas-Amor-Bagley-110-Gr-1-20699.jpg?v=638520861768000000",
       "confidenceScore": 100
     },
     {
@@ -9069,8 +9184,8 @@
         "11121602018"
       ],
       "brand": "Cereal Mix",
-      "rawName": "Galletitas Sabor Frutilla y Avena 150 Grs Cereal Mix",
-      "normalizedName": "galletitas sabor frutilla y avena 150 grs cereal mix",
+      "rawName": "Galletitas Cereal Mix Avena Frutilla 150 Gr",
+      "normalizedName": "galletitas cereal mix avena frutilla 150 gr",
       "price": 1750,
       "currency": "ARS",
       "productUrl": "https://www.jumbo.com.ar/galletitas-cereal-mix-avena-frutilla-150-gr/p",
@@ -9295,8 +9410,8 @@
         "11121602018"
       ],
       "brand": "Cereal Mix",
-      "rawName": "Galletitas Sabor Frutilla y Avena 150 Grs Cereal Mix",
-      "normalizedName": "galletitas sabor frutilla y avena 150 grs cereal mix",
+      "rawName": "Galletitas Cereal Mix Avena Frutilla 150 Gr",
+      "normalizedName": "galletitas cereal mix avena frutilla 150 gr",
       "price": 1800,
       "currency": "ARS",
       "productUrl": "https://www.disco.com.ar/galletitas-cereal-mix-avena-frutilla-150-gr/p",
@@ -11168,6 +11283,26 @@
       "confidenceScore": 90
     },
     {
+      "sourceId": "cordiez-argentina-vtex",
+      "storeName": "Cordiez",
+      "storeType": "minorista",
+      "sourceUrl": "https://www.cordiez.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de Cordiez",
+      "sourceScope": "Argentina",
+      "sku": "847198",
+      "barcodes": [
+        "7790580147198"
+      ],
+      "brand": "Butter Toffees",
+      "rawName": "Caramelos Creamy Butter Toffees 99 Gr",
+      "normalizedName": "caramelos creamy butter toffees 99 gr",
+      "price": 2180.52,
+      "currency": "ARS",
+      "productUrl": "https://www.cordiez.com.ar/caramelos-creamy-butter-toffees-99-gr/p",
+      "imageUrl": "https://arcordiezb2c.vteximg.com.br/arquivos/ids/187395/Caramelos-Creamy-Butter-Toffees-99-Gr-1-23816.jpg?v=639038505761670000",
+      "confidenceScore": 100
+    },
+    {
       "sourceId": "maxiconsumo-web-moreno",
       "storeName": "Maxiconsumo Web",
       "storeType": "mayorista",
@@ -11282,26 +11417,6 @@
       "currency": "ARS",
       "productUrl": "https://www.jumbo.com.ar/galletitas-traviata-324-gr-2/p",
       "imageUrl": "https://jumboargentina.vteximg.com.br/arquivos/ids/823210/Galletitas-Traviata-324g-1-1013642.jpg?v=638508251707800000",
-      "confidenceScore": 100
-    },
-    {
-      "sourceId": "cordiez-argentina-vtex",
-      "storeName": "Cordiez",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.cordiez.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Cordiez",
-      "sourceScope": "Argentina",
-      "sku": "847198",
-      "barcodes": [
-        "7790580147198"
-      ],
-      "brand": "Butter Toffees",
-      "rawName": "Caramelos Creamy Butter Toffees 99 Gr",
-      "normalizedName": "caramelos creamy butter toffees 99 gr",
-      "price": 2220.9,
-      "currency": "ARS",
-      "productUrl": "https://www.cordiez.com.ar/caramelos-creamy-butter-toffees-99-gr/p",
-      "imageUrl": "https://arcordiezb2c.vteximg.com.br/arquivos/ids/187395/Caramelos-Creamy-Butter-Toffees-99-Gr-1-23816.jpg?v=639038505761670000",
       "confidenceScore": 100
     },
     {
@@ -13996,6 +14111,26 @@
       "sourceUrl": "https://www.carrefour.com.ar/",
       "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
       "sourceScope": "Argentina",
+      "sku": "689904",
+      "barcodes": [
+        "7790580132163"
+      ],
+      "brand": "Arcor",
+      "rawName": "Mermelada Arcor de durazno 454 g.",
+      "normalizedName": "mermelada arcor durazno 454 g.",
+      "price": 3069,
+      "currency": "ARS",
+      "productUrl": "https://www.carrefour.com.ar/mermelada-arcor-de-durazno-454-g/p",
+      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/381265/7790580132163_E01.jpg?v=638315050330100000",
+      "confidenceScore": 100
+    },
+    {
+      "sourceId": "carrefour-argentina-vtex",
+      "storeName": "Carrefour Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://www.carrefour.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
+      "sourceScope": "Argentina",
       "sku": "534513",
       "barcodes": [
         "7790580504601"
@@ -14037,26 +14172,6 @@
       "sourceUrl": "https://www.carrefour.com.ar/",
       "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
       "sourceScope": "Argentina",
-      "sku": "684411",
-      "barcodes": [
-        "7790580132194"
-      ],
-      "brand": "Arcor",
-      "rawName": "Mermelada de naranja Arcor 454 g.",
-      "normalizedName": "mermelada naranja arcor 454 g.",
-      "price": 3099,
-      "currency": "ARS",
-      "productUrl": "https://www.carrefour.com.ar/mermelada-de-naranja-arcor-454-g/p",
-      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/381320/7790580132194_E01.jpg?v=638315050550970000",
-      "confidenceScore": 100
-    },
-    {
-      "sourceId": "carrefour-argentina-vtex",
-      "storeName": "Carrefour Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.carrefour.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
-      "sourceScope": "Argentina",
       "sku": "684410",
       "barcodes": [
         "7790580132170"
@@ -14068,6 +14183,26 @@
       "currency": "ARS",
       "productUrl": "https://www.carrefour.com.ar/mermelada-arcor-de-damasco-454-g-684410/p",
       "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/381295/7790580132170_E01.jpg?v=638315050453930000",
+      "confidenceScore": 100
+    },
+    {
+      "sourceId": "carrefour-argentina-vtex",
+      "storeName": "Carrefour Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://www.carrefour.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
+      "sourceScope": "Argentina",
+      "sku": "684411",
+      "barcodes": [
+        "7790580132194"
+      ],
+      "brand": "Arcor",
+      "rawName": "Mermelada de naranja Arcor 454 g.",
+      "normalizedName": "mermelada naranja arcor 454 g.",
+      "price": 3099,
+      "currency": "ARS",
+      "productUrl": "https://www.carrefour.com.ar/mermelada-de-naranja-arcor-454-g/p",
+      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/381320/7790580132194_E01.jpg?v=638315050550970000",
       "confidenceScore": 100
     },
     {
@@ -14134,26 +14269,6 @@
       "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
       "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
       "sourceScope": "Argentina",
-      "sku": "7790580132194",
-      "barcodes": [
-        "7790580132194"
-      ],
-      "brand": "Arcor",
-      "rawName": "Mermerlada Arcor Naranja 454 Gr.",
-      "normalizedName": "mermerlada arcor naranja 454 gr.",
-      "price": 3100,
-      "currency": "ARS",
-      "productUrl": "https://diaonline.supermercadosdia.com.ar/mermerlada-arcor-naranja-454-gr-85367/p",
-      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/310220/Mermerlada-Arcor-Naranja-454-Gr-_1.jpg?v=638599368640570000",
-      "confidenceScore": 100
-    },
-    {
-      "sourceId": "dia-argentina-vtex",
-      "storeName": "DIA Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
-      "sourceScope": "Argentina",
       "sku": "7790580132170",
       "barcodes": [
         "7790580132170"
@@ -14165,6 +14280,26 @@
       "currency": "ARS",
       "productUrl": "https://diaonline.supermercadosdia.com.ar/mermelada-damasco-arcor-454-gr-293979/p",
       "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/359028/Mermelada-Damasco-Arcor-454-Gr-_1.jpg?v=638954271412630000",
+      "confidenceScore": 100
+    },
+    {
+      "sourceId": "dia-argentina-vtex",
+      "storeName": "DIA Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
+      "sourceScope": "Argentina",
+      "sku": "7790580132194",
+      "barcodes": [
+        "7790580132194"
+      ],
+      "brand": "Arcor",
+      "rawName": "Mermerlada Arcor Naranja 454 Gr.",
+      "normalizedName": "mermerlada arcor naranja 454 gr.",
+      "price": 3100,
+      "currency": "ARS",
+      "productUrl": "https://diaonline.supermercadosdia.com.ar/mermerlada-arcor-naranja-454-gr-85367/p",
+      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/310220/Mermerlada-Arcor-Naranja-454-Gr-_1.jpg?v=638599368640570000",
       "confidenceScore": 100
     },
     {
@@ -15052,26 +15187,6 @@
       "confidenceScore": 100
     },
     {
-      "sourceId": "dia-argentina-vtex",
-      "storeName": "DIA Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
-      "sourceScope": "Argentina",
-      "sku": "7790580132262",
-      "barcodes": [
-        "7790580132262"
-      ],
-      "brand": "Arcor",
-      "rawName": "Mermelada Light Arcor Naranja 390 Gr.",
-      "normalizedName": "mermelada light arcor naranja 390 gr.",
-      "price": 3380,
-      "currency": "ARS",
-      "productUrl": "https://diaonline.supermercadosdia.com.ar/mermelada-light-arcor-naranja-390-gr-180934/p",
-      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/314507/Mermelada-Light-Arcor-Naranja-390-Gr-_1.jpg?v=638599429194830000",
-      "confidenceScore": 100
-    },
-    {
       "sourceId": "cordiez-argentina-vtex",
       "storeName": "Cordiez",
       "storeType": "minorista",
@@ -15947,26 +16062,6 @@
       "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
       "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
       "sourceScope": "Argentina",
-      "sku": "7793360131400",
-      "barcodes": [
-        "7793360131400"
-      ],
-      "brand": "La Campagnola",
-      "rawName": "Mermelada La Campagnola Durazno 454 Gr.",
-      "normalizedName": "mermelada campagnola durazno 454 gr.",
-      "price": 3730,
-      "currency": "ARS",
-      "productUrl": "https://diaonline.supermercadosdia.com.ar/mermelada-la-campagnola-durazno-454-gr-14788/p",
-      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/307357/Mermelada-La-Campagnola-Durazno-454-Gr-_1.jpg?v=638878394057800000",
-      "confidenceScore": 90
-    },
-    {
-      "sourceId": "dia-argentina-vtex",
-      "storeName": "DIA Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
-      "sourceScope": "Argentina",
       "sku": "7793360131424",
       "barcodes": [
         "7793360131424"
@@ -15998,6 +16093,26 @@
       "currency": "ARS",
       "productUrl": "https://diaonline.supermercadosdia.com.ar/mermelada-nararanja-la-campagnola-454-gr-239293/p",
       "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/361401/Mermelada-Nararanja-La-Campagnola-454-Gr-_1.jpg?v=638974146003500000",
+      "confidenceScore": 90
+    },
+    {
+      "sourceId": "dia-argentina-vtex",
+      "storeName": "DIA Argentina",
+      "storeType": "minorista",
+      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
+      "sourceScope": "Argentina",
+      "sku": "7793360131400",
+      "barcodes": [
+        "7793360131400"
+      ],
+      "brand": "La Campagnola",
+      "rawName": "Mermelada La Campagnola Durazno 454 Gr.",
+      "normalizedName": "mermelada campagnola durazno 454 gr.",
+      "price": 3730,
+      "currency": "ARS",
+      "productUrl": "https://diaonline.supermercadosdia.com.ar/mermelada-la-campagnola-durazno-454-gr-14788/p",
+      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/307357/Mermelada-La-Campagnola-Durazno-454-Gr-_1.jpg?v=638878394057800000",
       "confidenceScore": 90
     },
     {
@@ -17369,6 +17484,27 @@
       "currency": "ARS",
       "productUrl": "https://www.masonline.com.ar/bano-repostero-leche-aguila-150-gr-2/p",
       "imageUrl": "https://masonlineprod.vteximg.com.br/arquivos/ids/225627/0779058013147-01-27536.jpg?v=637855397231830000",
+      "confidenceScore": 100
+    },
+    {
+      "sourceId": "masonline-changomas-vtex",
+      "storeName": "MasOnline / ChangoMas",
+      "storeType": "minorista",
+      "sourceUrl": "https://www.masonline.com.ar/",
+      "dataOrigin": "API publica VTEX del catalogo de MasOnline / ChangoMas",
+      "sourceScope": "Argentina",
+      "sku": "206331706",
+      "barcodes": [
+        "7790580131494",
+        "206331706"
+      ],
+      "brand": "Aguila",
+      "rawName": "Baño Repostero Blanco Aguila 150 Gr",
+      "normalizedName": "bano repostero blanco aguila 150 gr",
+      "price": 4239,
+      "currency": "ARS",
+      "productUrl": "https://www.masonline.com.ar/bano-repostero-blanco-aguila-150-gr-2/p",
+      "imageUrl": "https://masonlineprod.vteximg.com.br/arquivos/ids/225625/0779058013149-01-10040.jpg?v=637855397224200000",
       "confidenceScore": 100
     },
     {
@@ -20144,26 +20280,6 @@
       "brand": "Topline"
     },
     {
-      "sourceId": "masonline-changomas-vtex",
-      "storeName": "MasOnline / ChangoMas",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.masonline.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de MasOnline / ChangoMas",
-      "sourceScope": "Argentina",
-      "sku": "3046554",
-      "barcodes": [
-        "7790407031532"
-      ],
-      "brand": "Aguila",
-      "rawName": "Chocolitos Semi Amargo Águila 150 G",
-      "normalizedName": "chocolitos semi amargo aguila 150 g",
-      "price": 6509,
-      "currency": "ARS",
-      "productUrl": "https://www.masonline.com.ar/chocolitos-aguila-chocolate-150-gr-2/p",
-      "imageUrl": "https://masonlineprod.vteximg.com.br/arquivos/ids/314343/front-view-9838.jpg?v=638418045720670000",
-      "confidenceScore": 100
-    },
-    {
       "sourceId": "disco-argentina-vtex",
       "storeName": "Disco Argentina",
       "storeType": "minorista",
@@ -20349,26 +20465,6 @@
       "productUrl": "https://www.masonline.com.ar/barra-cereal-mix-yogur-y-frutilla-4u-x-104g-2/p",
       "imageUrl": "https://masonlineprod.vteximg.com.br/arquivos/ids/206560/0779004013705-01-19266.jpg?v=637850834393830000",
       "confidenceScore": 100
-    },
-    {
-      "sourceId": "dia-argentina-vtex",
-      "storeName": "DIA Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://diaonline.supermercadosdia.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de DIA Online Argentina",
-      "sourceScope": "Argentina",
-      "sku": "7790580142025",
-      "barcodes": [
-        "7790580142025"
-      ],
-      "brand": "La Campagnola",
-      "rawName": "Mermelada Arandanos La Campagnola 390 Gr.",
-      "normalizedName": "mermelada arandanos campagnola 390 gr.",
-      "price": 6711,
-      "currency": "ARS",
-      "productUrl": "https://diaonline.supermercadosdia.com.ar/mermelada-arandanos-la-campagnola-390-gr-307618/p",
-      "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/361757/Mermelada-Arandanos-La-Campagnola-390-Gr-_1.jpg?v=638984519407100000",
-      "confidenceScore": 90
     },
     {
       "sourceId": "masonline-changomas-vtex",
@@ -21774,26 +21870,6 @@
       "confidenceScore": 100
     },
     {
-      "sourceId": "carrefour-argentina-vtex",
-      "storeName": "Carrefour Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.carrefour.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
-      "sourceScope": "Argentina",
-      "sku": "626352",
-      "barcodes": [
-        "7790580119126"
-      ],
-      "brand": "Bon o Bon",
-      "rawName": "Bombones Bon O Bon surtidos caja 255 g.",
-      "normalizedName": "bombones bon o bon surtidos caja 255 g.",
-      "price": 12219,
-      "currency": "ARS",
-      "productUrl": "https://www.carrefour.com.ar/bombones-bon-o-bon-surtidos-caja-255-g-41225-41225/p",
-      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/192942/7790580119126_01.jpg?v=637515950331130000",
-      "confidenceScore": 100
-    },
-    {
       "sourceId": "masonline-changomas-vtex",
       "storeName": "MasOnline / ChangoMas",
       "storeType": "minorista",
@@ -22340,26 +22416,6 @@
       "confidenceScore": 100
     },
     {
-      "sourceId": "carrefour-argentina-vtex",
-      "storeName": "Carrefour Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.carrefour.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
-      "sourceScope": "Argentina",
-      "sku": "759304",
-      "barcodes": [
-        "22796916020"
-      ],
-      "brand": "Tatin",
-      "rawName": "Acondicionador brazilian OGX ketatin smooth 385 ml",
-      "normalizedName": "acondicionador brazilian ogx ketatin smooth 385 ml",
-      "price": 28090,
-      "currency": "ARS",
-      "productUrl": "https://www.carrefour.com.ar/acondicionador-brazilian-ogx-keratin-smooth-385-ml-759304/p",
-      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/847494/22796916020_01.jpg?v=639117669041900000",
-      "confidenceScore": 100
-    },
-    {
       "sourceId": "maxiconsumo-web-moreno",
       "storeName": "Maxiconsumo Web",
       "storeType": "mayorista",
@@ -22511,26 +22567,6 @@
       "productUrl": "https://diaonline.supermercadosdia.com.ar/queso-provolone-la-serenisima-x-kg-299834/p",
       "imageUrl": "https://ardiaprod.vteximg.com.br/arquivos/ids/364518/Queso-Provolone-La-Serenisima-X-Kg-_1.jpg?v=639052768067130000",
       "confidenceScore": 90
-    },
-    {
-      "sourceId": "carrefour-argentina-vtex",
-      "storeName": "Carrefour Argentina",
-      "storeType": "minorista",
-      "sourceUrl": "https://www.carrefour.com.ar/",
-      "dataOrigin": "API publica VTEX del catalogo de Carrefour Argentina",
-      "sourceScope": "Argentina",
-      "sku": "609643",
-      "barcodes": [
-        "7797750009102"
-      ],
-      "brand": "BC",
-      "rawName": "Purificador Whirlpool WAB60BC Blanco",
-      "normalizedName": "purificador whirlpool wab60bc blanco",
-      "price": 399000,
-      "currency": "ARS",
-      "productUrl": "https://www.carrefour.com.ar/purificador-whirlpool-wab60bc-blanco/p",
-      "imageUrl": "https://carrefourar.vteximg.com.br/arquivos/ids/160490/held_0006_7797750009102.jpg?v=637467652298900000",
-      "confidenceScore": 100
     }
   ]
 }

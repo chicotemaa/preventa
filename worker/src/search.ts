@@ -1,7 +1,9 @@
 import { chromium, type Browser } from "playwright";
 import {
+  extractProductsFromRedNorteApi,
   extractProductsFromStaticHtml,
   extractProductsFromVtexApi,
+  extractProductsFromWooCommercePmwJson,
 } from "./api-extractors.js";
 import { config } from "./config.js";
 import {
@@ -36,7 +38,14 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const activeSources = getActiveSources();
   const needsBrowser = activeSources.some(
     (source) =>
-      source.sourceKind !== "vtex_api" && source.sourceKind !== "static_html",
+      ![
+        "rednorte_api",
+        "vtex_api",
+        "static_html",
+        "woocommerce_pmw_json",
+      ].includes(
+        source.sourceKind ?? "playwright",
+      ),
   );
   const browser = needsBrowser
     ? await chromium.launch({ headless: config.headless })
@@ -116,9 +125,53 @@ export async function searchSource(
     });
   }
 
+  if (source.sourceKind === "rednorte_api") {
+    return withTimeout(
+      runRedNorteApiSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
   if (source.sourceKind === "static_html") {
     return withTimeout(
       runStaticHtmlSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
+  if (source.sourceKind === "woocommerce_pmw_json") {
+    return withTimeout(
+      runWooCommercePmwJsonSourceSearch(source, query, startedAt, options),
       config.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
@@ -236,6 +289,70 @@ async function runApiSourceSearch(
   };
 }
 
+async function runRedNorteApiSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const url = buildSearchUrl(source.searchUrlTemplate, query);
+  const rawResults = await extractProductsFromRedNorteApi(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runWooCommercePmwJsonSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const url = buildSearchUrl(source.searchUrlTemplate, query);
+  const rawResults = await extractProductsFromWooCommercePmwJson(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
 async function runSourceSearch(
   page: Awaited<ReturnType<Browser["newPage"]>>,
   source: ScrapingSource,
@@ -256,13 +373,16 @@ async function runSourceSearch(
     });
   }
 
-  const extractedResults = source.selectors
-    ? await extractProductsWithSelectors(page, source, query)
-    : await extractProductsAutomatically(page, source, query);
-  const textLineResults =
-    extractedResults.length > 0
+  const extractedResults =
+    source.sourceKind === "text_lines"
       ? []
-      : await extractProductsFromTextLines(page, source, query);
+      : source.selectors
+        ? await extractProductsWithSelectors(page, source, query)
+        : await extractProductsAutomatically(page, source, query);
+  const textLineResults =
+    source.sourceKind === "text_lines" || extractedResults.length === 0
+      ? await extractProductsFromTextLines(page, source, query)
+      : [];
   const rawResults = [...extractedResults, ...textLineResults];
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;

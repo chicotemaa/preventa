@@ -6,6 +6,7 @@ import {
   targetBrands,
   findAllowedBrand,
   isAllowedBrandProduct,
+  productMatchesTargetBrand,
   type TargetBrand,
 } from "./brands.js";
 import { loadImportedCatalogProducts } from "./imports.js";
@@ -164,7 +165,14 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
   );
   const needsBrowser = activeSources.some(
     (source) =>
-      source.sourceKind !== "vtex_api" && source.sourceKind !== "static_html",
+      ![
+        "rednorte_api",
+        "vtex_api",
+        "static_html",
+        "woocommerce_pmw_json",
+      ].includes(
+        source.sourceKind ?? "playwright",
+      ),
   );
   const browser = needsBrowser
     ? await chromium.launch({
@@ -372,9 +380,7 @@ function productMatchesExpectedBrand(
 ) {
   const normalizedProductText = normalizeProductName(getProductMatchText(product));
 
-  return expectedBrand.aliases.some((alias) =>
-    normalizedProductText.includes(normalizeProductName(alias)),
-  );
+  return productMatchesTargetBrand(normalizedProductText, expectedBrand);
 }
 
 function summarizeSourcePrices(products: ProductSearchResult[]) {

@@ -729,17 +729,40 @@ function SourcesDetails({ sources }: { sources: SourceSearchStatus[] }) {
       <summary className="cursor-pointer font-medium text-[#17202a]">
         Fuentes consultadas
       </summary>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
         {sources.map((source) => (
-          <span
+          <div
             key={source.sourceId}
-            className="inline-flex items-center gap-2 rounded border border-[#d9dee7] bg-white px-3 py-2"
+            className="rounded border border-[#d9dee7] bg-white px-3 py-2"
           >
-            {source.storeName}
-            <span className={statusClassName(source.status)}>
-              {sourceStatusLabel(source.status)}
-            </span>
-          </span>
+            <div className="flex items-center justify-between gap-3">
+              {source.sourceUrl ? (
+                <a
+                  href={source.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-[#17202a] underline-offset-2 hover:underline"
+                >
+                  {source.storeName}
+                </a>
+              ) : (
+                <span className="font-medium text-[#17202a]">
+                  {source.storeName}
+                </span>
+              )}
+              <span className={statusClassName(source.status)}>
+                {sourceStatusLabel(source.status)}
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-[#667789]">
+              {source.sourceScope ?? source.storeType}
+            </div>
+            {source.dataOrigin ? (
+              <p className="mt-1 text-xs leading-5 text-[#526170]">
+                {source.dataOrigin}
+              </p>
+            ) : null}
+          </div>
         ))}
       </div>
     </details>

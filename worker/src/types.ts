@@ -135,7 +135,13 @@ export type ScrapingSource = {
   sourceUrl?: string;
   dataOrigin?: string;
   sourceScope?: string;
-  sourceKind?: "playwright" | "static_html" | "vtex_api";
+  sourceKind?:
+    | "playwright"
+    | "rednorte_api"
+    | "static_html"
+    | "text_lines"
+    | "vtex_api"
+    | "woocommerce_pmw_json";
   searchUrlTemplate: string;
   requiresJavascript: boolean;
   catalogSearchMode?: "query" | "full_page";
