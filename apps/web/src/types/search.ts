@@ -114,6 +114,76 @@ export type PriceListResponse = {
   };
 };
 
+export type PriceListRunSummary = {
+  id: string;
+  listName: string;
+  status: string;
+  weekStart: string | null;
+  searchedAt: string;
+  createdAt: string;
+  durationMs: number;
+  itemsCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+};
+
+export type PriceListRunSource = {
+  sourceId: string;
+  storeName: string;
+  storeType: "mayorista" | "minorista";
+  status: string;
+  resultsCount: number;
+  durationMs: number;
+  sourceUrl: string | null;
+  dataOrigin: string | null;
+  sourceScope: string | null;
+  errorMessage: string | null;
+};
+
+export type PriceListRunItem = {
+  id: string;
+  rowNumber: number;
+  rubro: string | null;
+  description: string | null;
+  code: string | null;
+  ean13Di: string | null;
+  ean13Bu: string | null;
+  currentPrice: number | null;
+  currentCost: number | null;
+  matchStatus: "matched" | "not_found";
+  bestPrice: number | null;
+  bestSourceName: string | null;
+  bestSourceType: "mayorista" | "minorista" | null;
+  bestProductName: string | null;
+  bestProductUrl: string | null;
+  bestConfidenceScore: number | null;
+  marginPercent: number | null;
+  gapPercent: number | null;
+  suggestedPrice: number | null;
+  decisionStatus: string;
+  decisionLabel: string;
+  matchedCount: number;
+  sourcePrices: PriceListSourcePrice[];
+};
+
+export type PriceListRunDetail = {
+  run: PriceListRunSummary;
+  sources: PriceListRunSource[];
+  items: PriceListRunItem[];
+};
+
+export type PriceListHistoryResponse = {
+  enabled: boolean;
+  runs: PriceListRunSummary[];
+  errorMessage?: string;
+};
+
+export type PriceListRunDetailResponse = {
+  enabled: boolean;
+  detail: PriceListRunDetail | null;
+  errorMessage?: string;
+};
+
 export type CatalogMetadata = {
   status: "empty" | "syncing" | "ready" | "failed";
   region: CatalogRegion;
