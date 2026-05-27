@@ -107,6 +107,11 @@ export type PriceListResponse = {
   sources: SourceSearchStatus[];
   catalog: CatalogMetadata;
   results: PriceListItemResult[];
+  persistence?: {
+    enabled: boolean;
+    runId?: string;
+    errorMessage?: string;
+  };
 };
 
 export type CatalogMetadata = {

@@ -1,6 +1,6 @@
 # Preventistas Live Search MVP
 
-MVP web para informes de precios con alcance nacional en Argentina. Permite buscar productos en fuentes mayoristas y minoristas configuradas, sin base de datos y sin scraping desde el navegador del usuario.
+MVP web para informes de precios con alcance nacional en Argentina. Permite buscar productos en fuentes mayoristas y minoristas configuradas, con persistencia opcional en Supabase y sin scraping desde el navegador del usuario.
 
 Alcance del informe: Argentina.
 
@@ -29,6 +29,10 @@ Crear `apps/web/.env.local`:
 
 ```bash
 WORKER_URL=http://127.0.0.1:4000
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_PERSIST_PRICE_LISTS=true
 ```
 
 Crear `worker/.env`:
@@ -116,6 +120,9 @@ En Vercel:
 
 ```bash
 WORKER_URL=https://TU-WORKER.onrender.com
+SUPABASE_URL=https://TU-PROYECTO.supabase.co
+SUPABASE_SECRET_KEY=<SECRET_KEY_SERVER_SIDE>
+SUPABASE_PERSIST_PRICE_LISTS=true
 ```
 
 Después de crear o cambiar `WORKER_URL`, redeployar el frontend.
@@ -200,6 +207,32 @@ Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio ARA | Costo
 
 La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado, score y precio por comercio. Si la planilla incluye Precio ARA y Costo, agrega un análisis semanal con semáforo de decisión, resumen por rubro, brechas contra referencia, margen y precio sugerido. También permite descargar el resultado en CSV.
 
-## Sin persistencia
+## Supabase
 
-Esta versión no guarda histórico, productos ni precios. Para agregar cache o Supabase más adelante, el punto natural de integración es `runLiveSearch` en `worker/src/search.ts`, antes o después de consultar fuentes.
+La integración con Supabase es opcional. Si `SUPABASE_URL` y una clave server-side (`SUPABASE_SECRET_KEY` o `SUPABASE_SERVICE_ROLE_KEY`) están configuradas en `apps/web`, cada importación de lista queda guardada como una corrida semanal.
+
+Schema versionado:
+
+```text
+supabase/migrations/20260527172000_initial_pricing_schema.sql
+```
+
+Tablas principales:
+
+- `price_list_runs`: cada evaluación/importación semanal.
+- `price_list_run_sources`: estado de fuentes consultadas para esa corrida.
+- `price_list_run_items`: artículo, precio ARA, costo, mejor referencia, margen, brecha, precio sugerido y estado de decisión.
+
+Para aplicar el schema en un proyecto Supabase con CLI:
+
+```bash
+npx supabase login
+npx supabase link
+npx supabase db push
+```
+
+También se puede copiar el SQL de la migración y ejecutarlo en el SQL editor de Supabase.
+
+## Persistencia
+
+Sin variables de Supabase, la app sigue sin guardar histórico, productos ni precios. Con Supabase configurado, se guarda el histórico de listas evaluadas, pero el scraping y el catálogo actual siguen funcionando igual que antes.

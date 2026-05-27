@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { savePriceListRun } from "@/lib/price-list-persistence";
 import type { PriceListInputItem, PriceListResponse } from "@/types/search";
 
 const DEFAULT_WORKER_URL =
@@ -60,7 +61,8 @@ export async function POST(request: Request) {
     }
 
     const data = (await response.json()) as PriceListResponse;
-    return NextResponse.json(data);
+    const persistence = await savePriceListRun(data);
+    return NextResponse.json({ ...data, persistence });
   } catch {
     return NextResponse.json(
       { error: "No se pudo conectar con el worker de busqueda." },
