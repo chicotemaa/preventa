@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, History, Loader2, RefreshCw } from "lucide-react";
+import { Download, Eye, History, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
   PriceListHistoryResponse,
@@ -265,6 +265,25 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
           </span>
         </div>
 
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => downloadRunResultCsv(detail)}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd]"
+          >
+            <Download className="h-4 w-4" />
+            Descargar resultado
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadRunAraCsv(detail)}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#275fbd] bg-[#f5f8ff] px-3 text-sm font-semibold text-[#173e83] transition hover:bg-[#eaf2ff]"
+          >
+            <Download className="h-4 w-4" />
+            Exportar para ARA
+          </button>
+        </div>
+
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <HistoryMetric label="A revisar" value={reviewItems} />
           <HistoryMetric label="Fuentes con datos" value={sourcesWithResults} />
@@ -421,6 +440,160 @@ function formatCurrency(value: number | null) {
 function formatSignedPercent(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${percentFormatter.format(value)}%`;
+}
+
+function downloadRunResultCsv(detail: PriceListRunDetail) {
+  const sourceHeaders = detail.sources.map((_, index) => `Comparacion ${index + 1}`);
+  const headers = [
+    "Rubro",
+    "Descripcion Larga",
+    "Codigo",
+    "EAN 13 DI",
+    "EAN 13 BU",
+    "Precio ARA",
+    "Costo",
+    "Margen %",
+    "Brecha %",
+    "Precio sugerido",
+    "Estado decision",
+    "Mejor precio",
+    "Mejor fuente",
+    "Producto encontrado",
+    "Link producto",
+    ...sourceHeaders,
+  ];
+  const rows = detail.items.map((item) => {
+    const comparisons = buildHistorySourceComparisons(item, detail.sources);
+
+    return [
+      item.rubro ?? "",
+      item.description ?? "",
+      item.code ?? "",
+      item.ean13Di ?? "",
+      item.ean13Bu ?? "",
+      formatCsvAmount(item.currentPrice),
+      formatCsvAmount(item.currentCost),
+      item.marginPercent === null ? "" : item.marginPercent.toFixed(2),
+      item.gapPercent === null ? "" : item.gapPercent.toFixed(2),
+      formatCsvAmount(item.suggestedPrice),
+      item.decisionLabel,
+      formatCsvAmount(item.bestPrice),
+      item.bestSourceName ?? "",
+      item.bestProductName ?? "",
+      item.bestProductUrl ?? "",
+      ...comparisons.map(({ source, sourcePrice }) =>
+        sourcePrice
+          ? `${sourcePrice.storeName}: ${sourcePrice.price.toFixed(2)}`
+          : `${source.storeName}: Sin precio`,
+      ),
+    ];
+  });
+
+  downloadCsvFile(
+    `resultado-${detail.run.weekStart ?? detail.run.id}.csv`,
+    [headers, ...rows],
+  );
+}
+
+function downloadRunAraCsv(detail: PriceListRunDetail) {
+  const headers = [
+    "Codigo",
+    "EAN 13 DI",
+    "EAN 13 BU",
+    "Descripcion",
+    "Rubro",
+    "Precio a cargar ARA",
+    "Precio ARA actual",
+    "Costo",
+    "Precio referencia",
+    "Fuente referencia",
+    "Estado decision",
+  ];
+  const rows = detail.items.map((item) => {
+    const priceToLoad =
+      item.suggestedPrice ?? item.currentPrice ?? item.bestPrice ?? null;
+
+    return [
+      item.code ?? "",
+      item.ean13Di ?? "",
+      item.ean13Bu ?? "",
+      item.description ?? "",
+      item.rubro ?? "",
+      formatCsvAmount(priceToLoad),
+      formatCsvAmount(item.currentPrice),
+      formatCsvAmount(item.currentCost),
+      formatCsvAmount(item.bestPrice),
+      item.bestSourceName ?? "",
+      item.decisionLabel,
+    ];
+  });
+
+  downloadCsvFile(`ara-${detail.run.weekStart ?? detail.run.id}.csv`, [
+    headers,
+    ...rows,
+  ]);
+}
+
+function buildHistorySourceComparisons(
+  item: PriceListRunDetail["items"][number],
+  sources: PriceListRunDetail["sources"],
+) {
+  const pricesBySource = new Map(
+    item.sourcePrices.map((sourcePrice) => [
+      sourcePrice.sourceId,
+      sourcePrice,
+    ]),
+  );
+
+  return sources
+    .map((source) => ({
+      source,
+      sourcePrice: pricesBySource.get(source.sourceId) ?? null,
+    }))
+    .sort((first, second) => {
+      if (first.sourcePrice && second.sourcePrice) {
+        return first.sourcePrice.price - second.sourcePrice.price;
+      }
+
+      if (first.sourcePrice) {
+        return -1;
+      }
+
+      if (second.sourcePrice) {
+        return 1;
+      }
+
+      return first.source.storeName.localeCompare(second.source.storeName, "es");
+    });
+}
+
+function downloadCsvFile(fileName: string, rows: Array<Array<string | number>>) {
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(value: string | number) {
+  const stringValue = String(value);
+
+  if (
+    stringValue.includes(",") ||
+    stringValue.includes("\n") ||
+    stringValue.includes('"')
+  ) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+
+  return stringValue;
+}
+
+function formatCsvAmount(value: number | null) {
+  return value === null ? "" : value.toFixed(2);
 }
 
 function decisionClassName(status: string) {

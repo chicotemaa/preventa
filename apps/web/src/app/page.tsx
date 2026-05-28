@@ -8,6 +8,7 @@ import {
   Save,
   Search,
   Upload,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
@@ -36,6 +37,7 @@ const HIGH_PRICE_GAP_PERCENT = 12;
 const OPPORTUNITY_GAP_PERCENT = -8;
 
 type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
+type PriceListItemFilter = "all" | "review" | PriceDecisionStatus;
 type PriceDecisionStatus =
   | "ready"
   | "review_match"
@@ -93,6 +95,8 @@ type SourceCoverage = {
   mayoristaSourcesWithData: number;
   minoristaSourcesWithData: number;
 };
+
+type PriceListFilterCounts = Record<PriceListItemFilter, number>;
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -513,18 +517,24 @@ function PriceListResults({
   sourceFilter: SourceTypeFilter;
   onSourceFilterChange: (filter: SourceTypeFilter) => void;
 }) {
+  const [itemFilter, setItemFilter] = useState<PriceListItemFilter>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const visibleSources = filterSourcesByType(response.sources, sourceFilter);
-  const visibleResults = response.results.map((result) =>
+  const sourceFilteredResults = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
-  const sourceCoverage = buildSourceCoverage(visibleSources, visibleResults);
+  const visibleResults = filterPriceListItems(
+    sourceFilteredResults,
+    itemFilter,
+    searchTerm,
+  );
+  const sourceCoverage = buildSourceCoverage(visibleSources, sourceFilteredResults);
+  const analysis = buildWeeklyAnalysis(visibleResults);
+  const filterCounts = buildPriceListFilterCounts(sourceFilteredResults);
   const matchedCount = visibleResults.filter(
     (result) => result.bestSource !== null,
   ).length;
-  const reviewCount = visibleResults.filter(
-    (result) =>
-      result.bestSource !== null && result.bestSource.confidenceScore < 70,
-  ).length;
+  const reviewCount = analysis.review;
   const updatedAt = formatDate(response.catalog.lastSyncedAt);
 
   return (
@@ -537,9 +547,9 @@ function PriceListResults({
       <SourceCoverageSummary coverage={sourceCoverage} />
 
       <div className="grid gap-2 md:grid-cols-4">
-        <Metric label="Artículos" value={response.itemsCount} />
+        <Metric label="Artículos" value={visibleResults.length} />
         <Metric label="Con precio" value={matchedCount} />
-        <Metric label="Sin precio" value={response.itemsCount - matchedCount} />
+        <Metric label="Sin precio" value={visibleResults.length - matchedCount} />
         <Metric label="A revisar" value={reviewCount} />
       </div>
 
@@ -547,35 +557,55 @@ function PriceListResults({
         <p className="text-sm text-[#5d6b7a]">Datos actualizados: {updatedAt}</p>
       ) : null}
 
-      <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white md:block">
-        <table className="min-w-[1120px] border-collapse text-left text-xs">
-          <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
-            <tr>
-              <th className="px-3 py-3">Artículo</th>
-              <th className="px-3 py-3">Código / EAN</th>
-              <th className="px-3 py-3">Mejor precio</th>
-              <th className="px-3 py-3">Comercio</th>
-              <th className="px-3 py-3">Producto encontrado</th>
-              {visibleSources.map((source, index) => (
-                <th key={source.sourceId} className="px-3 py-3">
-                  Comparación {index + 1}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#e5e9ef]">
-            {visibleResults.map((result) => (
-              <PriceListRow
-                key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
-                result={result}
-                sources={visibleSources}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <PriceListWorkbenchControls
+        itemFilter={itemFilter}
+        onItemFilterChange={setItemFilter}
+        searchTerm={searchTerm}
+        onSearchTermChange={setSearchTerm}
+        counts={filterCounts}
+        visibleCount={visibleResults.length}
+        totalCount={sourceFilteredResults.length}
+      />
 
-      <PriceListCards results={visibleResults} sources={visibleSources} />
+      {visibleResults.length > 0 ? (
+        <>
+          <WeeklyAnalysisPanel analysis={analysis} />
+
+          <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white md:block">
+            <table className="min-w-[1120px] border-collapse text-left text-xs">
+              <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
+                <tr>
+                  <th className="px-3 py-3">Artículo</th>
+                  <th className="px-3 py-3">Código / EAN</th>
+                  <th className="px-3 py-3">Mejor precio</th>
+                  <th className="px-3 py-3">Comercio</th>
+                  <th className="px-3 py-3">Producto encontrado</th>
+                  {visibleSources.map((source, index) => (
+                    <th key={source.sourceId} className="px-3 py-3">
+                      Comparación {index + 1}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#e5e9ef]">
+                {visibleResults.map((result) => (
+                  <PriceListRow
+                    key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
+                    result={result}
+                    sources={visibleSources}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <PriceListCards results={visibleResults} sources={visibleSources} />
+        </>
+      ) : (
+        <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-5 py-8 text-center text-sm text-[#526170]">
+          No hay artículos para los filtros aplicados.
+        </div>
+      )}
 
       <SourcesDetails sources={visibleSources} />
     </div>
@@ -637,6 +667,94 @@ function CoverageMetric({
       <div className="mt-1 flex items-baseline justify-between gap-2">
         <span className="text-xl font-semibold text-[#17202a]">{value}</span>
         <span className="text-xs text-[#667789]">{helper}</span>
+      </div>
+    </div>
+  );
+}
+
+function PriceListWorkbenchControls({
+  itemFilter,
+  onItemFilterChange,
+  searchTerm,
+  onSearchTermChange,
+  counts,
+  visibleCount,
+  totalCount,
+}: {
+  itemFilter: PriceListItemFilter;
+  onItemFilterChange: (filter: PriceListItemFilter) => void;
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
+  counts: PriceListFilterCounts;
+  visibleCount: number;
+  totalCount: number;
+}) {
+  const options: Array<{ value: PriceListItemFilter; label: string }> = [
+    { value: "all", label: "Todos" },
+    { value: "ready", label: "Listos" },
+    { value: "review", label: "A revisar" },
+    { value: "no_reference", label: "Sin referencia" },
+    { value: "missing_own_price", label: "Falta ARA" },
+    { value: "low_margin", label: "Margen bajo" },
+    { value: "above_reference", label: "Muy arriba" },
+    { value: "opportunity", label: "Oportunidad" },
+  ];
+
+  return (
+    <div className="rounded-md border border-[#d9dee7] bg-white p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => {
+            const isActive = itemFilter === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onItemFilterChange(option.value)}
+                className={`rounded-md px-3 py-2 text-xs font-semibold transition ${
+                  isActive
+                    ? "bg-[#171717] text-white"
+                    : "bg-[#f8fafc] text-[#526170] hover:bg-[#edf1f5] hover:text-[#17202a]"
+                }`}
+              >
+                {option.label}{" "}
+                <span className={isActive ? "text-white/75" : "text-[#8a96a3]"}>
+                  {counts[option.value]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="relative w-full sm:w-[280px]">
+            <span className="sr-only">Buscar dentro de la lista importada</span>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#df2e38]"
+            />
+            <input
+              value={searchTerm}
+              onChange={(event) => onSearchTermChange(event.target.value)}
+              placeholder="Filtrar artículo o código"
+              className="h-10 w-full rounded-md border border-[#dec8bd] bg-[#fffdfa] pl-9 pr-9 text-sm text-[#171717] outline-none transition focus:border-[#df2e38] focus:ring-4 focus:ring-[#df2e38]/15"
+            />
+            {searchTerm ? (
+              <button
+                type="button"
+                aria-label="Limpiar filtro"
+                onClick={() => onSearchTermChange("")}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-[#667789] hover:bg-[#edf1f5] hover:text-[#17202a]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </label>
+          <div className="text-sm font-medium text-[#526170]">
+            {visibleCount}/{totalCount} visibles
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1414,6 +1532,68 @@ function filterPriceListResultBySourceType(
   };
 }
 
+function filterPriceListItems(
+  results: PriceListItemResult[],
+  itemFilter: PriceListItemFilter,
+  searchTerm: string,
+) {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+
+  return results.filter((result) => {
+    const decision = analyzePriceDecision(result);
+    const matchesStatus =
+      itemFilter === "all" ||
+      (itemFilter === "review" && decision.status !== "ready") ||
+      decision.status === itemFilter;
+
+    return (
+      matchesStatus &&
+      (!normalizedSearch ||
+        normalizeSearchText(
+          [
+            result.input.description,
+            result.input.rubro,
+            result.input.code,
+            result.input.ean13Di,
+            result.input.ean13Bu,
+            result.bestSource?.storeName,
+            result.bestSource?.productName,
+            ...result.sourcePrices.map((sourcePrice) => sourcePrice.storeName),
+          ]
+            .filter(Boolean)
+            .join(" "),
+        ).includes(normalizedSearch))
+    );
+  });
+}
+
+function buildPriceListFilterCounts(
+  results: PriceListItemResult[],
+): PriceListFilterCounts {
+  const counts: PriceListFilterCounts = {
+    all: results.length,
+    review: 0,
+    ready: 0,
+    review_match: 0,
+    no_reference: 0,
+    missing_own_price: 0,
+    low_margin: 0,
+    above_reference: 0,
+    opportunity: 0,
+  };
+
+  for (const result of results) {
+    const status = analyzePriceDecision(result).status;
+    counts[status] += 1;
+
+    if (status !== "ready") {
+      counts.review += 1;
+    }
+  }
+
+  return counts;
+}
+
 function buildSourceCoverage(
   sources: SourceSearchStatus[],
   results: PriceListItemResult[],
@@ -1786,6 +1966,15 @@ function normalizeOptionalNumber(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : null;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
