@@ -10,6 +10,10 @@ type SelectOptions = {
   limit?: number;
 };
 
+type DeleteOptions = {
+  filters?: Record<string, string | number | boolean>;
+};
+
 export function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && getSupabaseServerKey());
 }
@@ -102,6 +106,46 @@ export async function selectSupabaseRows<T>(
   }
 
   return (await response.json()) as T;
+}
+
+export async function deleteSupabaseRows(
+  table: string,
+  options: DeleteOptions = {},
+) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serverKey = getSupabaseServerKey();
+
+  if (!supabaseUrl || !serverKey) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  const normalizedUrl = supabaseUrl.replace(/\/$/, "");
+  const params = new URLSearchParams();
+
+  if (Object.keys(options.filters ?? {}).length === 0) {
+    throw new Error("No se puede eliminar en Supabase sin filtros.");
+  }
+
+  for (const [key, value] of Object.entries(options.filters ?? {})) {
+    params.set(key, String(value));
+  }
+
+  const query = params.toString();
+  const response = await fetch(
+    `${normalizedUrl}/rest/v1/${table}${query ? `?${query}` : ""}`,
+    {
+      method: "DELETE",
+      headers: buildSupabaseHeaders(serverKey, { prefer: "return=minimal" }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      errorText || `Supabase respondio con estado ${response.status}.`,
+    );
+  }
 }
 
 function getSupabaseServerKey() {

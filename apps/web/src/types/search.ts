@@ -112,13 +112,15 @@ export type PriceListResponse = {
   sources: SourceSearchStatus[];
   catalog: CatalogMetadata;
   results: PriceListItemResult[];
-  persistence?: {
-    enabled: boolean;
-    requested?: boolean;
-    saved?: boolean;
-    runId?: string;
-    errorMessage?: string;
-  };
+  persistence?: PriceListPersistenceResult;
+};
+
+export type PriceListPersistenceResult = {
+  enabled: boolean;
+  requested?: boolean;
+  saved?: boolean;
+  runId?: string;
+  errorMessage?: string;
 };
 
 export type PriceListRunSummary = {

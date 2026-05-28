@@ -85,6 +85,15 @@ export function PriceListHistory() {
         throw new Error(payload.errorMessage ?? "No se pudo cargar el detalle.");
       }
 
+      if (!payload.detail) {
+        setRuns((currentRuns) =>
+          currentRuns.filter((run) => run.id !== runId),
+        );
+        setSelectedRunId(null);
+        setDetail(null);
+        return;
+      }
+
       setSelectedRunId(runId);
       setDetail(payload.detail);
     } catch (caughtError) {
@@ -262,12 +271,6 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
           <HistoryMetric label="Sin precio" value={detail.run.unmatchedCount} />
         </div>
       </div>
-
-      {detail.items.length === 0 ? (
-        <div className="bg-white px-4 py-6 text-sm text-[#526170]">
-          Esta corrida no tiene detalle de artículos guardado.
-        </div>
-      ) : null}
 
       {detail.items.length > 0 ? (
         <div className="hidden overflow-x-auto md:block">

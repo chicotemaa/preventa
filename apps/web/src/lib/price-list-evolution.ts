@@ -66,11 +66,13 @@ export async function getPriceEvolution(): Promise<PriceEvolutionResponse> {
         order: "row_number.asc",
       },
     );
+    const runIdsWithItems = new Set(itemRows.map((row) => row.run_id));
+    const visibleRuns = runs.filter((run) => runIdsWithItems.has(run.id));
 
     return {
       enabled: true,
-      products: buildProducts(itemRows, runs),
-      runs,
+      products: buildProducts(itemRows, visibleRuns),
+      runs: visibleRuns,
     };
   } catch (error) {
     return {

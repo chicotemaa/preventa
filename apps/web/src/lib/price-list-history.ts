@@ -7,9 +7,14 @@ import type {
   PriceListRunSummary,
   PriceListSourcePrice,
 } from "@/types/search";
-import { isSupabaseConfigured, selectSupabaseRows } from "./supabase-admin";
+import {
+  deleteSupabaseRows,
+  isSupabaseConfigured,
+  selectSupabaseRows,
+} from "./supabase-admin";
 
 const HISTORY_LIMIT = 20;
+const INCOMPLETE_RUN_CLEANUP_AGE_MS = 5 * 60 * 1000;
 
 type RunRow = {
   id: string;
@@ -63,6 +68,10 @@ type ItemRow = {
   source_prices: unknown;
 };
 
+type RunItemProbeRow = {
+  run_id: string;
+};
+
 export async function getPriceListHistory(): Promise<PriceListHistoryResponse> {
   if (!isSupabaseConfigured()) {
     return { enabled: false, runs: [] };
@@ -75,10 +84,17 @@ export async function getPriceListHistory(): Promise<PriceListHistoryResponse> {
       order: "created_at.desc",
       limit: HISTORY_LIMIT,
     });
+    const runIdsWithItems = await getRunIdsWithItems(
+      rows.map((row) => row.id),
+    );
+    const visibleRows = rows.filter((row) => runIdsWithItems.has(row.id));
+    await cleanupOldIncompleteRuns(
+      rows.filter((row) => !runIdsWithItems.has(row.id)),
+    );
 
     return {
       enabled: true,
-      runs: rows.map(mapRunRow),
+      runs: visibleRows.map(mapRunRow),
     };
   } catch (error) {
     return {
@@ -123,7 +139,7 @@ export async function getPriceListRunDetail(
 
     const run = runRows[0];
 
-    if (!run) {
+    if (!run || itemRows.length === 0) {
       return { enabled: true, detail: null };
     }
 
@@ -144,6 +160,41 @@ export async function getPriceListRunDetail(
           : "No se pudo cargar el detalle.",
     };
   }
+}
+
+async function getRunIdsWithItems(runIds: string[]) {
+  const validRunIds = await Promise.all(
+    runIds.map(async (runId) => {
+      const rows = await selectSupabaseRows<RunItemProbeRow[]>(
+        "price_list_run_items",
+        {
+          select: "run_id",
+          filters: { run_id: `eq.${runId}` },
+          limit: 1,
+        },
+      );
+
+      return rows.length > 0 ? runId : null;
+    }),
+  );
+
+  return new Set(validRunIds.filter((runId): runId is string => Boolean(runId)));
+}
+
+async function cleanupOldIncompleteRuns(rows: RunRow[]) {
+  const cutoff = Date.now() - INCOMPLETE_RUN_CLEANUP_AGE_MS;
+  const staleRows = rows.filter((row) => {
+    const createdAt = new Date(row.created_at).getTime();
+    return Number.isFinite(createdAt) && createdAt < cutoff;
+  });
+
+  await Promise.allSettled(
+    staleRows.map((row) =>
+      deleteSupabaseRows("price_list_runs", {
+        filters: { id: `eq.${row.id}` },
+      }),
+    ),
+  );
 }
 
 function mapRunRow(row: RunRow): PriceListRunSummary {

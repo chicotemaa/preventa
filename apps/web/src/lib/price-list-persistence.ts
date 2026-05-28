@@ -3,7 +3,11 @@ import type {
   PriceListResponse,
   PriceListSourcePrice,
 } from "@/types/search";
-import { insertSupabaseRows, isSupabaseConfigured } from "./supabase-admin";
+import {
+  deleteSupabaseRows,
+  insertSupabaseRows,
+  isSupabaseConfigured,
+} from "./supabase-admin";
 
 const MIN_MARGIN_PERCENT = 22;
 const HIGH_PRICE_GAP_PERCENT = 12;
@@ -111,11 +115,12 @@ export async function savePriceListRun(
       await insertRowsInChunks("price_list_run_items", itemsPayload);
     }
   } catch (error) {
+    await rollbackPriceListRun(runId);
+
     return {
       enabled: true,
       requested: true,
       saved: false,
-      runId,
       errorMessage:
         error instanceof Error
           ? error.message
@@ -124,6 +129,16 @@ export async function savePriceListRun(
   }
 
   return { enabled: true, requested: true, saved: true, runId };
+}
+
+async function rollbackPriceListRun(runId: string) {
+  try {
+    await deleteSupabaseRows("price_list_runs", {
+      filters: { id: `eq.${runId}` },
+    });
+  } catch {
+    // El historial filtra corridas sin items; este rollback evita dejarlas visibles.
+  }
 }
 
 async function insertRowsInChunks(table: string, rows: unknown[]) {

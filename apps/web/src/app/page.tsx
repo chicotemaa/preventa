@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   Loader2,
+  Save,
   Search,
   Upload,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import type {
   PriceListInputItem,
   PriceListItemResult,
+  PriceListPersistenceResult,
   PriceListResponse,
   PriceListSourcePrice,
   ProductSearchResult,
@@ -80,6 +82,16 @@ type WeeklyAnalysis = {
     opportunities: number;
   }>;
   topGaps: PriceDecisionAnalysis[];
+};
+
+type SourceCoverage = {
+  totalSources: number;
+  sourcesWithData: number;
+  sourcesWithoutData: number;
+  mayoristaSources: number;
+  minoristaSources: number;
+  mayoristaSourcesWithData: number;
+  minoristaSourcesWithData: number;
 };
 
 export default function Home() {
@@ -247,6 +259,7 @@ function PriceListImport() {
   const [response, setResponse] = useState<PriceListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSavingForEvolution, setIsSavingForEvolution] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
   const [persistForEvolution, setPersistForEvolution] = useState(false);
 
@@ -297,6 +310,51 @@ function PriceListImport() {
     }
   }
 
+  async function handleSaveForEvolution() {
+    if (!response || response.persistence?.saved) {
+      return;
+    }
+
+    setIsSavingForEvolution(true);
+    setError(null);
+
+    try {
+      const result = await fetch("/api/price-list/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ response }),
+      });
+      const payload = (await result.json()) as {
+        error?: string;
+        persistence?: PriceListPersistenceResult;
+      };
+
+      if (!result.ok) {
+        throw new Error(payload.error ?? "No se pudo guardar la evaluacion.");
+      }
+
+      setResponse({
+        ...response,
+        persistence: payload.persistence ?? {
+          enabled: false,
+          requested: true,
+          saved: false,
+        },
+      });
+      setPersistForEvolution(true);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo guardar la evaluacion.",
+      );
+    } finally {
+      setIsSavingForEvolution(false);
+    }
+  }
+
   return (
     <section
       id="lista"
@@ -343,6 +401,21 @@ function PriceListImport() {
           >
             <Download className="h-4 w-4" />
             Exportar para ARA
+          </button>
+          <button
+            type="button"
+            disabled={
+              !response || response.persistence?.saved || isSavingForEvolution
+            }
+            onClick={() => void handleSaveForEvolution()}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#173d2f] bg-[#f1fbf6] px-4 text-sm font-semibold text-[#173d2f] transition hover:bg-[#e4f6ed] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99]"
+          >
+            {isSavingForEvolution ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {response?.persistence?.saved ? "Guardado" : "Guardar evolución"}
           </button>
         </div>
       </div>
@@ -415,8 +488,8 @@ function PriceListImport() {
 
       {response && !response.persistence?.requested ? (
         <div className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm text-[#526170]">
-          Esta evaluación no quedó guardada. Para compararla en evolución,
-          activá la opción de guardado antes de importar.
+          Esta evaluación todavía no quedó guardada. Podés guardarla para
+          evolución sin volver a importar la planilla.
         </div>
       ) : null}
 
@@ -444,6 +517,7 @@ function PriceListResults({
   const visibleResults = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
+  const sourceCoverage = buildSourceCoverage(visibleSources, visibleResults);
   const matchedCount = visibleResults.filter(
     (result) => result.bestSource !== null,
   ).length;
@@ -459,6 +533,8 @@ function PriceListResults({
         value={sourceFilter}
         onChange={onSourceFilterChange}
       />
+
+      <SourceCoverageSummary coverage={sourceCoverage} />
 
       <div className="grid gap-2 md:grid-cols-4">
         <Metric label="Artículos" value={response.itemsCount} />
@@ -513,6 +589,55 @@ function Metric({ label, value }: { label: string; value: number }) {
         {label}
       </div>
       <div className="mt-1 text-2xl font-semibold text-[#17202a]">{value}</div>
+    </div>
+  );
+}
+
+function SourceCoverageSummary({ coverage }: { coverage: SourceCoverage }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-4">
+      <CoverageMetric
+        label="Fuentes"
+        value={coverage.totalSources}
+        helper={`${coverage.sourcesWithoutData} sin precio`}
+      />
+      <CoverageMetric
+        label="Con datos"
+        value={coverage.sourcesWithData}
+        helper="aportaron precios"
+      />
+      <CoverageMetric
+        label="Mayoristas"
+        value={coverage.mayoristaSourcesWithData}
+        helper={`${coverage.mayoristaSources} consultadas`}
+      />
+      <CoverageMetric
+        label="Minoristas"
+        value={coverage.minoristaSourcesWithData}
+        helper={`${coverage.minoristaSources} consultadas`}
+      />
+    </div>
+  );
+}
+
+function CoverageMetric({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: number;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-md border border-[#d9dee7] bg-white px-3 py-2">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#667789]">
+        {label}
+      </div>
+      <div className="mt-1 flex items-baseline justify-between gap-2">
+        <span className="text-xl font-semibold text-[#17202a]">{value}</span>
+        <span className="text-xs text-[#667789]">{helper}</span>
+      </div>
     </div>
   );
 }
@@ -968,6 +1093,7 @@ function SearchResults({
     sourceFilter,
   );
   const visibleSources = filterSourcesByType(response.sources, sourceFilter);
+  const sourceCoverage = buildSearchSourceCoverage(visibleSources, visibleResults);
 
   return (
     <div className="mt-5 flex flex-col gap-4">
@@ -975,6 +1101,8 @@ function SearchResults({
         value={sourceFilter}
         onChange={onSourceFilterChange}
       />
+
+      <SourceCoverageSummary coverage={sourceCoverage} />
 
       <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
         <div>
@@ -1283,6 +1411,66 @@ function filterPriceListResultBySourceType(
     bestPrice: bestSource?.price ?? null,
     sourcePrices,
     matchedCount: sourcePrices.length,
+  };
+}
+
+function buildSourceCoverage(
+  sources: SourceSearchStatus[],
+  results: PriceListItemResult[],
+): SourceCoverage {
+  const sourceTypes = new Map(
+    sources.map((source) => [source.sourceId, source.storeType]),
+  );
+  const sourcesWithData = new Set<string>();
+
+  for (const result of results) {
+    for (const sourcePrice of result.sourcePrices) {
+      if (sourceTypes.has(sourcePrice.sourceId)) {
+        sourcesWithData.add(sourcePrice.sourceId);
+      }
+    }
+  }
+
+  return buildCoverageFromSets(sources, sourcesWithData);
+}
+
+function buildSearchSourceCoverage(
+  sources: SourceSearchStatus[],
+  results: ProductSearchResult[],
+): SourceCoverage {
+  const sourceTypes = new Map(
+    sources.map((source) => [source.sourceId, source.storeType]),
+  );
+  const sourcesWithData = new Set(
+    results
+      .filter((result) => sourceTypes.has(result.sourceId))
+      .map((result) => result.sourceId),
+  );
+
+  return buildCoverageFromSets(sources, sourcesWithData);
+}
+
+function buildCoverageFromSets(
+  sources: SourceSearchStatus[],
+  sourcesWithData: Set<string>,
+): SourceCoverage {
+  const mayoristaSources = sources.filter(
+    (source) => source.storeType === "mayorista",
+  );
+  const minoristaSources = sources.filter(
+    (source) => source.storeType === "minorista",
+  );
+  const countWithData = (source: SourceSearchStatus) =>
+    sourcesWithData.has(source.sourceId);
+
+  return {
+    totalSources: sources.length,
+    sourcesWithData: sourcesWithData.size,
+    sourcesWithoutData: Math.max(0, sources.length - sourcesWithData.size),
+    mayoristaSources: mayoristaSources.length,
+    minoristaSources: minoristaSources.length,
+    mayoristaSourcesWithData: mayoristaSources.filter(countWithData).length,
+    minoristaSourcesWithData: minoristaSources.filter(countWithData).length,
   };
 }
 
