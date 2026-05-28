@@ -87,12 +87,12 @@ export function PriceEvolution() {
     null;
 
   return (
-    <section className="rounded-md border border-[#eadbd3] bg-white p-5 shadow-[0_14px_40px_rgba(77,41,25,0.08)]">
+    <section className="min-w-0 rounded-md border border-[#eadbd3] bg-white p-3 shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-5">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-        <div>
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-extrabold text-[#171717]">
-            <LineChartIcon className="h-5 w-5 text-[#df2e38]" />
-            Evolución de precios
+            <LineChartIcon className="h-5 w-5 shrink-0 text-[#df2e38]" />
+            <span className="min-w-0">Evolución de precios</span>
           </h1>
           <p className="mt-1 text-sm text-[#667789]">
             ARA contra referencias de mercado y fuentes consultadas.
@@ -102,7 +102,7 @@ export function PriceEvolution() {
           type="button"
           onClick={() => void loadEvolution()}
           disabled={isLoading}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99]"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99] sm:w-fit"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -136,7 +136,7 @@ export function PriceEvolution() {
       ) : null}
 
       {products.length > 0 ? (
-        <div className="mt-5 grid gap-4 lg:grid-cols-[320px_1fr]">
+        <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
           <ProductSelector
             products={filteredProducts}
             selectedProductKey={selectedProduct?.productKey ?? null}
@@ -170,7 +170,7 @@ function ProductSelector({
   onSelect: (productKey: string) => void;
 }) {
   return (
-    <aside className="rounded-md border border-[#d9dee7] bg-[#f8fafc]">
+    <aside className="min-w-0 overflow-hidden rounded-md border border-[#d9dee7] bg-[#f8fafc]">
       <label className="relative block border-b border-[#d9dee7] bg-white p-3">
         <span className="sr-only">Buscar producto en evolución</span>
         <Search
@@ -190,7 +190,7 @@ function ProductSelector({
           No hay coincidencias.
         </div>
       ) : (
-        <div className="max-h-[620px] overflow-auto">
+        <div className="max-h-[260px] overflow-auto lg:max-h-[620px]">
           {products.map((product) => {
             const latestPoint = getLatestPoint(product);
             const isSelected = product.productKey === selectedProductKey;
@@ -204,11 +204,14 @@ function ProductSelector({
                   isSelected ? "bg-[#edf3ff]" : "bg-white hover:bg-[#fffdfa]"
                 }`}
               >
-                <span className="block truncate text-sm font-semibold text-[#17202a]">
+                <span className="line-clamp-2 block text-sm font-semibold leading-5 text-[#17202a]">
                   {product.description}
                 </span>
                 <span className="mt-1 block text-xs text-[#667789]">
-                  {product.code || product.ean13Di || product.ean13Bu || "Sin código"}
+                  {product.code ||
+                    product.ean13Di ||
+                    product.ean13Bu ||
+                    "Sin código"}
                 </span>
                 <span className="mt-2 flex items-center justify-between gap-3 text-xs">
                   <span className="text-[#526170]">
@@ -239,16 +242,19 @@ function ProductEvolutionDetail({
   );
 
   return (
-    <div className="min-w-0 rounded-md border border-[#d9dee7] bg-white">
+    <div className="min-w-0 overflow-hidden rounded-md border border-[#d9dee7] bg-white">
       <div className="border-b border-[#d9dee7] px-4 py-4">
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
           <div className="min-w-0">
-            <h2 className="text-lg font-extrabold text-[#17202a]">
+            <h2 className="break-words text-base font-extrabold leading-6 text-[#17202a] sm:text-lg">
               {product.description}
             </h2>
-            <p className="mt-1 text-sm text-[#667789]">
+            <p className="mt-1 break-words text-sm text-[#667789]">
               {product.rubro || "Sin rubro"} ·{" "}
-              {product.code || product.ean13Di || product.ean13Bu || "Sin código"}
+              {product.code ||
+                product.ean13Di ||
+                product.ean13Bu ||
+                "Sin código"}
             </p>
           </div>
           <span className="w-fit rounded bg-[#eaf2ff] px-2 py-1 text-xs font-semibold text-[#1d5f8f]">
@@ -256,8 +262,11 @@ function ProductEvolutionDetail({
           </span>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <EvolutionMetric label="ARA actual" value={formatCurrency(stats.lastAra)} />
+        <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+          <EvolutionMetric
+            label="ARA actual"
+            value={formatCurrency(stats.lastAra)}
+          />
           <EvolutionMetric
             label="Referencia actual"
             value={formatCurrency(stats.lastReference)}
@@ -273,10 +282,10 @@ function ProductEvolutionDetail({
         </div>
       </div>
 
-      <div className="grid gap-4 p-4">
+      <div className="grid min-w-0 gap-4 p-3 sm:p-4">
         <PriceEvolutionChart points={product.points} />
 
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <EvolutionTimelineTable points={pointsDesc} />
           <SourceEvolutionTable product={product} points={pointsDesc} />
         </div>
@@ -321,7 +330,7 @@ function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
       (height - padding.top - padding.bottom);
 
   return (
-    <section className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3">
+    <section className="min-w-0 rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3">
       <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
         <h3 className="text-sm font-semibold text-[#17202a]">
           Evolución ARA vs mercado
@@ -337,12 +346,12 @@ function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
           </span>
         </div>
       </div>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-hidden">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           role="img"
           aria-label="Gráfico de evolución de precios"
-          className="min-w-[640px]"
+          className="h-auto w-full"
         >
           {[0, 0.5, 1].map((step) => {
             const value = minValue + range * step;
@@ -454,14 +463,54 @@ function EvolutionTimelineTable({
   points: PriceEvolutionPoint[];
 }) {
   return (
-    <section className="rounded-md border border-[#e5e9ef] bg-white">
+    <section className="min-w-0 overflow-hidden rounded-md border border-[#e5e9ef] bg-white">
       <div className="border-b border-[#e5e9ef] px-3 py-3">
         <h3 className="text-sm font-semibold text-[#17202a]">
           Cargas ARA guardadas
         </h3>
       </div>
-      <div className="max-h-[360px] overflow-auto">
-        <table className="w-full border-collapse text-left text-xs">
+      <div className="grid gap-2 p-3 md:hidden">
+        {points.map((point) => (
+          <article
+            key={`${point.runId}-mobile`}
+            className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+                  Fecha
+                </div>
+                <div className="mt-1 text-sm font-semibold text-[#17202a]">
+                  {formatShortDate(point.searchedAt)}
+                </div>
+              </div>
+              <span className={gapClassName(point.gapPercent)}>
+                {formatSignedPercent(point.gapPercent)}
+              </span>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <MobileValue label="ARA" value={formatCurrency(point.araPrice)} />
+              <MobileValue
+                label="Referencia"
+                value={formatCurrency(point.referencePrice)}
+              />
+              <MobileValue
+                label="Sugerido"
+                value={formatCurrency(point.suggestedPrice)}
+              />
+              <MobileValue
+                label="Fuente"
+                value={point.bestSourceName || "-"}
+              />
+            </dl>
+            <div className="mt-3 text-xs font-medium text-[#667789]">
+              {point.decisionLabel}
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="hidden max-h-[360px] overflow-auto md:block">
+        <table className="min-w-[720px] w-full border-collapse text-left text-xs">
           <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
             <tr>
               <th className="px-3 py-2">Fecha</th>
@@ -518,7 +567,7 @@ function SourceEvolutionTable({
   const sourceNames = product.sourceNames;
 
   return (
-    <section className="rounded-md border border-[#e5e9ef] bg-white">
+    <section className="min-w-0 overflow-hidden rounded-md border border-[#e5e9ef] bg-white">
       <div className="border-b border-[#e5e9ef] px-3 py-3">
         <h3 className="text-sm font-semibold text-[#17202a]">
           Evolución por empresa
@@ -529,7 +578,54 @@ function SourceEvolutionTable({
           No hay precios por fuente para este producto.
         </div>
       ) : (
-        <div className="max-h-[360px] overflow-auto">
+        <>
+          <div className="grid gap-2 p-3 md:hidden">
+            {points.map((point) => {
+              const sourceRows = buildSourceRows(sourceNames, point);
+
+              return (
+                <article
+                  key={`${point.runId}-sources-mobile`}
+                  className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+                    {formatShortDate(point.searchedAt)}
+                  </div>
+                  <div className="mt-3 divide-y divide-[#e5e9ef] rounded-md border border-[#e5e9ef] bg-white">
+                    {sourceRows.map(({ sourceName, sourcePrice }) => (
+                      <div
+                        key={`${point.runId}-${sourceName}-mobile`}
+                        className="flex items-start justify-between gap-3 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="break-words text-sm font-medium text-[#17202a]">
+                            {sourceName}
+                          </div>
+                          {sourcePrice ? (
+                            <div className="mt-1 text-xs text-[#667789]">
+                              {sourcePrice.storeType}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div
+                          className={`shrink-0 text-right text-sm ${
+                            sourcePrice
+                              ? "font-semibold text-[#173d2f]"
+                              : "text-[#9aa5b1]"
+                          }`}
+                        >
+                          {sourcePrice
+                            ? formatCurrency(sourcePrice.price)
+                            : "Sin precio"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden max-h-[360px] overflow-auto md:block">
           <table className="min-w-[720px] border-collapse text-left text-xs">
             <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
               <tr>
@@ -573,7 +669,8 @@ function SourceEvolutionTable({
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
     </section>
   );
@@ -585,7 +682,18 @@ function EvolutionMetric({ label, value }: { label: string; value: string }) {
       <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#667789]">
         {label}
       </div>
-      <div className="mt-1 text-xl font-semibold text-[#17202a]">{value}</div>
+      <div className="mt-1 break-words text-lg font-semibold text-[#17202a] sm:text-xl">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MobileValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium text-[#667789]">{label}</dt>
+      <dd className="mt-1 break-words font-semibold text-[#17202a]">{value}</dd>
     </div>
   );
 }
@@ -684,6 +792,34 @@ function calculateVariationPercent(first: number | null, last: number | null) {
 
 function getLatestPoint(product: PriceEvolutionProduct) {
   return product.points[product.points.length - 1] ?? null;
+}
+
+function buildSourceRows(
+  sourceNames: string[],
+  point: PriceEvolutionPoint,
+) {
+  return sourceNames
+    .map((sourceName) => ({
+      sourceName,
+      sourcePrice:
+        point.sourcePrices.find((price) => price.storeName === sourceName) ??
+        null,
+    }))
+    .sort((first, second) => {
+      if (first.sourcePrice && second.sourcePrice) {
+        return first.sourcePrice.price - second.sourcePrice.price;
+      }
+
+      if (first.sourcePrice) {
+        return -1;
+      }
+
+      if (second.sourcePrice) {
+        return 1;
+      }
+
+      return first.sourceName.localeCompare(second.sourceName, "es");
+    });
 }
 
 function normalizeText(value: string) {
