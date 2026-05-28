@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   PriceListInputItem,
   PriceListItemResult,
@@ -38,6 +38,7 @@ const OPPORTUNITY_GAP_PERCENT = -8;
 
 type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
 type PriceListItemFilter = "all" | "review" | PriceDecisionStatus;
+type PriceListEditableField = "currentPrice" | "currentCost";
 type PriceDecisionStatus =
   | "ready"
   | "review_match"
@@ -359,6 +360,34 @@ function PriceListImport() {
     }
   }
 
+  function handleItemInputChange(
+    rowNumber: number,
+    field: PriceListEditableField,
+    value: number | null,
+  ) {
+    setResponse((currentResponse) => {
+      if (!currentResponse) {
+        return currentResponse;
+      }
+
+      return {
+        ...currentResponse,
+        persistence: undefined,
+        results: currentResponse.results.map((result) =>
+          result.input.rowNumber === rowNumber
+            ? {
+                ...result,
+                input: {
+                  ...result.input,
+                  [field]: value ?? undefined,
+                },
+              }
+            : result,
+        ),
+      };
+    });
+  }
+
   return (
     <section
       id="lista"
@@ -374,7 +403,8 @@ function PriceListImport() {
           </h2>
           <p className="mt-1 text-sm text-[#6f625d]">
             Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
-            Precio ARA y Costo. Solo se guarda si activás evolución.
+            Precio ARA y Costo, que también podés completar en pantalla. Solo
+            se guarda si activás evolución.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -502,6 +532,7 @@ function PriceListImport() {
           response={response}
           sourceFilter={sourceFilter}
           onSourceFilterChange={setSourceFilter}
+          onItemInputChange={handleItemInputChange}
         />
       ) : null}
     </section>
@@ -512,10 +543,16 @@ function PriceListResults({
   response,
   sourceFilter,
   onSourceFilterChange,
+  onItemInputChange,
 }: {
   response: PriceListResponse;
   sourceFilter: SourceTypeFilter;
   onSourceFilterChange: (filter: SourceTypeFilter) => void;
+  onItemInputChange: (
+    rowNumber: number,
+    field: PriceListEditableField,
+    value: number | null,
+  ) => void;
 }) {
   const [itemFilter, setItemFilter] = useState<PriceListItemFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -546,8 +583,9 @@ function PriceListResults({
 
       <SourceCoverageSummary coverage={sourceCoverage} />
 
-      <div className="grid gap-2 md:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-5">
         <Metric label="Artículos" value={visibleResults.length} />
+        <Metric label="Con ARA" value={analysis.withOwnPrice} />
         <Metric label="Con precio" value={matchedCount} />
         <Metric label="Sin precio" value={visibleResults.length - matchedCount} />
         <Metric label="A revisar" value={reviewCount} />
@@ -572,11 +610,13 @@ function PriceListResults({
           <WeeklyAnalysisPanel analysis={analysis} />
 
           <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white md:block">
-            <table className="min-w-[1120px] border-collapse text-left text-xs">
+            <table className="min-w-[1320px] border-collapse text-left text-xs">
               <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
                 <tr>
                   <th className="px-3 py-3">Artículo</th>
                   <th className="px-3 py-3">Código / EAN</th>
+                  <th className="px-3 py-3">Precio ARA</th>
+                  <th className="px-3 py-3">Costo</th>
                   <th className="px-3 py-3">Mejor precio</th>
                   <th className="px-3 py-3">Comercio</th>
                   <th className="px-3 py-3">Producto encontrado</th>
@@ -593,13 +633,18 @@ function PriceListResults({
                     key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
                     result={result}
                     sources={visibleSources}
+                    onItemInputChange={onItemInputChange}
                   />
                 ))}
               </tbody>
             </table>
           </div>
 
-          <PriceListCards results={visibleResults} sources={visibleSources} />
+          <PriceListCards
+            results={visibleResults}
+            sources={visibleSources}
+            onItemInputChange={onItemInputChange}
+          />
         </>
       ) : (
         <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-5 py-8 text-center text-sm text-[#526170]">
@@ -620,6 +665,82 @@ function Metric({ label, value }: { label: string; value: number }) {
       </div>
       <div className="mt-1 text-2xl font-semibold text-[#17202a]">{value}</div>
     </div>
+  );
+}
+
+function AraNumberInput({
+  label,
+  value,
+  onChange,
+  hideLabel = false,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  hideLabel?: boolean;
+}) {
+  const [draft, setDraft] = useState(formatAmountDraft(value));
+  const [isInvalid, setIsInvalid] = useState(false);
+
+  useEffect(() => {
+    setDraft(formatAmountDraft(value));
+    setIsInvalid(false);
+  }, [value]);
+
+  function commitDraft(rawValue: string) {
+    const parsedValue = parseManualAmount(rawValue);
+
+    if (rawValue.trim() && parsedValue === null) {
+      setDraft(formatAmountDraft(value));
+      setIsInvalid(true);
+      return;
+    }
+
+    setIsInvalid(false);
+    onChange(parsedValue);
+    setDraft(formatAmountDraft(parsedValue));
+  }
+
+  return (
+    <label className="block">
+      <span
+        className={
+          hideLabel
+            ? "sr-only"
+            : "mb-1 block text-[11px] font-semibold uppercase tracking-[0.04em] text-[#667789]"
+        }
+      >
+        {label}
+      </span>
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setIsInvalid(false);
+        }}
+        onBlur={() => commitDraft(draft)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+
+          if (event.key === "Escape") {
+            setDraft(formatAmountDraft(value));
+            setIsInvalid(false);
+            event.currentTarget.blur();
+          }
+        }}
+        placeholder="-"
+        className={`h-9 w-full min-w-[96px] rounded-md border bg-[#fffdfa] px-2 text-sm font-semibold text-[#17202a] outline-none transition focus:ring-4 ${
+          isInvalid
+            ? "border-[#df2e38] focus:ring-[#df2e38]/15"
+            : "border-[#dec8bd] focus:border-[#df2e38] focus:ring-[#df2e38]/15"
+        }`}
+      />
+    </label>
   );
 }
 
@@ -983,9 +1104,15 @@ function DecisionTable({ analysis }: { analysis: WeeklyAnalysis }) {
 function PriceListRow({
   result,
   sources,
+  onItemInputChange,
 }: {
   result: PriceListItemResult;
   sources: SourceSearchStatus[];
+  onItemInputChange: (
+    rowNumber: number,
+    field: PriceListEditableField,
+    value: number | null,
+  ) => void;
 }) {
   const sourceComparisons = buildSortedSourceComparisons(result, sources);
   const shouldReview =
@@ -1006,6 +1133,26 @@ function PriceListRow({
         <div className="mt-1">
           {result.input.ean13Di || result.input.ean13Bu || "-"}
         </div>
+      </td>
+      <td className="px-3 py-3">
+        <AraNumberInput
+          label="Precio ARA"
+          value={result.input.currentPrice ?? null}
+          hideLabel
+          onChange={(value) =>
+            onItemInputChange(result.input.rowNumber, "currentPrice", value)
+          }
+        />
+      </td>
+      <td className="px-3 py-3">
+        <AraNumberInput
+          label="Costo"
+          value={result.input.currentCost ?? null}
+          hideLabel
+          onChange={(value) =>
+            onItemInputChange(result.input.rowNumber, "currentCost", value)
+          }
+        />
       </td>
       <td className="px-3 py-3 text-sm font-semibold text-[#173d2f]">
         {result.bestPrice === null
@@ -1072,9 +1219,15 @@ function PriceListRow({
 function PriceListCards({
   results,
   sources,
+  onItemInputChange,
 }: {
   results: PriceListItemResult[];
   sources: SourceSearchStatus[];
+  onItemInputChange: (
+    rowNumber: number,
+    field: PriceListEditableField,
+    value: number | null,
+  ) => void;
 }) {
   const sourceNames = new Map(
     sources.map((source) => [source.sourceId, source.storeName]),
@@ -1127,6 +1280,27 @@ function PriceListCards({
                 </dd>
               </div>
             </dl>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <AraNumberInput
+                label="Precio ARA"
+                value={result.input.currentPrice ?? null}
+                onChange={(value) =>
+                  onItemInputChange(
+                    result.input.rowNumber,
+                    "currentPrice",
+                    value,
+                  )
+                }
+              />
+              <AraNumberInput
+                label="Costo"
+                value={result.input.currentCost ?? null}
+                onChange={(value) =>
+                  onItemInputChange(result.input.rowNumber, "currentCost", value)
+                }
+              />
+            </div>
 
             {result.bestSource ? (
               <div className="mt-4 rounded-md bg-[#f6f7f9] p-3">
@@ -1949,6 +2123,10 @@ function formatCurrencyValue(value: number | null) {
   return value === null ? "-" : currencyFormatter.format(value);
 }
 
+function formatAmountDraft(value: number | null) {
+  return value === null ? "" : String(value);
+}
+
 function formatPercent(value: number) {
   return `${percentFormatter.format(value)}%`;
 }
@@ -2242,6 +2420,38 @@ function parseSpreadsheetAmount(value: string) {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseManualAmount(value: string) {
+  const cleaned = value
+    .replace(/\s/g, "")
+    .replace(/[^\d.,-]/g, "")
+    .replace(/(?!^)-/g, "");
+
+  if (!cleaned || cleaned === "-" || cleaned === "," || cleaned === ".") {
+    return null;
+  }
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalSeparator =
+    lastComma > lastDot && cleaned.length - lastComma <= 3
+      ? ","
+      : lastDot > lastComma && cleaned.length - lastDot <= 3
+        ? "."
+        : null;
+  let normalized = cleaned;
+
+  if (decimalSeparator === ",") {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (decimalSeparator === ".") {
+    normalized = cleaned.replace(/,/g, "");
+  } else {
+    normalized = cleaned.replace(/[.,]/g, "");
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function csvEscape(value: string | number) {
