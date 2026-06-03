@@ -1,4 +1,14 @@
+import { config } from "../config.js";
 import type { ScrapingSource } from "../types.js";
+
+const hasTokinCredentials = Boolean(config.tokin.email && config.tokin.password);
+const isTokinEnabled = config.tokin.enabled && hasTokinCredentials;
+const maxiconsumoEmail = config.maxiconsumo.email ?? config.tokin.email;
+const hasMaxiconsumoChacoCredentials = Boolean(
+  maxiconsumoEmail && config.maxiconsumo.password,
+);
+const isMaxiconsumoChacoEnabled =
+  config.maxiconsumo.enabled && hasMaxiconsumoChacoCredentials;
 
 export const scrapingSources: ScrapingSource[] = [
   {
@@ -114,6 +124,26 @@ export const scrapingSources: ScrapingSource[] = [
     },
   },
   {
+    id: "maxiconsumo-chaco-auth",
+    storeName: "Maxiconsumo Chaco",
+    storeType: "mayorista",
+    city: "Resistencia, Chaco",
+    sourceUrl: "https://maxiconsumo.com/sucursal_chaco/",
+    dataOrigin:
+      "Catalogo web de Maxiconsumo sucursal Chaco con credenciales autorizadas",
+    sourceScope: "NEA: Resistencia, Chaco",
+    sourceKind: "maxiconsumo_auth",
+    searchUrlTemplate:
+      "https://maxiconsumo.com/sucursal_chaco/catalogsearch/result/?q={query}",
+    requiresJavascript: true,
+    maxCards: 40,
+    enabled: isMaxiconsumoChacoEnabled,
+    disabledKind: "requires_login",
+    disabledReason: hasMaxiconsumoChacoCredentials
+      ? "Fuente Maxiconsumo Chaco deshabilitada por MAXICONSUMO_ENABLED=false."
+      : "Maxiconsumo Chaco requiere login; cargar MAXICONSUMO_PASSWORD y, si no se usa el mismo correo de Tokin, MAXICONSUMO_EMAIL.",
+  },
+  {
     id: "rednorte-nea",
     storeName: "Red Norte Distribuidora",
     storeType: "mayorista",
@@ -199,15 +229,20 @@ export const scrapingSources: ScrapingSource[] = [
     storeName: "Aguiar Resistencia",
     storeType: "mayorista",
     city: "Resistencia, Chaco",
-    sourceUrl: "https://aguiares.com/",
-    dataOrigin: "Sitio institucional de Aguiar, distribuidor oficial Arcor",
+    sourceUrl: "https://tokintienda.com.ar/store/home",
+    dataOrigin:
+      "Catalogo B2B de Aguiar Resistencia en Tokin con credenciales autorizadas",
     sourceScope: "NEA: Resistencia, Chaco",
-    searchUrlTemplate: "https://aguiares.com/",
-    requiresJavascript: false,
-    enabled: false,
+    sourceKind: "tokin",
+    searchUrlTemplate:
+      "https://tokintienda.com.ar/store/search?q={query}&size=n_100_n",
+    requiresJavascript: true,
+    maxCards: 80,
+    enabled: isTokinEnabled,
     disabledKind: "requires_login",
-    disabledReason:
-      "Distribuidor oficial Arcor local; la compra online se realiza por Tokin y requiere credenciales B2B.",
+    disabledReason: hasTokinCredentials
+      ? "Fuente Tokin deshabilitada por TOKIN_ENABLED=false."
+      : "Distribuidor oficial Arcor local; cargar TOKIN_EMAIL y TOKIN_PASSWORD para consultar el catalogo B2B en Tokin.",
   },
   {
     id: "rj-aguiar-sa",

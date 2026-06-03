@@ -42,6 +42,12 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
+TOKIN_ENABLED=true
+TOKIN_EMAIL=
+TOKIN_PASSWORD=
+MAXICONSUMO_ENABLED=true
+MAXICONSUMO_EMAIL=
+MAXICONSUMO_PASSWORD=
 ```
 
 ## Correr localmente
@@ -99,6 +105,12 @@ HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
 AUTO_SYNC_ON_STARTUP=true
+TOKIN_ENABLED=true
+TOKIN_EMAIL=<EMAIL_TOKIN>
+TOKIN_PASSWORD=<PASSWORD_TOKIN>
+MAXICONSUMO_ENABLED=true
+MAXICONSUMO_EMAIL=<EMAIL_MAXICONSUMO>
+MAXICONSUMO_PASSWORD=<PASSWORD_MAXICONSUMO>
 ```
 
 Cuando Render termine, probar:
@@ -168,8 +180,10 @@ Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA
 - Sabor y Aroma Mayorista: HTML publico de tienda mayorista en Formosa.
 - Fresh Distribuidora: catalogo publico WooCommerce de Resistencia.
 - Distribuidora Centenario: catalogo publico de bebidas mayoristas en Corrientes.
+- Aguiar Resistencia: catalogo B2B en Tokin, solo si `TOKIN_EMAIL` y `TOKIN_PASSWORD` estan configurados en el worker.
+- Maxiconsumo Chaco: catalogo de la sucursal Chaco, solo si `MAXICONSUMO_PASSWORD` y un correo (`MAXICONSUMO_EMAIL` o `TOKIN_EMAIL`) estan configurados en el worker.
 
-Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Aguiar, Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Yaguar Chaco, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
+Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Yaguar Chaco, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
 
 El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
 

@@ -6,6 +6,11 @@ function getNumberEnv(name: string, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function getOptionalStringEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value && value.length > 0 ? value : undefined;
+}
+
 export const config = {
   port: getNumberEnv("PORT", 4000),
   headless: process.env.HEADLESS !== "false",
@@ -13,4 +18,26 @@ export const config = {
   minConfidenceScore: getNumberEnv("MIN_CONFIDENCE_SCORE", 60),
   maxResultsPerSource: 10,
   autoSyncOnStartup: process.env.AUTO_SYNC_ON_STARTUP !== "false",
+  maxiconsumo: {
+    enabled: process.env.MAXICONSUMO_ENABLED !== "false",
+    email: getOptionalStringEnv("MAXICONSUMO_EMAIL"),
+    password: getOptionalStringEnv("MAXICONSUMO_PASSWORD"),
+    loginUrl:
+      getOptionalStringEnv("MAXICONSUMO_LOGIN_URL") ??
+      "https://maxiconsumo.com/sucursal_chaco/customer/account/login/",
+    homeUrl:
+      getOptionalStringEnv("MAXICONSUMO_HOME_URL") ??
+      "https://maxiconsumo.com/sucursal_chaco/",
+  },
+  tokin: {
+    enabled: process.env.TOKIN_ENABLED !== "false",
+    email: getOptionalStringEnv("TOKIN_EMAIL"),
+    password: getOptionalStringEnv("TOKIN_PASSWORD"),
+    loginUrl:
+      getOptionalStringEnv("TOKIN_LOGIN_URL") ??
+      "https://tokintienda.com.ar/store/login",
+    homeUrl:
+      getOptionalStringEnv("TOKIN_HOME_URL") ??
+      "https://tokintienda.com.ar/store/home",
+  },
 };

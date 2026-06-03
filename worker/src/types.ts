@@ -139,9 +139,11 @@ export type ScrapingSource = {
   sourceScope?: string;
   sourceKind?:
     | "playwright"
+    | "maxiconsumo_auth"
     | "rednorte_api"
     | "static_html"
     | "text_lines"
+    | "tokin"
     | "vtex_api"
     | "woocommerce_pmw_json";
   searchUrlTemplate: string;

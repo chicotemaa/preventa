@@ -11,6 +11,7 @@ import {
   extractProductsFromTextLines,
   extractProductsWithSelectors,
 } from "./extractors.js";
+import { extractProductsFromMaxiconsumoAuth } from "./maxiconsumo.js";
 import { normalizeQuery } from "./normalizers.js";
 import {
   getDataOrigin,
@@ -18,6 +19,7 @@ import {
   getSourceUrl,
 } from "./source-metadata.js";
 import { scrapingSources } from "./sources/argentina.js";
+import { extractProductsFromTokin } from "./tokin.js";
 import type {
   ProductSearchResult,
   ScrapingSource,
@@ -191,6 +193,74 @@ export async function searchSource(
     });
   }
 
+  if (source.sourceKind === "tokin") {
+    const ownedBrowser =
+      browser ?? (await chromium.launch({ headless: config.headless }));
+
+    try {
+      return await withTimeout(
+        runTokinSourceSearch(ownedBrowser, source, query, startedAt, options),
+        config.sourceTimeoutMs,
+      );
+    } catch (error) {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    } finally {
+      if (!browser) {
+        await ownedBrowser.close().catch(() => undefined);
+      }
+    }
+  }
+
+  if (source.sourceKind === "maxiconsumo_auth") {
+    const ownedBrowser =
+      browser ?? (await chromium.launch({ headless: config.headless }));
+
+    try {
+      return await withTimeout(
+        runMaxiconsumoAuthSourceSearch(
+          ownedBrowser,
+          source,
+          query,
+          startedAt,
+          options,
+        ),
+        config.sourceTimeoutMs,
+      );
+    } catch (error) {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    } finally {
+      if (!browser) {
+        await ownedBrowser.close().catch(() => undefined);
+      }
+    }
+  }
+
   const ownedBrowser =
     browser ?? (await chromium.launch({ headless: config.headless }));
   const page = await ownedBrowser.newPage();
@@ -329,6 +399,74 @@ async function runWooCommercePmwJsonSourceSearch(
 ): Promise<SearchSourceResult> {
   const url = buildSearchUrl(source.searchUrlTemplate, query);
   const rawResults = await extractProductsFromWooCommercePmwJson(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runTokinSourceSearch(
+  browser: Browser,
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const rawResults = await extractProductsFromTokin(browser, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runMaxiconsumoAuthSourceSearch(
+  browser: Browser,
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const rawResults = await extractProductsFromMaxiconsumoAuth(
+    browser,
+    source,
+    query,
+  );
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(
