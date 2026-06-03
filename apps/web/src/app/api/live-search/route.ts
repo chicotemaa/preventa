@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
 
   try {
-    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/catalog/search`, {
+    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

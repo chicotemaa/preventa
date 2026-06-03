@@ -59,7 +59,7 @@ export async function loadCatalogFromDisk() {
       currentCatalog.status = "ready";
     }
   } catch {
-    await persistCatalog(currentCatalog);
+    await persistCatalogIfWritable(currentCatalog);
   }
 
   return currentCatalog;
@@ -259,7 +259,7 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
       products: dedupedProducts,
     };
 
-    await persistCatalog(currentCatalog);
+    await persistCatalogIfWritable(currentCatalog);
     return currentCatalog;
   } catch (error) {
     currentCatalog = {
@@ -268,7 +268,7 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
       errorMessage:
         error instanceof Error ? error.message : "Error sincronizando catalogo.",
     };
-    await persistCatalog(currentCatalog);
+    await persistCatalogIfWritable(currentCatalog);
     return currentCatalog;
   }
 }
@@ -477,6 +477,26 @@ function normalizeImportedProductDescription(
 async function persistCatalog(snapshot: CatalogSnapshot) {
   await mkdir(path.dirname(catalogPath), { recursive: true });
   await writeFile(catalogPath, JSON.stringify(snapshot, null, 2));
+}
+
+async function persistCatalogIfWritable(snapshot: CatalogSnapshot) {
+  try {
+    await persistCatalog(snapshot);
+  } catch (error) {
+    if (isReadOnlyFilesystemError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function isReadOnlyFilesystemError(error: unknown) {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "EROFS"
+  );
 }
 
 function dedupeCatalogProducts(products: ProductSearchResult[]) {

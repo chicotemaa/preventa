@@ -1462,13 +1462,15 @@ function SourceTypeFilterControl({
 }
 
 function SourcesDetails({ sources }: { sources: SourceSearchStatus[] }) {
+  const sortedSources = sortSourcesForDisplay(sources);
+
   return (
     <details className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm text-[#526170]">
       <summary className="cursor-pointer font-medium text-[#17202a]">
         Fuentes consultadas
       </summary>
       <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {sources.map((source) => (
+        {sortedSources.map((source) => (
           <div
             key={source.sourceId}
             className="rounded border border-[#d9dee7] bg-white px-3 py-2"
@@ -1505,6 +1507,23 @@ function SourcesDetails({ sources }: { sources: SourceSearchStatus[] }) {
       </div>
     </details>
   );
+}
+
+function sortSourcesForDisplay(sources: SourceSearchStatus[]) {
+  return [...sources].sort((first, second) => {
+    const firstHasData = first.status === "success" && first.resultsCount > 0;
+    const secondHasData = second.status === "success" && second.resultsCount > 0;
+
+    if (firstHasData !== secondHasData) {
+      return firstHasData ? -1 : 1;
+    }
+
+    if (first.storeType !== second.storeType) {
+      return first.storeType === "mayorista" ? -1 : 1;
+    }
+
+    return first.storeName.localeCompare(second.storeName, "es");
+  });
 }
 
 function ResultsTable({ results }: { results: ProductSearchResult[] }) {
