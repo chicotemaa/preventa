@@ -13,7 +13,7 @@ import { loadImportedCatalogProducts } from "./imports.js";
 import { calculateConfidenceScore } from "./matching.js";
 import { normalizeProductName, normalizeQuery } from "./normalizers.js";
 import { catalogRegion } from "./region.js";
-import { searchSource } from "./search.js";
+import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { scrapingSources } from "./sources/argentina.js";
 import type {
   CatalogMetadata,
@@ -163,18 +163,9 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
   const fullPageSources = activeSources.filter(
     (source) => source.catalogSearchMode === "full_page",
   );
-  const needsBrowser = activeSources.some(
-    (source) =>
-      ![
-        "rednorte_api",
-        "vtex_api",
-        "static_html",
-        "woocommerce_pmw_json",
-      ].includes(
-        source.sourceKind ?? "playwright",
-      ),
-  );
-  const browser = needsBrowser ? await launchBrowser() : undefined;
+  const browser = activeSources.some(sourceNeedsBrowser)
+    ? await launchBrowser()
+    : undefined;
 
   try {
     for (const source of fullPageSources) {
@@ -209,9 +200,27 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
 
         seenSearchTerms.add(normalizedSearchTerm);
 
-        const sourceResults = await Promise.all(
-          querySources.map((source) => searchSource(source, searchTerm, browser)),
+        const apiLikeQuerySources = querySources.filter(
+          (source) => !sourceNeedsBrowser(source),
         );
+        const browserQuerySources = querySources.filter(sourceNeedsBrowser);
+        const apiLikeSourceResults = await Promise.all(
+          apiLikeQuerySources.map((source) =>
+            searchSource(source, searchTerm, browser),
+          ),
+        );
+        const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
+
+        for (const source of browserQuerySources) {
+          browserSourceResults.push(
+            await searchSource(source, searchTerm, browser),
+          );
+        }
+
+        const sourceResults = [
+          ...apiLikeSourceResults,
+          ...browserSourceResults,
+        ];
 
         for (const result of sourceResults) {
           sourceStatuses.push({

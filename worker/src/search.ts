@@ -39,23 +39,21 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const startedAt = Date.now();
   const normalizedQuery = normalizeQuery(query);
   const activeSources = getActiveSources();
-  const needsBrowser = activeSources.some(
-    (source) =>
-      ![
-        "rednorte_api",
-        "vtex_api",
-        "static_html",
-        "woocommerce_pmw_json",
-      ].includes(
-        source.sourceKind ?? "playwright",
-      ),
-  );
-  const browser = needsBrowser ? await launchBrowser() : undefined;
+  const apiLikeSources = activeSources.filter((source) => !sourceNeedsBrowser(source));
+  const browserSources = activeSources.filter(sourceNeedsBrowser);
+  const browser = browserSources.length > 0 ? await launchBrowser() : undefined;
 
   try {
-    const sourceResults = await Promise.all(
-      activeSources.map((source) => searchSource(source, query, browser)),
+    const apiLikeSourceResults = await Promise.all(
+      apiLikeSources.map((source) => searchSource(source, query)),
     );
+    const browserSourceResults: SearchSourceResult[] = [];
+
+    for (const source of browserSources) {
+      browserSourceResults.push(await searchSource(source, query, browser));
+    }
+
+    const sourceResults = [...apiLikeSourceResults, ...browserSourceResults];
 
     const sources = sourceResults.map((result) => result.status);
     const results = dedupeResults(
@@ -81,6 +79,15 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
 
 export function getActiveSources() {
   return scrapingSources.filter((source) => source.enabled !== false);
+}
+
+export function sourceNeedsBrowser(source: ScrapingSource) {
+  return ![
+    "rednorte_api",
+    "vtex_api",
+    "static_html",
+    "woocommerce_pmw_json",
+  ].includes(source.sourceKind ?? "playwright");
 }
 
 export async function searchSource(
