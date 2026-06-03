@@ -1,7 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchBrowser } from "./browser.js";
 import {
   targetBrands,
   findAllowedBrand,
@@ -163,13 +162,9 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
   const fullPageSources = activeSources.filter(
     (source) => source.catalogSearchMode === "full_page",
   );
-  const browser = activeSources.some(sourceNeedsBrowser)
-    ? await launchBrowser()
-    : undefined;
-
   try {
     for (const source of fullPageSources) {
-      const result = await searchSource(source, "", browser, {
+      const result = await searchSource(source, "", undefined, {
         filterByConfidence: false,
         limitResults: false,
       });
@@ -206,14 +201,14 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
         const browserQuerySources = querySources.filter(sourceNeedsBrowser);
         const apiLikeSourceResults = await Promise.all(
           apiLikeQuerySources.map((source) =>
-            searchSource(source, searchTerm, browser),
+            searchSource(source, searchTerm),
           ),
         );
         const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
 
         for (const source of browserQuerySources) {
           browserSourceResults.push(
-            await searchSource(source, searchTerm, browser),
+            await searchSource(source, searchTerm),
           );
         }
 
@@ -275,8 +270,6 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
     };
     await persistCatalog(currentCatalog);
     return currentCatalog;
-  } finally {
-    await browser?.close().catch(() => undefined);
   }
 }
 

@@ -40,41 +40,36 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const normalizedQuery = normalizeQuery(query);
   const activeSources = getActiveSources();
   const apiLikeSources = activeSources.filter((source) => !sourceNeedsBrowser(source));
-  const browserSources = activeSources.filter(sourceNeedsBrowser);
-  const browser = browserSources.length > 0 ? await launchBrowser() : undefined;
+  const browserSources = activeSources
+    .filter(sourceNeedsBrowser)
+    .sort(compareBrowserSourcePriority);
+  const apiLikeSourceResults = await Promise.all(
+    apiLikeSources.map((source) => searchSource(source, query)),
+  );
+  const browserSourceResults: SearchSourceResult[] = [];
 
-  try {
-    const apiLikeSourceResults = await Promise.all(
-      apiLikeSources.map((source) => searchSource(source, query)),
-    );
-    const browserSourceResults: SearchSourceResult[] = [];
-
-    for (const source of browserSources) {
-      browserSourceResults.push(await searchSource(source, query, browser));
-    }
-
-    const sourceResults = [...apiLikeSourceResults, ...browserSourceResults];
-
-    const sources = sourceResults.map((result) => result.status);
-    const results = dedupeResults(
-      sourceResults
-        .flatMap((result) => result.results)
-        .filter(
-          (result) => result.confidenceScore >= config.minConfidenceScore,
-        ),
-    ).sort((first, second) => first.price - second.price);
-
-    return {
-      query,
-      normalizedQuery,
-      searchedAt: new Date(startedAt).toISOString(),
-      durationMs: Date.now() - startedAt,
-      results,
-      sources,
-    };
-  } finally {
-    await browser?.close();
+  for (const source of browserSources) {
+    browserSourceResults.push(await searchSource(source, query));
   }
+
+  const sourceResults = [...apiLikeSourceResults, ...browserSourceResults];
+  const sources = sourceResults.map((result) => result.status);
+  const results = dedupeResults(
+    sourceResults
+      .flatMap((result) => result.results)
+      .filter(
+        (result) => result.confidenceScore >= config.minConfidenceScore,
+      ),
+  ).sort((first, second) => first.price - second.price);
+
+  return {
+    query,
+    normalizedQuery,
+    searchedAt: new Date(startedAt).toISOString(),
+    durationMs: Date.now() - startedAt,
+    results,
+    sources,
+  };
 }
 
 export function getActiveSources() {
@@ -88,6 +83,22 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
     "static_html",
     "woocommerce_pmw_json",
   ].includes(source.sourceKind ?? "playwright");
+}
+
+function compareBrowserSourcePriority(first: ScrapingSource, second: ScrapingSource) {
+  return getBrowserSourcePriority(first) - getBrowserSourcePriority(second);
+}
+
+function getBrowserSourcePriority(source: ScrapingSource) {
+  if (source.sourceKind === "tokin") {
+    return 0;
+  }
+
+  if (source.sourceKind === "maxiconsumo_auth") {
+    return 1;
+  }
+
+  return 2;
 }
 
 export async function searchSource(
