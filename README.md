@@ -45,6 +45,8 @@ MIN_CONFIDENCE_SCORE=60
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
 TOKIN_PASSWORD=
+TOKIN_API_BASE_URL=https://tokintienda.com.ar/store/tokin/
+TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=
 MAXICONSUMO_PASSWORD=
@@ -108,6 +110,8 @@ AUTO_SYNC_ON_STARTUP=true
 TOKIN_ENABLED=true
 TOKIN_EMAIL=<EMAIL_TOKIN>
 TOKIN_PASSWORD=<PASSWORD_TOKIN>
+TOKIN_API_BASE_URL=https://tokintienda.com.ar/store/tokin/
+TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=<EMAIL_MAXICONSUMO>
 MAXICONSUMO_PASSWORD=<PASSWORD_MAXICONSUMO>
@@ -180,8 +184,8 @@ Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA
 - Sabor y Aroma Mayorista: HTML publico de tienda mayorista en Formosa.
 - Fresh Distribuidora: catalogo publico WooCommerce de Resistencia.
 - Distribuidora Centenario: catalogo publico de bebidas mayoristas en Corrientes.
-- Aguiar Resistencia: catalogo B2B en Tokin, solo si `TOKIN_EMAIL` y `TOKIN_PASSWORD` estan configurados en el worker.
-- Maxiconsumo Chaco: catalogo de la sucursal Chaco, solo si `MAXICONSUMO_PASSWORD` y un correo (`MAXICONSUMO_EMAIL` o `TOKIN_EMAIL`) estan configurados en el worker.
+- Aguiar Resistencia: catalogo B2B en Tokin consultado por API HTTP, solo si `TOKIN_EMAIL` y `TOKIN_PASSWORD` estan configurados en el worker.
+- Maxiconsumo Chaco: catalogo de la sucursal Chaco por HTTP; intenta sesion con `MAXICONSUMO_PASSWORD` y usa HTML publico de Chaco como respaldo.
 
 Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Yaguar Chaco, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
 

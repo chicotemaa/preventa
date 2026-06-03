@@ -1,36 +1,44 @@
-import type {
-  Browser,
-  BrowserContextOptions,
-  Page,
-} from "playwright";
+import { extractProductsFromStaticHtmlText } from "./api-extractors.js";
 import { config } from "./config.js";
-import { createProductResult } from "./extractors.js";
-import { normalizePrice } from "./normalizers.js";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
 import { buildSearchUrl } from "./url.js";
 
-type MaxiconsumoStorageState = Exclude<
-  BrowserContextOptions["storageState"],
-  string | undefined
->;
+type CookieJar = Map<string, string>;
 
-type MaxiconsumoRawProduct = {
-  imageUrl: string | null;
-  name: string;
-  price: string;
-  productUrl: string | null;
-  sku: string | null;
-};
-
-let cachedMaxiconsumoStorageState: MaxiconsumoStorageState | undefined;
+const userAgent =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 export async function extractProductsFromMaxiconsumoAuth(
-  browser: Browser,
   source: ScrapingSource,
   query: string,
 ): Promise<ProductSearchResult[]> {
   const email = config.maxiconsumo.email ?? config.tokin.email;
   const password = config.maxiconsumo.password;
+  const searchUrl = buildSearchUrl(source.searchUrlTemplate, query);
+  const publicResultsPromise = fetchPublicSearchResults(searchUrl, source, query);
+
+  if (email && password) {
+    const authenticatedResults = await withLocalTimeout(
+      fetchAuthenticatedSearchHtml(searchUrl, email, password)
+        .then((html) =>
+          extractProductsFromStaticHtmlText(html, searchUrl, source, query),
+        )
+        .then((results) => (results.length > 0 ? results : null)),
+      10_000,
+    )
+      .catch(() => null);
+
+    if (authenticatedResults) {
+      return authenticatedResults;
+    }
+  }
+
+  const publicResults = await publicResultsPromise;
+
+  if (publicResults.length > 0) {
+    return publicResults;
+  }
 
   if (!email || !password) {
     throw new Error(
@@ -38,156 +46,191 @@ export async function extractProductsFromMaxiconsumoAuth(
     );
   }
 
-  const context = await browser.newContext(
-    cachedMaxiconsumoStorageState
-      ? { storageState: cachedMaxiconsumoStorageState }
-      : {},
-  );
-  const page = await context.newPage();
-  page.setDefaultTimeout(config.sourceTimeoutMs);
-
-  try {
-    await ensureMaxiconsumoAuthenticated(page, email, password);
-    await page.goto(buildSearchUrl(source.searchUrlTemplate, query), {
-      waitUntil: "domcontentloaded",
-      timeout: config.sourceTimeoutMs,
-    });
-    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-      return undefined;
-    });
-
-    const rawProducts = await extractVisibleMaxiconsumoProducts(page);
-
-    return rawProducts
-      .slice(0, source.maxCards ?? 40)
-      .map((product) => toMaxiconsumoProductResult(product, source, query))
-      .filter((result): result is ProductSearchResult => result !== null);
-  } finally {
-    await context.close().catch(() => undefined);
-  }
+  return [];
 }
 
-async function ensureMaxiconsumoAuthenticated(
-  page: Page,
+async function fetchPublicSearchResults(
+  searchUrl: string,
+  source: ScrapingSource,
+  query: string,
+) {
+  const publicHtml = await fetchHtml(searchUrl, new Map());
+  return extractProductsFromStaticHtmlText(publicHtml, searchUrl, source, query);
+}
+
+async function fetchAuthenticatedSearchHtml(
+  searchUrl: string,
   email: string,
   password: string,
 ) {
-  await page.goto(config.maxiconsumo.loginUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: config.sourceTimeoutMs,
-  });
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-    return undefined;
-  });
+  const cookies: CookieJar = new Map();
+  const loginHtml = await fetchHtml(config.maxiconsumo.loginUrl, cookies);
+  const formKey = findFormKey(loginHtml);
+  const actionUrl =
+    findLoginActionUrl(loginHtml, config.maxiconsumo.loginUrl) ??
+    new URL("customer/account/loginPost/", config.maxiconsumo.homeUrl).toString();
 
-  if (!(await isLoginFormVisible(page))) {
-    cachedMaxiconsumoStorageState = await page.context().storageState();
-    return;
+  if (!formKey) {
+    throw new Error("Maxiconsumo no expuso form_key de login.");
   }
 
-  await page.locator('#login-form input[name="login[username]"], #email')
-    .first()
-    .fill(email);
-  await page.locator('#login-form input[name="login[password]"], #pass')
-    .first()
-    .fill(password);
+  await postLogin(actionUrl, cookies, formKey, email, password);
+  const html = await fetchHtml(searchUrl, cookies);
 
-  await Promise.all([
-    page.waitForNavigation({
-      waitUntil: "domcontentloaded",
-      timeout: config.sourceTimeoutMs,
-    }).catch(() => undefined),
-    page.locator('#login-form button[type="submit"], #login-form .action.login')
-      .first()
-      .click(),
-  ]);
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-    return undefined;
-  });
-
-  if (await isLoginFormVisible(page)) {
+  if (isLoginPage(html)) {
     throw new Error(
-      "Maxiconsumo no acepto las credenciales o requiere validacion adicional.",
+      "Maxiconsumo no acepto la sesion o requiere validacion adicional.",
     );
   }
 
-  cachedMaxiconsumoStorageState = await page.context().storageState();
+  return html;
 }
 
-async function isLoginFormVisible(page: Page) {
-  return page
-    .locator('#login-form input[name="login[username]"], #email')
-    .first()
-    .isVisible({ timeout: 1500 })
-    .catch(() => false);
-}
+async function fetchHtml(url: string, cookies: CookieJar) {
+  const response = await fetch(url, {
+    headers: buildHeaders(cookies),
+  });
 
-async function extractVisibleMaxiconsumoProducts(page: Page) {
-  return page.evaluate(() => {
-    const normalize = (value: string | null | undefined) =>
-      value?.replace(/\s+/g, " ").trim() ?? "";
+  storeResponseCookies(cookies, response);
 
-    return Array.from(
-      document.querySelectorAll("li.item.product.product-item"),
-    )
-      .map((card) => {
-        const name = normalize(
-          card.querySelector("a.product-item-link")?.textContent,
-        );
-        const productUrl =
-          card.querySelector("a.product-item-link")?.getAttribute("href") ??
-          null;
-        const skuText = normalize(card.querySelector(".product-sku")?.textContent);
-        const sku = skuText.replace(/^sku\s*/i, "").trim() || null;
-        const price = normalize(
-          card.querySelector(".price-box.highest .price")?.textContent ??
-            card.querySelector(".price-box .price")?.textContent,
-        );
-        const imageSource =
-          (card.querySelector("img.product-image-photo") as HTMLImageElement | null)
-            ?.currentSrc ||
-          card.querySelector("img.product-image-photo")?.getAttribute("src") ||
-          null;
-        const imageUrl = imageSource
-          ? new URL(imageSource, location.href).toString()
-          : null;
-
-        return {
-          imageUrl,
-          name,
-          price,
-          productUrl: productUrl
-            ? new URL(productUrl, location.href).toString()
-            : null,
-          sku,
-        };
-      })
-      .filter((item) => item.name && item.price);
-  }) as Promise<MaxiconsumoRawProduct[]>;
-}
-
-function toMaxiconsumoProductResult(
-  product: MaxiconsumoRawProduct,
-  source: ScrapingSource,
-  query: string,
-): ProductSearchResult | null {
-  const price = normalizePrice(product.price);
-
-  if (price === null) {
-    return null;
+  if (!response.ok) {
+    throw new Error(`Maxiconsumo respondio ${response.status} para ${url}`);
   }
 
-  const result = createProductResult(
-    source,
-    query,
-    product.name,
-    price,
-    product.productUrl,
-    product.imageUrl,
-  );
+  return response.text();
+}
 
-  return {
-    ...result,
-    sku: product.sku,
+async function postLogin(
+  url: string,
+  cookies: CookieJar,
+  formKey: string,
+  email: string,
+  password: string,
+) {
+  const body = new URLSearchParams({
+    form_key: formKey,
+    "login[username]": email,
+    "login[password]": password,
+    send: "",
+  });
+
+  let nextUrl: string | null = url;
+
+  for (let redirectCount = 0; nextUrl && redirectCount < 4; redirectCount += 1) {
+    const response = await fetch(nextUrl, {
+      body,
+      headers: {
+        ...buildHeaders(cookies),
+        "content-type": "application/x-www-form-urlencoded",
+        referer: config.maxiconsumo.loginUrl,
+      },
+      method: "POST",
+      redirect: "manual",
+    });
+
+    storeResponseCookies(cookies, response);
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      nextUrl = location ? new URL(location, nextUrl).toString() : null;
+
+      if (nextUrl) {
+        await fetchHtml(nextUrl, cookies);
+      }
+
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Maxiconsumo login respondio ${response.status}.`);
+    }
+
+    await response.text();
+    return;
+  }
+}
+
+function buildHeaders(cookies: CookieJar) {
+  const headers: Record<string, string> = {
+    accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "accept-language": "es-AR,es;q=0.9,en;q=0.7",
+    "user-agent": userAgent,
   };
+  const cookieHeader = serializeCookies(cookies);
+
+  if (cookieHeader) {
+    headers.cookie = cookieHeader;
+  }
+
+  return headers;
+}
+
+function storeResponseCookies(cookies: CookieJar, response: Response) {
+  for (const cookie of getSetCookieHeaders(response)) {
+    const [nameValue] = cookie.split(";");
+    const separatorIndex = nameValue.indexOf("=");
+
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    cookies.set(
+      nameValue.slice(0, separatorIndex).trim(),
+      nameValue.slice(separatorIndex + 1).trim(),
+    );
+  }
+}
+
+function getSetCookieHeaders(response: Response) {
+  const headersWithGetSetCookie = response.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const directCookies = headersWithGetSetCookie.getSetCookie?.();
+
+  if (directCookies?.length) {
+    return directCookies;
+  }
+
+  const combinedCookie = response.headers.get("set-cookie");
+  return combinedCookie ? splitCombinedSetCookie(combinedCookie) : [];
+}
+
+function splitCombinedSetCookie(value: string) {
+  return value.split(/,\s*(?=[^=;,]+=)/);
+}
+
+function serializeCookies(cookies: CookieJar) {
+  return Array.from(cookies.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+function findFormKey(html: string) {
+  return html.match(/name=["']form_key["'][^>]*value=["']([^"']+)["']/i)?.[1];
+}
+
+function findLoginActionUrl(html: string, baseUrl: string) {
+  const action = html.match(
+    /<form[^>]+action=["']([^"']*customer\/account\/loginPost\/?[^"']*)["']/i,
+  )?.[1];
+
+  return action ? new URL(action, baseUrl).toString() : null;
+}
+
+function isLoginPage(html: string) {
+  return /name=["']login\[username\]["']/i.test(html);
+}
+
+function withLocalTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  let timeout: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error(`Timeout after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() =>
+    clearTimeout(timeout),
+  );
 }

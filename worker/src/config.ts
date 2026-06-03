@@ -39,5 +39,11 @@ export const config = {
     homeUrl:
       getOptionalStringEnv("TOKIN_HOME_URL") ??
       "https://tokintienda.com.ar/store/home",
+    apiBaseUrl:
+      getOptionalStringEnv("TOKIN_API_BASE_URL") ??
+      "https://tokintienda.com.ar/store/tokin/",
+    searchApiUrl:
+      getOptionalStringEnv("TOKIN_SEARCH_API_URL") ??
+      "https://tokintienda.com.ar/store/api/search",
   },
 };

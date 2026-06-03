@@ -78,7 +78,9 @@ export function getActiveSources() {
 
 export function sourceNeedsBrowser(source: ScrapingSource) {
   return ![
+    "maxiconsumo_auth",
     "rednorte_api",
+    "tokin",
     "vtex_api",
     "static_html",
     "woocommerce_pmw_json",
@@ -211,14 +213,10 @@ export async function searchSource(
   }
 
   if (source.sourceKind === "tokin") {
-    const ownedBrowser = browser ?? (await launchBrowser());
-
-    try {
-      return await withTimeout(
-        runTokinSourceSearch(ownedBrowser, source, query, startedAt, options),
-        config.sourceTimeoutMs,
-      );
-    } catch (error) {
+    return withTimeout(
+      runTokinSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
       const isTimeout =
         error instanceof Error &&
         error.message.toLowerCase().includes("timeout");
@@ -233,28 +231,14 @@ export async function searchSource(
           error instanceof Error ? error.message : "Error desconocido",
         ),
       };
-    } finally {
-      if (!browser) {
-        await ownedBrowser.close().catch(() => undefined);
-      }
-    }
+    });
   }
 
   if (source.sourceKind === "maxiconsumo_auth") {
-    const ownedBrowser = browser ?? (await launchBrowser());
-
-    try {
-      return await withTimeout(
-        runMaxiconsumoAuthSourceSearch(
-          ownedBrowser,
-          source,
-          query,
-          startedAt,
-          options,
-        ),
-        config.sourceTimeoutMs,
-      );
-    } catch (error) {
+    return withTimeout(
+      runMaxiconsumoAuthSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
       const isTimeout =
         error instanceof Error &&
         error.message.toLowerCase().includes("timeout");
@@ -269,11 +253,7 @@ export async function searchSource(
           error instanceof Error ? error.message : "Error desconocido",
         ),
       };
-    } finally {
-      if (!browser) {
-        await ownedBrowser.close().catch(() => undefined);
-      }
-    }
+    });
   }
 
   const ownedBrowser = browser ?? (await launchBrowser());
@@ -438,13 +418,12 @@ async function runWooCommercePmwJsonSourceSearch(
 }
 
 async function runTokinSourceSearch(
-  browser: Browser,
   source: ScrapingSource,
   query: string,
   startedAt: number,
   options: SearchSourceOptions,
 ): Promise<SearchSourceResult> {
-  const rawResults = await extractProductsFromTokin(browser, source, query);
+  const rawResults = await extractProductsFromTokin(source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(
@@ -470,17 +449,12 @@ async function runTokinSourceSearch(
 }
 
 async function runMaxiconsumoAuthSourceSearch(
-  browser: Browser,
   source: ScrapingSource,
   query: string,
   startedAt: number,
   options: SearchSourceOptions,
 ): Promise<SearchSourceResult> {
-  const rawResults = await extractProductsFromMaxiconsumoAuth(
-    browser,
-    source,
-    query,
-  );
+  const rawResults = await extractProductsFromMaxiconsumoAuth(source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(

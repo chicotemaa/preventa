@@ -135,11 +135,20 @@ export async function extractProductsFromStaticHtml(
   }
 
   const html = await response.text();
+  return extractProductsFromStaticHtmlText(html, url, source, query);
+}
+
+export function extractProductsFromStaticHtmlText(
+  html: string,
+  baseUrl: string,
+  source: ScrapingSource,
+  query: string,
+): ProductSearchResult[] {
   const cards = findStaticHtmlCards(html);
 
   return cards
     .slice(0, source.maxCards ?? 40)
-    .map((card) => toStaticHtmlProductResult(card, source, query, url))
+    .map((card) => toStaticHtmlProductResult(card, source, query, baseUrl))
     .filter((result): result is ProductSearchResult => result !== null);
 }
 

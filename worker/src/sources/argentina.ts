@@ -130,7 +130,7 @@ export const scrapingSources: ScrapingSource[] = [
     city: "Resistencia, Chaco",
     sourceUrl: "https://maxiconsumo.com/sucursal_chaco/",
     dataOrigin:
-      "Catalogo web de Maxiconsumo sucursal Chaco con credenciales autorizadas",
+      "Catalogo web de Maxiconsumo sucursal Chaco; intenta sesion autorizada y usa HTML publico de Chaco si el login no responde",
     sourceScope: "NEA: Resistencia, Chaco",
     sourceKind: "maxiconsumo_auth",
     searchUrlTemplate:

@@ -1,8 +1,3 @@
-import type {
-  Browser,
-  BrowserContextOptions,
-  Page,
-} from "playwright";
 import { findAllowedBrand } from "./brands.js";
 import { config } from "./config.js";
 import { calculateConfidenceScore } from "./matching.js";
@@ -13,25 +8,95 @@ import {
   getSourceUrl,
 } from "./source-metadata.js";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
-import { buildSearchUrl } from "./url.js";
 
-type TokinStorageState = Exclude<
-  BrowserContextOptions["storageState"],
-  string | undefined
->;
-
-type TokinRawProduct = {
-  code: string | null;
-  imageUrl: string | null;
-  name: string;
-  presentation: string | null;
-  price: string;
+type TokinSession = {
+  email: string;
+  expiresAt: number;
+  idPdv: number;
+  tenantId: "AR" | "ARG" | "CL" | string;
+  token: string;
 };
 
-let cachedTokinStorageState: TokinStorageState | undefined;
+type TokinLoginResponse = {
+  authStatus?: string;
+  exp?: string;
+  message?: string;
+  tokinJwt?: string;
+  user?: {
+    email?: string;
+    idpdv?: number | string;
+    tenantid?: string;
+  };
+};
+
+type TokinSearchResponse = {
+  results?: TokinSearchHit[];
+};
+
+type TokinErrorPayload = {
+  data?: {
+    error?: string;
+    message?: string;
+  };
+  error?: string;
+  message?: string;
+  status?: number;
+};
+
+type TokinSearchHit = {
+  additional_content?: {
+    raw?: {
+      brand?: { name?: string } | string;
+      image?: string | { src?: string; url?: string };
+      variants?: TokinVariant[];
+    };
+  };
+  brand?: { name?: string } | string;
+  brand_name?: TokinRawField;
+  child_category?: TokinRawField;
+  id?: TokinRawField | number | string;
+  image?: string;
+  name?: TokinRawField | string;
+  parent_category?: TokinRawField;
+  product_id?: TokinRawField | number | string;
+  ref_id_product?: TokinRawField | string;
+  variants?: TokinVariant[];
+};
+
+type TokinRawField = {
+  raw?: string | number;
+};
+
+type TokinVariant = {
+  barcode?: string;
+  ean?: string;
+  price?: TokinPrice | number;
+  prices?: TokinPrice;
+  sku?: string;
+  skuId?: number | string;
+  stock?: number;
+  uom?: string;
+};
+
+type TokinPrice = {
+  listPrice?: number;
+  listPriceWithTax?: number;
+  sellingPrice?: number;
+  sellingPriceWithTax?: number;
+};
+
+const elasticIndexes: Record<string, string> = {
+  AR: "search-tokin-ar",
+  ARG: "search-tokin-ar",
+  CL: "search-tokin-cl",
+};
+const userAgent =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+let cachedTokinSession: TokinSession | undefined;
 
 export async function extractProductsFromTokin(
-  browser: Browser,
   source: ScrapingSource,
   query: string,
 ): Promise<ProductSearchResult[]> {
@@ -39,286 +104,142 @@ export async function extractProductsFromTokin(
     throw new Error("Faltan TOKIN_EMAIL y TOKIN_PASSWORD para consultar Tokin.");
   }
 
-  const context = await browser.newContext(
-    cachedTokinStorageState ? { storageState: cachedTokinStorageState } : {},
-  );
-  const page = await context.newPage();
-  page.setDefaultTimeout(config.sourceTimeoutMs);
+  const session = await getTokinSession();
+  const payload = await postTokinSearch(session, query, source.maxCards ?? 80);
 
-  try {
-    await ensureTokinAuthenticated(page);
-    await page.goto(buildSearchUrl(source.searchUrlTemplate, query), {
-      waitUntil: "domcontentloaded",
-      timeout: config.sourceTimeoutMs,
-    });
-    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-      return undefined;
-    });
-
-    const rawProducts = await collectTokinProducts(page, source.maxCards ?? 80);
-
-    return rawProducts
-      .map((product) => toTokinProductResult(product, source, query))
-      .filter((result): result is ProductSearchResult => result !== null);
-  } finally {
-    await context.close().catch(() => undefined);
-  }
+  return (payload.results ?? [])
+    .map((product) => toTokinProductResult(product, source, query))
+    .filter((result): result is ProductSearchResult => result !== null);
 }
 
-async function ensureTokinAuthenticated(page: Page) {
-  await page.goto(config.tokin.homeUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: config.sourceTimeoutMs,
-  });
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-    return undefined;
-  });
-
-  if (await isTokinStoreReady(page)) {
-    return;
+async function getTokinSession(): Promise<TokinSession> {
+  if (cachedTokinSession && cachedTokinSession.expiresAt > Date.now() + 60_000) {
+    return cachedTokinSession;
   }
 
-  await page.goto(config.tokin.loginUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: config.sourceTimeoutMs,
-  });
+  const configuredEmail = config.tokin.email;
+  const configuredPassword = config.tokin.password;
 
-  await clickFirstVisible(page, [
-    '[data-id="login-with-password"]',
-    'button:has-text("mail y contraseña")',
-    'text="Ingresar con mail y contraseña"',
-  ]);
+  if (!configuredEmail || !configuredPassword) {
+    throw new Error("Faltan TOKIN_EMAIL y TOKIN_PASSWORD para consultar Tokin.");
+  }
 
-  const emailInput = await findFirstVisible(page, [
-    'input[data-id="email-input"]',
-    'input[name="email"]',
-    'input[type="email"]',
-  ]);
-  await emailInput.fill(config.tokin.email ?? "");
+  const loginResponse = await postTokinApi<TokinLoginResponse>(
+    "loginWithPassword",
+    {
+      email: configuredEmail,
+      password: configuredPassword,
+    },
+  );
 
-  await clickFirstVisible(page, [
-    '[data-id="email-next-buton"]',
-    '[data-id="email-next-button"]',
-    'button:has-text("Continuar")',
-    'button:has-text("Siguiente")',
-    'button[type="submit"]',
-  ]);
-
-  const passwordInput = await findFirstVisible(page, [
-    'input[data-id="password-input"]',
-    'input[name="password"]',
-    'input[type="password"]',
-  ]);
-  await passwordInput.fill(config.tokin.password ?? "");
-
-  await clickFirstVisible(page, [
-    '[data-id="password-next-button"]',
-    'button:has-text("Ingresar")',
-    'button:has-text("Continuar")',
-    'button[type="submit"]',
-  ]);
-
-  await page
-    .waitForURL(/\/store\/(home|pre-home-ingreso|search)/, {
-      timeout: config.sourceTimeoutMs,
-      waitUntil: "domcontentloaded",
-    })
-    .catch(() => undefined);
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-    return undefined;
-  });
-
-  await settleTokinStoreSelection(page);
-
-  if (!(await isTokinStoreReady(page))) {
+  if (loginResponse.authStatus !== "Success" || !loginResponse.tokinJwt) {
     throw new Error(
-      "Tokin autentico, pero no dejo acceder al catalogo. Revisar cuenta/sucursal.",
+      loginResponse.message ??
+        "Tokin no acepto las credenciales o requiere validacion adicional.",
     );
   }
 
-  cachedTokinStorageState = await page.context().storageState();
-}
+  const idPdv = Number(loginResponse.user?.idpdv);
+  const tenantId = loginResponse.user?.tenantid ?? "AR";
+  const email = loginResponse.user?.email ?? configuredEmail;
 
-async function settleTokinStoreSelection(page: Page) {
-  if (await isTokinStoreReady(page)) {
-    return;
+  if (!Number.isFinite(idPdv) || idPdv <= 0) {
+    throw new Error("Tokin autentico, pero no devolvio idPdv para buscar.");
   }
 
-  await page.goto(config.tokin.homeUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: config.sourceTimeoutMs,
+  cachedTokinSession = {
+    email,
+    expiresAt: parseTokinExpiration(loginResponse.exp),
+    idPdv,
+    tenantId,
+    token: loginResponse.tokinJwt,
+  };
+
+  return cachedTokinSession;
+}
+
+async function postTokinApi<T>(endpoint: string, body: unknown): Promise<T> {
+  const response = await fetch(new URL(endpoint, config.tokin.apiBaseUrl), {
+    body: JSON.stringify(body),
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "user-agent": userAgent,
+    },
+    method: "POST",
   });
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-    return undefined;
+
+  const payload = (await response.json().catch(() => null)) as T | null;
+
+  if (!response.ok || payload === null) {
+    throw new Error(
+      getTokinErrorMessage(payload, `Tokin API respondio ${response.status} en ${endpoint}.`),
+    );
+  }
+
+  return payload;
+}
+
+async function postTokinSearch(
+  session: TokinSession,
+  query: string,
+  resultsPerPage: number,
+) {
+  const response = await fetch(config.tokin.searchApiUrl, {
+    body: JSON.stringify({
+      collections: false,
+      current: 1,
+      email: session.email,
+      filters: [],
+      idPdv: session.idPdv,
+      index: elasticIndexes[session.tenantId] ?? elasticIndexes.AR,
+      resultsPerPage,
+      searchTerm: query,
+      sortDirection: "asc",
+      sortField: "rank",
+    }),
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie: `TokinJWT=${session.token}`,
+      tokin_jwt: session.token,
+      "user-agent": userAgent,
+    },
+    method: "POST",
   });
 
-  if (await isTokinStoreReady(page)) {
-    return;
+  const payload = (await response.json().catch(() => null)) as
+    | TokinSearchResponse
+    | null;
+
+  if (!response.ok || payload === null) {
+    throw new Error(
+      getTokinErrorMessage(payload, `Tokin search respondio ${response.status}.`),
+    );
   }
 
-  const clicked = await clickFirstVisible(page, [
-    'a[href*="/store/home"]',
-    'button:has-text("Ingresar")',
-    'button:has-text("Entrar")',
-    'button:has-text("Continuar")',
-    'button:has-text("Comenzar")',
-  ]);
-
-  if (clicked) {
-    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {
-      return undefined;
-    });
-  }
-}
-
-async function isTokinStoreReady(page: Page) {
-  if (page.url().includes("/store/login")) {
-    return false;
-  }
-
-  const visibleSearchInput = await page
-    .locator('input[placeholder*="productos" i], input[placeholder*="marcas" i]')
-    .first()
-    .isVisible({ timeout: 1500 })
-    .catch(() => false);
-
-  if (visibleSearchInput) {
-    return true;
-  }
-
-  return (
-    (await page
-      .locator('main[data-section="results"], article[data-section^="product-card-"]')
-      .count()
-      .catch(() => 0)) > 0
-  );
-}
-
-async function findFirstVisible(page: Page, selectors: string[]) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    if (await locator.isVisible({ timeout: 2500 }).catch(() => false)) {
-      return locator;
-    }
-  }
-
-  throw new Error(`No se encontro el campo requerido en Tokin: ${selectors[0]}`);
-}
-
-async function clickFirstVisible(page: Page, selectors: string[]) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    if (await locator.isVisible({ timeout: 2500 }).catch(() => false)) {
-      await locator.click();
-      return true;
-    }
-  }
-
-  return false;
-}
-
-async function collectTokinProducts(page: Page, maxCards: number) {
-  await page
-    .locator('article[data-section^="product-card-"]')
-    .first()
-    .waitFor({ state: "visible", timeout: config.sourceTimeoutMs })
-    .catch(() => undefined);
-
-  const products = new Map<string, TokinRawProduct>();
-  let stableIterations = 0;
-  let previousSize = 0;
-
-  for (let iteration = 0; iteration < 14; iteration += 1) {
-    const visibleProducts = await extractVisibleTokinProducts(page);
-
-    for (const product of visibleProducts) {
-      products.set(
-        [product.code, product.name, product.presentation, product.price].join("|"),
-        product,
-      );
-    }
-
-    if (products.size >= maxCards) {
-      break;
-    }
-
-    stableIterations =
-      products.size === previousSize ? stableIterations + 1 : 0;
-    previousSize = products.size;
-
-    if (stableIterations >= 3) {
-      break;
-    }
-
-    await page.evaluate(() => {
-      window.scrollBy(0, Math.max(window.innerHeight * 0.9, 700));
-    });
-    await page.waitForTimeout(700);
-  }
-
-  return Array.from(products.values()).slice(0, maxCards);
-}
-
-async function extractVisibleTokinProducts(page: Page) {
-  return page.evaluate(() => {
-    const normalize = (value: string | null | undefined) =>
-      value?.replace(/\s+/g, " ").trim() ?? "";
-    const presentationLabels = ["x Unidad", "x Display", "x Bulto"];
-
-    return Array.from(
-      document.querySelectorAll('article[data-section^="product-card-"]'),
-    )
-      .map((card) => {
-        const name = normalize(
-          card.querySelector('h3[data-id="product-name"]')?.textContent,
-        );
-        const code =
-          normalize(card.querySelector('h4[data-id="product-ref-id"]')?.textContent) ||
-          null;
-        const price = normalize(
-          card.querySelector('[data-testid="product-card-vertical-price"]')
-            ?.textContent,
-        );
-        const selectedSkuButton =
-          card.querySelector(
-            '[data-id="sku-selector-button"].border-blue-400',
-          ) ?? card.querySelector('[data-id="sku-selector-button"]');
-        const selectedSkuText = normalize(selectedSkuButton?.textContent);
-        const presentation =
-          presentationLabels.find((label) => selectedSkuText.includes(label)) ??
-          null;
-        const imageSource =
-          (card.querySelector("img[alt]") as HTMLImageElement | null)
-            ?.currentSrc ||
-          card.querySelector("img[alt]")?.getAttribute("src") ||
-          null;
-        const imageUrl = imageSource
-          ? new URL(imageSource, location.href).toString()
-          : null;
-
-        return { code, imageUrl, name, presentation, price };
-      })
-      .filter((item) => item.name && item.price);
-  }) as Promise<TokinRawProduct[]>;
+  return payload;
 }
 
 function toTokinProductResult(
-  product: TokinRawProduct,
+  product: TokinSearchHit,
   source: ScrapingSource,
   query: string,
 ): ProductSearchResult | null {
-  const price = normalizePrice(product.price);
+  const rawName = getRawValue(product.name);
+  const variant = findBestTokinVariant(product);
+  const price = findTokinVariantPrice(variant);
 
-  if (price === null) {
+  if (!rawName || price === null) {
     return null;
   }
 
-  const rawName = product.presentation
-    ? `${product.name} (${product.presentation})`
-    : product.name;
-  const matchText = findAllowedBrand(product.name)
-    ? product.name
-    : [product.code, product.name].filter(Boolean).join(" ");
+  const brand = findTokinBrand(product);
+  const matchText = findAllowedBrand(rawName)
+    ? rawName
+    : [brand, getRawValue(product.parent_category), getRawValue(product.child_category), rawName]
+        .filter(Boolean)
+        .join(" ");
 
   return {
     sourceId: source.id,
@@ -327,14 +248,127 @@ function toTokinProductResult(
     sourceUrl: getSourceUrl(source),
     dataOrigin: getDataOrigin(source),
     sourceScope: getSourceScope(source),
-    sku: product.code,
-    barcodes: [],
+    sku: getTokinSku(variant, product),
+    barcodes: getTokinBarcodes(variant),
+    brand: brand || undefined,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
     currency: "ARS",
     productUrl: null,
-    imageUrl: product.imageUrl,
+    imageUrl: findTokinImageUrl(product),
     confidenceScore: calculateConfidenceScore(query, matchText),
   };
+}
+
+function findBestTokinVariant(product: TokinSearchHit) {
+  const variants =
+    product.additional_content?.raw?.variants ?? product.variants ?? [];
+
+  return variants.find((variant) => findTokinVariantPrice(variant) !== null);
+}
+
+function findTokinVariantPrice(variant: TokinVariant | undefined) {
+  if (!variant) {
+    return null;
+  }
+
+  const price =
+    typeof variant.price === "number"
+      ? variant.price
+      : variant.price?.sellingPriceWithTax ??
+        variant.prices?.sellingPriceWithTax ??
+        variant.price?.listPriceWithTax ??
+        variant.prices?.listPriceWithTax ??
+        variant.price?.sellingPrice ??
+        variant.prices?.sellingPrice ??
+        variant.price?.listPrice ??
+        variant.prices?.listPrice;
+
+  if (typeof price !== "number") {
+    return normalizePrice(String(price ?? ""));
+  }
+
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+function findTokinBrand(product: TokinSearchHit) {
+  const brand =
+    product.additional_content?.raw?.brand ?? product.brand ?? product.brand_name;
+
+  if (typeof brand === "string") {
+    return brand;
+  }
+
+  if ("name" in (brand ?? {})) {
+    return (brand as { name?: string }).name ?? "";
+  }
+
+  return getRawValue(brand as TokinRawField | undefined);
+}
+
+function findTokinImageUrl(product: TokinSearchHit) {
+  const image = product.additional_content?.raw?.image ?? product.image;
+
+  if (!image) {
+    return null;
+  }
+
+  if (typeof image === "string") {
+    return image;
+  }
+
+  return image.url ?? image.src ?? null;
+}
+
+function getTokinSku(
+  variant: TokinVariant | undefined,
+  product: TokinSearchHit,
+) {
+  return (
+    String(variant?.skuId ?? variant?.sku ?? "") ||
+    String(getRawValue(product.ref_id_product) || getRawValue(product.product_id) || "") ||
+    null
+  );
+}
+
+function getTokinBarcodes(variant: TokinVariant | undefined) {
+  return [variant?.barcode, variant?.ean]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.replace(/\D/g, ""))
+    .filter((value) => /^\d{8,14}$/.test(value));
+}
+
+function getRawValue(field: TokinRawField | string | number | undefined) {
+  if (typeof field === "string") {
+    return field.replace(/\s+/g, " ").trim();
+  }
+
+  if (typeof field === "number") {
+    return String(field);
+  }
+
+  const raw = field?.raw;
+
+  if (typeof raw === "number") {
+    return String(raw);
+  }
+
+  return raw?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function parseTokinExpiration(value: string | undefined) {
+  const parsed = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(parsed) ? parsed : Date.now() + 30 * 60_000;
+}
+
+function getTokinErrorMessage(payload: unknown, fallback: string) {
+  const errorPayload = payload as TokinErrorPayload | null;
+  const message =
+    errorPayload?.data?.message ??
+    errorPayload?.message ??
+    errorPayload?.data?.error ??
+    errorPayload?.error;
+
+  return message ? `Tokin: ${message}` : fallback;
 }
