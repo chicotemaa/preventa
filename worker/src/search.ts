@@ -1,10 +1,11 @@
-import { chromium, type Browser } from "playwright";
+import type { Browser } from "playwright";
 import {
   extractProductsFromRedNorteApi,
   extractProductsFromStaticHtml,
   extractProductsFromVtexApi,
   extractProductsFromWooCommercePmwJson,
 } from "./api-extractors.js";
+import { launchBrowser } from "./browser.js";
 import { config } from "./config.js";
 import {
   extractProductsAutomatically,
@@ -49,9 +50,7 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
         source.sourceKind ?? "playwright",
       ),
   );
-  const browser = needsBrowser
-    ? await chromium.launch({ headless: config.headless })
-    : undefined;
+  const browser = needsBrowser ? await launchBrowser() : undefined;
 
   try {
     const sourceResults = await Promise.all(
@@ -194,8 +193,7 @@ export async function searchSource(
   }
 
   if (source.sourceKind === "tokin") {
-    const ownedBrowser =
-      browser ?? (await chromium.launch({ headless: config.headless }));
+    const ownedBrowser = browser ?? (await launchBrowser());
 
     try {
       return await withTimeout(
@@ -225,8 +223,7 @@ export async function searchSource(
   }
 
   if (source.sourceKind === "maxiconsumo_auth") {
-    const ownedBrowser =
-      browser ?? (await chromium.launch({ headless: config.headless }));
+    const ownedBrowser = browser ?? (await launchBrowser());
 
     try {
       return await withTimeout(
@@ -261,8 +258,7 @@ export async function searchSource(
     }
   }
 
-  const ownedBrowser =
-    browser ?? (await chromium.launch({ headless: config.headless }));
+  const ownedBrowser = browser ?? (await launchBrowser());
   const page = await ownedBrowser.newPage();
   page.setDefaultTimeout(config.sourceTimeoutMs);
 

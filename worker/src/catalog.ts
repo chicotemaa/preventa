@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.js";
 import {
   targetBrands,
   findAllowedBrand,
@@ -174,11 +174,7 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
         source.sourceKind ?? "playwright",
       ),
   );
-  const browser = needsBrowser
-    ? await chromium.launch({
-        headless: process.env.HEADLESS !== "false",
-      })
-    : undefined;
+  const browser = needsBrowser ? await launchBrowser() : undefined;
 
   try {
     for (const source of fullPageSources) {
