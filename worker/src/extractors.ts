@@ -7,6 +7,7 @@ import {
   getSourceUrl,
 } from "./source-metadata.js";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
+import { withUnitPricing } from "./unit-pricing.js";
 
 export async function extractProductsWithSelectors(
   page: Page,
@@ -231,7 +232,7 @@ export function createProductResult(
   productUrl: string | null,
   imageUrl: string | null,
 ): ProductSearchResult {
-  return {
+  return withUnitPricing({
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -247,7 +248,7 @@ export function createProductResult(
     productUrl,
     imageUrl,
     confidenceScore: calculateConfidenceScore(query, rawName),
-  };
+  });
 }
 
 async function getInnerText(

@@ -7,6 +7,7 @@ import type {
   PriceListRunDetail,
   PriceListRunDetailResponse,
   PriceListRunSummary,
+  PriceListSourcePrice,
 } from "@/types/search";
 
 const currencyFormatter = new Intl.NumberFormat("es-AR", {
@@ -437,6 +438,29 @@ function formatCurrency(value: number | null) {
   return value === null ? "-" : currencyFormatter.format(value);
 }
 
+function getComparablePrice(price: PriceListSourcePrice) {
+  return typeof price.comparisonPrice === "number" && price.comparisonPrice > 0
+    ? price.comparisonPrice
+    : price.price;
+}
+
+function getPackagePriceLabel(price: PriceListSourcePrice) {
+  if (!price.packageQuantity || price.packageQuantity <= 1) {
+    return null;
+  }
+
+  return `${price.packageLabel ?? `pack x ${price.packageQuantity}`}: ${formatCurrency(price.price)}`;
+}
+
+function formatSourceCsvPrice(sourcePrice: PriceListSourcePrice) {
+  const packageLabel = getPackagePriceLabel(sourcePrice);
+  const unitPrice = getComparablePrice(sourcePrice).toFixed(2);
+
+  return packageLabel
+    ? `${sourcePrice.storeName}: ${unitPrice} unitario (${packageLabel})`
+    : `${sourcePrice.storeName}: ${unitPrice}`;
+}
+
 function formatSignedPercent(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${percentFormatter.format(value)}%`;
@@ -454,7 +478,7 @@ function downloadRunResultCsv(detail: PriceListRunDetail) {
     "Brecha %",
     "Precio sugerido",
     "Estado decision",
-    "Mejor precio",
+    "Mejor unitario",
     "Mejor fuente",
     "Producto encontrado",
     "Link producto",
@@ -479,7 +503,7 @@ function downloadRunResultCsv(detail: PriceListRunDetail) {
       item.bestProductUrl ?? "",
       ...comparisons.map(({ source, sourcePrice }) =>
         sourcePrice
-          ? `${sourcePrice.storeName}: ${sourcePrice.price.toFixed(2)}`
+          ? formatSourceCsvPrice(sourcePrice)
           : `${source.storeName}: Sin precio`,
       ),
     ];
@@ -546,7 +570,10 @@ function buildHistorySourceComparisons(
     }))
     .sort((first, second) => {
       if (first.sourcePrice && second.sourcePrice) {
-        return first.sourcePrice.price - second.sourcePrice.price;
+        return (
+          getComparablePrice(first.sourcePrice) -
+          getComparablePrice(second.sourcePrice)
+        );
       }
 
       if (first.sourcePrice) {

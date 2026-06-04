@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { findAllowedBrand } from "./brands.js";
 import { normalizePrice, normalizeProductName } from "./normalizers.js";
 import type { ProductSearchResult, SourceSearchStatus, StoreType } from "./types.js";
+import { withUnitPricing } from "./unit-pricing.js";
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
@@ -116,7 +117,7 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
     return null;
   }
 
-  return {
+  return withUnitPricing({
     sourceId,
     storeName,
     storeType,
@@ -139,7 +140,7 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
     productUrl: readField(row, "productUrl", "product_url", "url") || null,
     imageUrl: readField(row, "imageUrl", "image_url", "imagen") || null,
     confidenceScore: 0,
-  };
+  }, displayName);
 }
 
 function readField(row: ImportedRow, ...names: string[]) {

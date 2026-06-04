@@ -36,6 +36,13 @@ const HIGH_PRICE_GAP_PERCENT = 12;
 const OPPORTUNITY_GAP_PERCENT = -8;
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 
+type ComparablePrice = {
+  price: number;
+  comparisonPrice?: number | null;
+  packageQuantity?: number | null;
+  packageLabel?: string | null;
+};
+
 type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
 type PriceListItemFilter = "all" | "review" | PriceDecisionStatus;
 type PriceListEditableField = "currentPrice";
@@ -93,6 +100,45 @@ type SourceCoverage = {
 };
 
 type PriceListFilterCounts = Record<PriceListItemFilter, number>;
+
+function getComparablePrice(price: ComparablePrice) {
+  return normalizeOptionalNumber(price.comparisonPrice) ?? price.price;
+}
+
+function formatComparableCurrency(price: ComparablePrice) {
+  return currencyFormatter.format(getComparablePrice(price));
+}
+
+function getPackagePriceLabel(price: ComparablePrice) {
+  if (!price.packageQuantity || price.packageQuantity <= 1) {
+    return null;
+  }
+
+  return `${price.packageLabel ?? `pack x ${price.packageQuantity}`}: ${currencyFormatter.format(price.price)}`;
+}
+
+function UnitPriceDetail({ price }: { price: ComparablePrice }) {
+  const packageLabel = getPackagePriceLabel(price);
+
+  if (!packageLabel) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 text-xs font-normal leading-4 text-[#667789]">
+      Unitario. {packageLabel}
+    </div>
+  );
+}
+
+function formatSourceCsvPrice(sourcePrice: PriceListSourcePrice) {
+  const unitPrice = getComparablePrice(sourcePrice).toFixed(2);
+  const packageLabel = getPackagePriceLabel(sourcePrice);
+
+  return packageLabel
+    ? `${sourcePrice.storeName}: ${unitPrice} unitario (${packageLabel})`
+    : `${sourcePrice.storeName}: ${unitPrice}`;
+}
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -614,7 +660,7 @@ function PriceListResults({
                   <th className="px-2.5 py-3">Artículo</th>
                   <th className="px-2.5 py-3">Código / EAN</th>
                   <th className="px-2.5 py-3">Precio Aguiar</th>
-                  <th className="px-2.5 py-3">Mejor precio</th>
+                  <th className="px-2.5 py-3">Mejor unitario</th>
                   <th className="px-2.5 py-3">Comercio</th>
                   <th className="px-2.5 py-3">Producto encontrado</th>
                   {visibleSources.map((source, index) => (
@@ -1182,8 +1228,9 @@ function PriceListRow({
                   {sourcePrice.storeName}
                 </div>
                 <div className="mt-1 font-semibold text-[#173d2f]">
-                  {currencyFormatter.format(sourcePrice.price)}
+                  {formatComparableCurrency(sourcePrice)}
                 </div>
+                <UnitPriceDetail price={sourcePrice} />
               </div>
             ) : (
               <div>
@@ -1282,11 +1329,12 @@ function PriceListCards({
             {result.bestSource ? (
               <div className="mt-3 rounded-md bg-[#f6f7f9] p-3">
                 <div className="text-xs font-medium uppercase tracking-[0.04em] text-[#667789]">
-                  Mejor precio
+                  Mejor unitario
                 </div>
                 <div className="mt-1 text-lg font-semibold text-[#173d2f] sm:text-xl">
-                  {currencyFormatter.format(result.bestSource.price)}
+                  {formatComparableCurrency(result.bestSource)}
                 </div>
+                <UnitPriceDetail price={result.bestSource} />
                 <div className="mt-1 text-sm font-medium text-[#17202a]">
                   {result.bestSource.storeName}
                 </div>
@@ -1325,17 +1373,22 @@ function PriceListCards({
                               sourcePrice.storeName
                             : source.storeName}
                         </span>
-                        <span
-                          className={
-                            sourcePrice
-                              ? "font-semibold text-[#173d2f]"
-                              : "text-[#9aa5b1]"
-                          }
-                        >
-                          {sourcePrice
-                            ? currencyFormatter.format(sourcePrice.price)
-                            : "-"}
-                        </span>
+                        <div className="shrink-0 text-right">
+                          <span
+                            className={
+                              sourcePrice
+                                ? "font-semibold text-[#173d2f]"
+                                : "text-[#9aa5b1]"
+                            }
+                          >
+                            {sourcePrice
+                              ? formatComparableCurrency(sourcePrice)
+                              : "-"}
+                          </span>
+                          {sourcePrice ? (
+                            <UnitPriceDetail price={sourcePrice} />
+                          ) : null}
+                        </div>
                       </div>
                     ),
                   )}
@@ -1513,7 +1566,7 @@ function ResultsTable({ results }: { results: ProductSearchResult[] }) {
           <tr>
             <th className="px-4 py-3">Comercio</th>
             <th className="px-4 py-3">Producto</th>
-            <th className="px-4 py-3">Precio</th>
+            <th className="px-4 py-3">Precio unitario</th>
             <th className="px-4 py-3">Link</th>
           </tr>
         </thead>
@@ -1549,7 +1602,8 @@ function ResultsTable({ results }: { results: ProductSearchResult[] }) {
                 </div>
               </td>
               <td className="px-4 py-3 text-base font-semibold text-[#173d2f]">
-                {currencyFormatter.format(result.price)}
+                {formatComparableCurrency(result)}
+                <UnitPriceDetail price={result} />
               </td>
               <td className="px-4 py-3">
                 {result.productUrl ? (
@@ -1605,9 +1659,12 @@ function ResultsCards({ results }: { results: ProductSearchResult[] }) {
             </div>
           </div>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <span className="text-lg font-semibold text-[#173d2f]">
-              {currencyFormatter.format(result.price)}
-            </span>
+            <div>
+              <span className="text-lg font-semibold text-[#173d2f]">
+                {formatComparableCurrency(result)}
+              </span>
+              <UnitPriceDetail price={result} />
+            </div>
             {result.productUrl ? (
               <a
                 href={result.productUrl}
@@ -1656,7 +1713,7 @@ function sourceStatusLabel(status: SourceSearchStatus["status"]) {
 }
 
 function resultKey(result: ProductSearchResult) {
-  return `${result.sourceId}-${result.normalizedName}-${result.price}`;
+  return `${result.sourceId}-${result.normalizedName}-${result.price}-${getComparablePrice(result)}`;
 }
 
 function filterSourcesByType(
@@ -1695,14 +1752,14 @@ function filterPriceListResultBySourceType(
       (sourcePrice) =>
         sourceFilter === "all" || sourcePrice.storeType === sourceFilter,
     )
-    .sort((first, second) => first.price - second.price);
+    .sort((first, second) => getComparablePrice(first) - getComparablePrice(second));
   const bestSource = sourcePrices[0] ?? null;
 
   return {
     ...result,
     status: bestSource ? "matched" : "not_found",
     bestSource,
-    bestPrice: bestSource?.price ?? null,
+    bestPrice: bestSource ? getComparablePrice(bestSource) : null,
     sourcePrices,
     matchedCount: sourcePrices.length,
   };
@@ -1859,7 +1916,10 @@ function compareSourceComparisons(
   },
 ) {
   if (first.sourcePrice && second.sourcePrice) {
-    return first.sourcePrice.price - second.sourcePrice.price;
+    return (
+      getComparablePrice(first.sourcePrice) -
+      getComparablePrice(second.sourcePrice)
+    );
   }
 
   if (first.sourcePrice) {
@@ -2224,7 +2284,7 @@ function downloadPriceListCsv(
     "Precio sugerido",
     "Estado decision",
     "Estado",
-    "Mejor precio",
+    "Mejor unitario",
     "Mejor fuente",
     "Producto encontrado",
     "Link producto",
@@ -2251,7 +2311,7 @@ function downloadPriceListCsv(
       result.bestSource?.productUrl ?? "",
       ...comparisons.map(({ source, sourcePrice }) =>
         sourcePrice
-          ? `${sourcePrice.storeName}: ${sourcePrice.price.toFixed(2)}`
+          ? formatSourceCsvPrice(sourcePrice)
           : `${source.storeName}: Sin precio`,
       ),
     ];

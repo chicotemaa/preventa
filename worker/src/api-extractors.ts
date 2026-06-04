@@ -8,6 +8,7 @@ import {
 } from "./source-metadata.js";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
 import { createProductResult } from "./extractors.js";
+import { withUnitPricing } from "./unit-pricing.js";
 
 type VtexProduct = {
   productName?: string;
@@ -246,8 +247,17 @@ function toRedNorteProductResult(
   }
 
   const matchText = [product.categoria_nombre, rawName].filter(Boolean).join(" ");
+  const pricingText = [
+    matchText,
+    presentation?.nombre,
+    typeof presentation?.factor === "number" && presentation.factor > 1
+      ? `pack x ${presentation.factor}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  return {
+  return withUnitPricing({
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -268,7 +278,7 @@ function toRedNorteProductResult(
       source.sourceUrl ?? source.searchUrlTemplate,
     ),
     confidenceScore: calculateConfidenceScore(query, matchText),
-  };
+  }, pricingText);
 }
 
 function toVtexProductResult(
@@ -287,7 +297,7 @@ function toVtexProductResult(
     ? rawName
     : [product.brand, rawName].filter(Boolean).join(" ");
 
-  return {
+  return withUnitPricing({
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -304,7 +314,7 @@ function toVtexProductResult(
     productUrl: product.link ?? null,
     imageUrl: findVtexImageUrl(product),
     confidenceScore: calculateConfidenceScore(query, matchText),
-  };
+  }, matchText);
 }
 
 function toStaticHtmlProductResult(
@@ -358,7 +368,7 @@ function toWooCommercePmwProductResult(
     ? rawName
     : [brand, ...(product.category ?? []), rawName].filter(Boolean).join(" ");
 
-  return {
+  return withUnitPricing({
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -375,7 +385,7 @@ function toWooCommercePmwProductResult(
     productUrl: null,
     imageUrl: null,
     confidenceScore: calculateConfidenceScore(query, matchText),
-  };
+  }, matchText);
 }
 
 function toLaAnonimaProductResult(
@@ -406,7 +416,7 @@ function toLaAnonimaProductResult(
   const imageUrl = resolveUrl(findLaAnonimaImageUrl(cardHtml), baseUrl);
   const matchText = [brand, categories, rawName].filter(Boolean).join(" ");
 
-  return {
+  return withUnitPricing({
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -423,7 +433,7 @@ function toLaAnonimaProductResult(
     productUrl,
     imageUrl,
     confidenceScore: calculateConfidenceScore(query, matchText),
-  };
+  }, matchText);
 }
 
 function extractLaAnonimaProductBlocks(html: string) {
@@ -456,6 +466,10 @@ function findStaticHtmlCards(html: string) {
       html,
       /<div[^>]*class=["'][^"']*\bproduct\b[^"']*\btype-product\b[^"']*["'][^>]*>/gi,
     ),
+    ...extractRepeatedBlocks(
+      html,
+      /<div[^>]*class=["'][^"']*\bjet-listing-grid__item\b[^"']*["'][^>]*>/gi,
+    ),
   ];
 
   return Array.from(new Set(cards));
@@ -483,7 +497,9 @@ function findStaticProductName(cardHtml: string) {
     matchFirst(
       cardHtml,
       /<h[23][^>]*class=["'][^"']*woocommerce-loop-product__title[^"']*["'][^>]*>([\s\S]*?)<\/h[23]>/i,
-    )
+    ) ||
+    findElementorProductHeading(cardHtml)?.labelHtml ||
+    ""
   );
 }
 
@@ -497,6 +513,7 @@ function findStaticProductPrice(cardHtml: string) {
       cardHtml,
       /<div[^>]*class=["'][^"']*product-card__price-wrapper[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
     ) ||
+    findWooCommercePriceAmount(cardHtml) ||
     matchFirst(
       cardHtml,
       /<span[^>]*class=["'][^"']*woocommerce-Price-amount[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
@@ -506,6 +523,22 @@ function findStaticProductPrice(cardHtml: string) {
       /<span[^>]*class=["'][^"']*price[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
     )
   );
+}
+
+function findWooCommercePriceAmount(cardHtml: string) {
+  const directMatch = cardHtml.match(
+    /<span[^>]*class=["'][^"']*woocommerce-Price-amount[^"']*["'][^>]*>\s*<span[^>]*class=["'][^"']*woocommerce-Price-currencySymbol[^"']*["'][^>]*>([\s\S]*?)<\/span>\s*([^<]+)\s*<\/span>/i,
+  );
+
+  if (directMatch?.[2]) {
+    return `${directMatch[1] ?? "$"} ${directMatch[2]}`;
+  }
+
+  const bdiMatch = cardHtml.match(
+    /<span[^>]*class=["'][^"']*woocommerce-Price-amount[^"']*["'][^>]*>\s*<bdi>([\s\S]*?)<\/bdi>\s*<\/span>/i,
+  );
+
+  return bdiMatch?.[1]?.trim() ?? "";
 }
 
 function findStaticProductUrl(cardHtml: string) {
@@ -525,7 +558,9 @@ function findStaticProductUrl(cardHtml: string) {
     matchFirst(
       cardHtml,
       /<a[^>]*href=["']([^"']+)["'][^>]*class=["'][^"']*(?:woocommerce-LoopProduct-link|product-card__link)[^"']*["'][^>]*>/i,
-    )
+    ) ||
+    findElementorProductHeading(cardHtml)?.url ||
+    ""
   );
 }
 
@@ -541,6 +576,29 @@ function findStaticImageUrl(cardHtml: string) {
     ) ||
     matchFirst(cardHtml, /<img[^>]*(?:data-src|src)=["']([^"']+)["'][^>]*>/i)
   );
+}
+
+function findElementorProductHeading(cardHtml: string) {
+  const pattern =
+    /<div[^>]*class=["'][^"']*elementor-heading-title[^"']*["'][^>]*>\s*<a[^>]*href=["']([^"']*\/productos\/[^"']*)["'][^>]*>([\s\S]*?)<\/a>\s*<\/div>/gi;
+
+  for (const match of cardHtml.matchAll(pattern)) {
+    const url = match[1] ?? "";
+    const labelHtml = match[2] ?? "";
+    const label = decodeHtml(stripTags(labelHtml)).trim();
+
+    if (
+      !label ||
+      label.includes("$") ||
+      /woocommerce-Price-amount|<img\b/i.test(labelHtml)
+    ) {
+      continue;
+    }
+
+    return { url, labelHtml };
+  }
+
+  return null;
 }
 
 function extractPmwProducts(html: string) {

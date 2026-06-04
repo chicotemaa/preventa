@@ -25,6 +25,7 @@ import { scrapingSources } from "./sources/argentina.js";
 import { extractProductsFromTokin } from "./tokin.js";
 import { extractProductsFromVeaAuth } from "./vea.js";
 import { extractProductsFromYaguarAuth } from "./yaguar.js";
+import { getComparisonPrice } from "./unit-pricing.js";
 import type {
   ProductSearchResult,
   ScrapingSource,
@@ -64,7 +65,7 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
       .filter(
         (result) => result.confidenceScore >= config.minConfidenceScore,
       ),
-  ).sort((first, second) => first.price - second.price);
+  ).sort((first, second) => getComparisonPrice(first) - getComparisonPrice(second));
 
   return {
     query,
@@ -801,6 +802,7 @@ function dedupeResults(results: ProductSearchResult[]) {
       result.sourceId,
       result.normalizedName,
       result.price.toFixed(2),
+      getComparisonPrice(result).toFixed(2),
     ].join("|");
 
     if (!seen.has(key)) {

@@ -8,6 +8,7 @@ import {
   getSourceUrl,
 } from "./source-metadata.js";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
+import { withUnitPricing } from "./unit-pricing.js";
 
 type TokinSession = {
   email: string;
@@ -241,7 +242,7 @@ function toTokinProductResult(
         .filter(Boolean)
         .join(" ");
 
-  return {
+  return withUnitPricing({
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -258,7 +259,7 @@ function toTokinProductResult(
     productUrl: null,
     imageUrl: findTokinImageUrl(product),
     confidenceScore: calculateConfidenceScore(query, matchText),
-  };
+  }, [matchText, variant?.uom].filter(Boolean).join(" "));
 }
 
 function findBestTokinVariant(product: TokinSearchHit) {

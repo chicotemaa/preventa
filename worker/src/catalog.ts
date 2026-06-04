@@ -15,6 +15,7 @@ import { applyPresentationScore } from "./presentation.js";
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { scrapingSources } from "./sources/argentina.js";
+import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
@@ -50,6 +51,9 @@ export async function loadCatalogFromDisk() {
   try {
     const raw = await readFile(catalogPath, "utf8");
     currentCatalog = JSON.parse(raw) as CatalogSnapshot;
+    currentCatalog.products = currentCatalog.products.map((product) =>
+      withUnitPricing(product, getProductMatchText(product)),
+    );
     currentCatalog.region = catalogRegion;
     currentCatalog.pendingSources = getPendingSources();
     currentCatalog.sources = hydrateSourceStatusStoreTypes(
@@ -109,8 +113,11 @@ export function searchCatalog(query: string) {
     }))
     .filter((product) => product.confidenceScore >= 45)
     .sort((first, second) => {
-      if (first.price !== second.price) {
-        return first.price - second.price;
+      const firstPrice = getComparisonPrice(first);
+      const secondPrice = getComparisonPrice(second);
+
+      if (firstPrice !== secondPrice) {
+        return firstPrice - secondPrice;
       }
 
       return second.confidenceScore - first.confidenceScore;
@@ -246,7 +253,7 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
     sourceStatuses.push(...importedCatalog.statuses);
 
     const dedupedProducts = dedupeCatalogProducts(products).sort(
-      (first, second) => first.price - second.price,
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     );
 
     currentCatalog = {
@@ -295,7 +302,9 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     );
     const input = {
       ...item,
-      currentPrice: aguiarSourcePrice?.price ?? item.currentPrice,
+      currentPrice: aguiarSourcePrice
+        ? getComparisonPrice(aguiarSourcePrice)
+        : item.currentPrice,
       currentCost: undefined,
     };
 
@@ -304,14 +313,14 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     }
 
     const bestSource = [...comparableSourcePrices].sort(
-      (first, second) => first.price - second.price,
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     )[0] ?? null;
 
     return {
       input,
       queryUsed: query,
       status: bestSource ? "matched" : "not_found",
-      bestPrice: bestSource?.price ?? null,
+      bestPrice: bestSource ? getComparisonPrice(bestSource) : null,
       bestSource,
       sourcePrices: comparableSourcePrices,
       matchedCount: comparableSourcePrices.length + (aguiarSourcePrice ? 1 : 0),
@@ -403,7 +412,7 @@ function findCatalogMatches(
         return second.confidenceScore - first.confidenceScore;
       }
 
-      return first.price - second.price;
+      return getComparisonPrice(first) - getComparisonPrice(second);
     });
 }
 
@@ -432,7 +441,7 @@ function summarizeSourcePrices(products: ProductSearchResult[]) {
       current &&
       (current.confidenceScore > product.confidenceScore ||
         (current.confidenceScore === product.confidenceScore &&
-          current.price <= product.price))
+          getComparisonPrice(current) <= getComparisonPrice(product)))
     ) {
       continue;
     }
@@ -445,6 +454,9 @@ function summarizeSourcePrices(products: ProductSearchResult[]) {
       dataOrigin: product.dataOrigin,
       sourceScope: product.sourceScope,
       price: product.price,
+      comparisonPrice: getComparisonPrice(product),
+      packageQuantity: product.packageQuantity ?? null,
+      packageLabel: product.packageLabel ?? null,
       currency: product.currency,
       productName: product.rawName,
       productUrl: product.productUrl,
@@ -453,7 +465,7 @@ function summarizeSourcePrices(products: ProductSearchResult[]) {
   }
 
   return Array.from(bestBySource.values()).sort(
-    (first, second) => first.price - second.price,
+    (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
   );
 }
 
@@ -550,6 +562,7 @@ function dedupeCatalogProducts(products: ProductSearchResult[]) {
       product.brand ?? "",
       product.normalizedName,
       product.price.toFixed(2),
+      getComparisonPrice(product).toFixed(2),
     ].join("|");
 
     if (!seen.has(key)) {

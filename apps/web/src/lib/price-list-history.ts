@@ -288,6 +288,18 @@ function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
         dataOrigin: sourcePrice.dataOrigin,
         sourceScope: sourcePrice.sourceScope,
         price: sourcePrice.price,
+        comparisonPrice:
+          typeof sourcePrice.comparisonPrice === "number"
+            ? sourcePrice.comparisonPrice
+            : sourcePrice.price,
+        packageQuantity:
+          typeof sourcePrice.packageQuantity === "number"
+            ? sourcePrice.packageQuantity
+            : null,
+        packageLabel:
+          typeof sourcePrice.packageLabel === "string"
+            ? sourcePrice.packageLabel
+            : null,
         currency: "ARS",
         productName: sourcePrice.productName,
         productUrl: sourcePrice.productUrl ?? null,

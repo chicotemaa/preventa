@@ -15,6 +15,9 @@ export type ProductSearchResult = {
   rawName: string;
   normalizedName: string;
   price: number;
+  comparisonPrice?: number;
+  packageQuantity?: number | null;
+  packageLabel?: string | null;
   currency: "ARS";
   productUrl: string | null;
   imageUrl: string | null;
@@ -87,6 +90,9 @@ export type PriceListSourcePrice = {
   dataOrigin?: string;
   sourceScope?: string;
   price: number;
+  comparisonPrice?: number;
+  packageQuantity?: number | null;
+  packageLabel?: string | null;
   currency: "ARS";
   productName: string;
   productUrl: string | null;

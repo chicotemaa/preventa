@@ -12,6 +12,7 @@ import type {
   PriceEvolutionPoint,
   PriceEvolutionProduct,
   PriceEvolutionResponse,
+  PriceListSourcePrice,
 } from "@/types/search";
 
 const currencyFormatter = new Intl.NumberFormat("es-AR", {
@@ -615,8 +616,11 @@ function SourceEvolutionTable({
                           }`}
                         >
                           {sourcePrice
-                            ? formatCurrency(sourcePrice.price)
+                            ? formatComparableSourceCurrency(sourcePrice)
                             : "Sin precio"}
+                          {sourcePrice ? (
+                            <PackagePriceDetail price={sourcePrice} />
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -656,8 +660,9 @@ function SourceEvolutionTable({
                           {sourcePrice ? (
                             <div>
                               <div className="font-semibold text-[#173d2f]">
-                                {formatCurrency(sourcePrice.price)}
+                                {formatComparableSourceCurrency(sourcePrice)}
                               </div>
+                              <PackagePriceDetail price={sourcePrice} />
                               <div className="mt-1 text-[#667789]">
                                 {sourcePrice.storeType}
                               </div>
@@ -810,7 +815,10 @@ function buildSourceRows(
     }))
     .sort((first, second) => {
       if (first.sourcePrice && second.sourcePrice) {
-        return first.sourcePrice.price - second.sourcePrice.price;
+        return (
+          getComparablePrice(first.sourcePrice) -
+          getComparablePrice(second.sourcePrice)
+        );
       }
 
       if (first.sourcePrice) {
@@ -836,6 +844,29 @@ function normalizeText(value: string) {
 
 function formatCurrency(value: number | null) {
   return value === null ? "-" : currencyFormatter.format(value);
+}
+
+function getComparablePrice(price: PriceListSourcePrice) {
+  return typeof price.comparisonPrice === "number" && price.comparisonPrice > 0
+    ? price.comparisonPrice
+    : price.price;
+}
+
+function formatComparableSourceCurrency(price: PriceListSourcePrice) {
+  return currencyFormatter.format(getComparablePrice(price));
+}
+
+function PackagePriceDetail({ price }: { price: PriceListSourcePrice }) {
+  if (!price.packageQuantity || price.packageQuantity <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 text-xs font-normal text-[#667789]">
+      {price.packageLabel ?? `pack x ${price.packageQuantity}`}:{" "}
+      {formatCurrency(price.price)}
+    </div>
+  );
 }
 
 function compactCurrency(value: number) {

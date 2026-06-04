@@ -1,10 +1,10 @@
 const PRESENTATION_MISSING_PENALTY = 28;
 const PRESENTATION_AMOUNT_TOLERANCE = 0.1;
 
-type PresentationFamily = "weight" | "liquid" | "unit" | "unknown";
-type PresentationUnit = "g" | "ml" | "u";
+export type PresentationFamily = "weight" | "liquid" | "unit" | "unknown";
+export type PresentationUnit = "g" | "ml" | "u";
 
-type ProductPresentation = {
+export type ProductPresentation = {
   family: PresentationFamily;
   unit: PresentationUnit | null;
   amount: number | null;
@@ -114,7 +114,7 @@ function comparePackPresentation(
   };
 }
 
-function extractProductPresentation(value: string): ProductPresentation {
+export function extractProductPresentation(value: string): ProductPresentation {
   const normalizedValue = normalizePresentationText(value);
   const unitPattern = "(grs?|g|kg|ml|cc|lts?|lt|l|unid(?:ad)?(?:es)?|u)";
   const packMatch = normalizedValue.match(

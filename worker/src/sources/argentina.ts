@@ -123,6 +123,21 @@ export const scrapingSources: ScrapingSource[] = [
     requiresJavascript: false,
   },
   {
+    id: "depot-express-argentina",
+    storeName: "Depot Express",
+    storeType: "minorista",
+    city: "Argentina",
+    sourceUrl: "https://depotexpress.com.ar/productos/",
+    dataOrigin:
+      "HTML publico del buscador WooCommerce de Depot Express con precios visibles",
+    sourceScope: "Argentina",
+    sourceKind: "static_html",
+    searchUrlTemplate:
+      "https://depotexpress.com.ar/?s={query}&post_type=product",
+    requiresJavascript: false,
+    maxCards: 24,
+  },
+  {
     id: "maxiconsumo-web-moreno",
     storeName: "Maxiconsumo Web",
     storeType: "mayorista",
