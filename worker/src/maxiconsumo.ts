@@ -16,7 +16,11 @@ export async function extractProductsFromMaxiconsumoAuth(
   const email = config.maxiconsumo.email ?? config.tokin.email;
   const password = config.maxiconsumo.password;
   const searchUrl = buildSearchUrl(source.searchUrlTemplate, query);
-  const publicResultsPromise = fetchPublicSearchResults(searchUrl, source, query);
+  const publicResults = await fetchPublicSearchResults(searchUrl, source, query);
+
+  if (publicResults.length > 0) {
+    return publicResults;
+  }
 
   if (email && password) {
     const authenticatedResults = await withLocalTimeout(
@@ -32,18 +36,6 @@ export async function extractProductsFromMaxiconsumoAuth(
     if (authenticatedResults) {
       return authenticatedResults;
     }
-  }
-
-  const publicResults = await publicResultsPromise;
-
-  if (publicResults.length > 0) {
-    return publicResults;
-  }
-
-  if (!email || !password) {
-    throw new Error(
-      "Faltan MAXICONSUMO_EMAIL/MAXICONSUMO_PASSWORD para consultar Maxiconsumo Chaco.",
-    );
   }
 
   return [];

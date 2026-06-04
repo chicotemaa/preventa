@@ -3,12 +3,7 @@ import type { ScrapingSource } from "../types.js";
 
 const hasTokinCredentials = Boolean(config.tokin.email && config.tokin.password);
 const isTokinEnabled = config.tokin.enabled && hasTokinCredentials;
-const maxiconsumoEmail = config.maxiconsumo.email ?? config.tokin.email;
-const hasMaxiconsumoChacoCredentials = Boolean(
-  maxiconsumoEmail && config.maxiconsumo.password,
-);
-const isMaxiconsumoChacoEnabled =
-  config.maxiconsumo.enabled && hasMaxiconsumoChacoCredentials;
+const isMaxiconsumoChacoEnabled = config.maxiconsumo.enabled;
 const yaguarEmail = config.yaguar.email ?? config.tokin.email;
 const yaguarPassword = config.yaguar.password ?? config.tokin.password;
 const hasYaguarCredentials = Boolean(yaguarEmail && yaguarPassword);
@@ -165,7 +160,7 @@ export const scrapingSources: ScrapingSource[] = [
     city: "Resistencia, Chaco",
     sourceUrl: "https://maxiconsumo.com/sucursal_chaco/",
     dataOrigin:
-      "Catalogo web de Maxiconsumo sucursal Chaco; intenta sesion autorizada y usa HTML publico de Chaco si el login no responde",
+      "Catalogo web publico de Maxiconsumo sucursal Chaco con precios visibles; usa sesion autorizada solo como respaldo",
     sourceScope: "NEA: Resistencia, Chaco",
     sourceKind: "maxiconsumo_auth",
     searchUrlTemplate:
@@ -174,9 +169,9 @@ export const scrapingSources: ScrapingSource[] = [
     maxCards: 40,
     enabled: isMaxiconsumoChacoEnabled,
     disabledKind: "requires_login",
-    disabledReason: hasMaxiconsumoChacoCredentials
-      ? "Fuente Maxiconsumo Chaco deshabilitada por MAXICONSUMO_ENABLED=false."
-      : "Maxiconsumo Chaco requiere login; cargar MAXICONSUMO_PASSWORD y, si no se usa el mismo correo de Tokin, MAXICONSUMO_EMAIL.",
+    disabledReason: isMaxiconsumoChacoEnabled
+      ? undefined
+      : "Fuente Maxiconsumo Chaco deshabilitada por MAXICONSUMO_ENABLED=false.",
   },
   {
     id: "rednorte-nea",
