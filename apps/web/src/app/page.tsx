@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AlertTriangle,
   Download,
   FileSpreadsheet,
   Loader2,
@@ -11,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import type {
   PriceListInputItem,
   PriceListItemResult,
@@ -44,7 +43,7 @@ type ComparablePrice = {
 };
 
 type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
-type PriceListItemFilter = "all" | "review" | PriceDecisionStatus;
+type PriceListItemFilter = "all" | "matched" | "not_found";
 type PriceListEditableField = "currentPrice";
 type PriceDecisionStatus =
   | "ready"
@@ -141,63 +140,8 @@ function formatSourceCsvPrice(sourcePrice: PriceListSourcePrice) {
 }
 
 export default function Home() {
-  const [query, setQuery] = useState("");
-  const [response, setResponse] = useState<SearchResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [searchSourceFilter, setSearchSourceFilter] =
-    useState<SourceTypeFilter>("all");
-
-  const failedSources = useMemo(
-    () =>
-      response?.sources.filter(
-        (source) => source.status === "failed" || source.status === "timeout",
-      ) ?? [],
-    [response],
-  );
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedQuery = query.trim();
-
-    if (trimmedQuery.length < 2) {
-      setError("Ingresá al menos 2 caracteres para buscar.");
-      setResponse(null);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await fetch("/api/live-search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query: trimmedQuery }),
-      });
-      const payload = await result.json();
-
-      if (!result.ok) {
-        throw new Error(payload.error ?? "No se pudo completar la busqueda.");
-      }
-
-      setResponse(payload as SearchResponse);
-    } catch (caughtError) {
-      setResponse(null);
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "No se pudo completar la busqueda.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fff8f2]">
+    <main className="min-h-screen bg-[#fff8f2]">
       <section className="relative overflow-hidden bg-[#153d7b] text-white">
         <div
           aria-hidden="true"
@@ -211,89 +155,19 @@ export default function Home() {
           aria-hidden="true"
           className="absolute inset-0 bg-[#143a78]/88"
         />
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-5 px-4 py-8 sm:px-6 sm:py-10 lg:grid-cols-[0.78fr_1.22fr] lg:px-8 lg:py-12">
-          <div className="flex flex-col justify-center">
-            <h1 className="max-w-xl text-3xl font-extrabold leading-[1.08] text-white sm:text-4xl lg:text-5xl">
-              Compará precios por lista
-            </h1>
-            <p className="mt-3 max-w-lg text-sm leading-6 text-white/88 sm:text-base sm:leading-7">
-              Importá la lista semanal, compará referencias y descargá el
-              archivo para cargar precios en Aguiar.
-            </p>
-          </div>
-
-          <PriceListImport />
+        <div className="relative mx-auto flex w-full max-w-[1800px] flex-col gap-2 px-4 py-6 sm:px-6 lg:px-8">
+          <h1 className="text-2xl font-extrabold leading-tight text-white sm:text-3xl lg:text-4xl">
+            Carga semanal de precios
+          </h1>
+          <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
+            Importá la lista, revisá precios de Aguiar contra fuentes y descargá
+            el archivo operativo.
+          </p>
         </div>
       </section>
 
-      <section className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 md:py-6 lg:px-8">
-        <section
-          id="buscar"
-          className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-5"
-        >
-          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-            <div>
-              <h2 className="text-base font-bold text-[#171717]">
-                Buscar producto puntual
-              </h2>
-            </div>
-          </div>
-
-          <form
-            onSubmit={handleSubmit}
-            className="mt-4 flex flex-col gap-3 md:flex-row"
-          >
-            <label className="relative flex-1">
-              <span className="sr-only">Buscar producto</span>
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#df2e38]"
-              />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Producto, codigo o EAN"
-                className="h-12 w-full rounded-md border border-[#dec8bd] bg-[#fffdfa] pl-12 pr-4 text-base text-[#171717] outline-none transition focus:border-[#df2e38] focus:ring-4 focus:ring-[#df2e38]/15"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-md bg-[#275fbd] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(39,95,189,0.22)] transition hover:bg-[#173e83] disabled:cursor-not-allowed disabled:bg-[#9ba8bf] md:min-w-[132px]"
-            >
-              {isLoading ? (
-                <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
-              ) : (
-                <Search aria-hidden="true" className="h-5 w-5" />
-              )}
-              {isLoading ? "Buscando..." : "Buscar"}
-            </button>
-          </form>
-
-          {error ? (
-            <div className="mt-4 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
-              {error}
-            </div>
-          ) : null}
-
-          {failedSources.length > 0 ? (
-            <div className="mt-4 flex gap-3 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm text-[#73510b]">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Algunas fuentes no respondieron. Los precios visibles son los
-                disponibles en este momento.
-              </span>
-            </div>
-          ) : null}
-
-          {response ? (
-            <SearchResults
-              response={response}
-              sourceFilter={searchSourceFilter}
-              onSourceFilterChange={setSearchSourceFilter}
-            />
-          ) : null}
-        </section>
+      <section className="w-full px-3 py-4 sm:px-4 md:py-5 lg:px-6">
+        <PriceListImport />
       </section>
     </main>
   );
@@ -432,9 +306,7 @@ function PriceListImport() {
   return (
     <section
       id="lista"
-      className={`rounded-md border border-white/75 bg-white p-4 text-[#171717] shadow-[0_22px_60px_rgba(18,40,73,0.22)] sm:p-5 ${
-        response ? "lg:col-span-2" : ""
-      }`}
+      className="rounded-md border border-[#eadbd3] bg-white p-3 text-[#171717] shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-4 lg:p-5"
     >
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
         <div className="min-w-0">
@@ -444,8 +316,7 @@ function PriceListImport() {
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-[#6f625d]">
             Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
-            Precio Aguiar. Si Tokin encuentra el artículo, ese precio se completa
-            automáticamente. Solo se guarda si activás evolución.
+            Precio Aguiar. Si Aguiar no tiene precio, la celda queda vacía.
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:shrink-0">
@@ -609,14 +480,8 @@ function PriceListResults({
     itemFilter,
     searchTerm,
   );
-  const sourceCoverage = buildSourceCoverage(visibleSources, sourceFilteredResults);
-  const analysis = buildWeeklyAnalysis(visibleResults);
   const filterCounts = buildPriceListFilterCounts(sourceFilteredResults);
-  const matchedCount = visibleResults.filter(
-    (result) => result.bestSource !== null,
-  ).length;
-  const reviewCount = analysis.review;
-  const updatedAt = formatDate(response.catalog.lastSyncedAt);
+  const tableMinWidth = Math.max(980, 520 + visibleSources.length * 178);
 
   return (
     <div className="mt-5 flex flex-col gap-4">
@@ -624,20 +489,6 @@ function PriceListResults({
         value={sourceFilter}
         onChange={onSourceFilterChange}
       />
-
-      <SourceCoverageSummary coverage={sourceCoverage} />
-
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-        <Metric label="Artículos" value={visibleResults.length} />
-        <Metric label="Con Aguiar" value={analysis.withOwnPrice} />
-        <Metric label="Con precio" value={matchedCount} />
-        <Metric label="Sin precio" value={visibleResults.length - matchedCount} />
-        <Metric label="A revisar" value={reviewCount} />
-      </div>
-
-      {updatedAt ? (
-        <p className="text-sm text-[#5d6b7a]">Datos actualizados: {updatedAt}</p>
-      ) : null}
 
       <PriceListWorkbenchControls
         itemFilter={itemFilter}
@@ -651,21 +502,22 @@ function PriceListResults({
 
       {visibleResults.length > 0 ? (
         <>
-          <WeeklyAnalysisPanel analysis={analysis} />
-
-          <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white lg:block">
-            <table className="min-w-[1120px] border-collapse text-left text-xs">
+          <div className="hidden w-full overflow-x-auto rounded-md border border-[#d9dee7] bg-white lg:block">
+            <table
+              className="w-full border-collapse text-left text-xs"
+              style={{ minWidth: `${tableMinWidth}px` }}
+            >
               <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
                 <tr>
-                  <th className="px-2.5 py-3">Artículo</th>
-                  <th className="px-2.5 py-3">Código / EAN</th>
-                  <th className="px-2.5 py-3">Precio Aguiar</th>
-                  <th className="px-2.5 py-3">Mejor unitario</th>
-                  <th className="px-2.5 py-3">Comercio</th>
-                  <th className="px-2.5 py-3">Producto encontrado</th>
+                  <th className="w-[280px] px-2.5 py-3">Artículo</th>
+                  <th className="w-[140px] px-2.5 py-3">Código / EAN</th>
+                  <th className="w-[145px] px-2.5 py-3">Precio Aguiar</th>
+                  {visibleSources.length === 0 ? (
+                    <th className="min-w-[170px] px-2.5 py-3">Fuentes</th>
+                  ) : null}
                   {visibleSources.map((source, index) => (
-                    <th key={source.sourceId} className="px-2.5 py-3">
-                      Comparación {index + 1}
+                    <th key={source.sourceId} className="min-w-[170px] px-2.5 py-3">
+                      Precio {index + 1}
                     </th>
                   ))}
                 </tr>
@@ -778,7 +630,7 @@ function AraNumberInput({
             event.currentTarget.blur();
           }
         }}
-        placeholder="-"
+        placeholder=""
         className={`h-9 w-full min-w-[88px] rounded-md border bg-[#fffdfa] px-2 text-sm font-semibold text-[#17202a] outline-none transition focus:ring-4 ${
           isInvalid
             ? "border-[#df2e38] focus:ring-[#df2e38]/15"
@@ -857,12 +709,8 @@ function PriceListWorkbenchControls({
 }) {
   const options: Array<{ value: PriceListItemFilter; label: string }> = [
     { value: "all", label: "Todos" },
-    { value: "ready", label: "Listos" },
-    { value: "review", label: "A revisar" },
-    { value: "no_reference", label: "Sin referencia" },
-    { value: "missing_own_price", label: "Falta Aguiar" },
-    { value: "above_reference", label: "Muy arriba" },
-    { value: "opportunity", label: "Oportunidad" },
+    { value: "matched", label: "Con precio" },
+    { value: "not_found", label: "Sin precio" },
   ];
 
   return (
@@ -1155,8 +1003,12 @@ function PriceListRow({
   ) => void;
 }) {
   const sourceComparisons = buildSortedSourceComparisons(result, sources);
-  const shouldReview =
-    result.bestSource !== null && result.bestSource.confidenceScore < 70;
+  const aguiarPrice = normalizeOptionalNumber(result.input.currentPrice);
+  const bestMarketPrice = normalizeOptionalNumber(result.bestPrice);
+  const aguiarIsAboveBest =
+    aguiarPrice !== null &&
+    bestMarketPrice !== null &&
+    aguiarPrice > bestMarketPrice;
 
   return (
     <tr className={result.bestSource ? "align-top" : "align-top bg-[#fff8f7]"}>
@@ -1175,62 +1027,66 @@ function PriceListRow({
         </div>
       </td>
       <td className="px-2.5 py-3">
-        <AraNumberInput
-          label="Precio Aguiar"
-          value={result.input.currentPrice ?? null}
-          hideLabel
-          onChange={(value) =>
-            onItemInputChange(result.input.rowNumber, "currentPrice", value)
+        <div
+          className={
+            aguiarIsAboveBest
+              ? "rounded-md border border-[#ef9a63] bg-[#fff4e8] p-1.5"
+              : ""
           }
-        />
-      </td>
-      <td className="px-2.5 py-3 text-sm font-semibold text-[#173d2f]">
-        {result.bestPrice === null
-          ? "-"
-          : currencyFormatter.format(result.bestPrice)}
-      </td>
-      <td className="px-2.5 py-3">
-        {result.bestSource ? (
-          <div>
-            <div className="font-medium text-[#17202a]">
-              {result.bestSource.storeName}
+        >
+          <AraNumberInput
+            label="Precio Aguiar"
+            value={result.input.currentPrice ?? null}
+            hideLabel
+            onChange={(value) =>
+              onItemInputChange(result.input.rowNumber, "currentPrice", value)
+            }
+          />
+          {aguiarIsAboveBest ? (
+            <div className="mt-1 text-[11px] font-semibold text-[#9a3b16]">
+              Más caro que mercado
             </div>
-            {shouldReview ? (
-              <span className="mt-1 inline-flex rounded bg-[#fff8e6] px-2 py-1 text-[11px] font-semibold text-[#73510b]">
-                Revisar
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <span className="font-medium text-[#8f2d20]">Sin precio</span>
-        )}
+          ) : null}
+        </div>
       </td>
-      <td className="max-w-[250px] px-2.5 py-3 text-[#17202a]">
-        {result.bestSource?.productUrl ? (
-          <a
-            href={result.bestSource.productUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-[#1d5f8f] underline-offset-2 hover:underline"
-          >
-            {result.bestSource.productName}
-          </a>
-        ) : (
-          result.bestSource?.productName ?? "-"
-        )}
-      </td>
+      {sourceComparisons.length === 0 ? (
+        <td className="px-2.5 py-3 font-semibold text-[#8f2d20]">
+          Sin fuentes visibles
+        </td>
+      ) : null}
       {sourceComparisons.map(({ source, sourcePrice }) => {
+        const isBetterThanAguiar =
+          aguiarPrice !== null &&
+          sourcePrice !== null &&
+          getComparablePrice(sourcePrice) < aguiarPrice;
+
         return (
-          <td key={source.sourceId} className="px-2.5 py-3">
+          <td
+            key={source.sourceId}
+            className={`px-2.5 py-3 ${
+              isBetterThanAguiar
+                ? "bg-[#fff4e8] shadow-[inset_3px_0_0_#df7b34]"
+                : ""
+            }`}
+          >
             {sourcePrice ? (
               <div title={sourcePrice.productName}>
                 <div className="line-clamp-2 font-medium text-[#17202a]">
                   {sourcePrice.storeName}
                 </div>
-                <div className="mt-1 font-semibold text-[#173d2f]">
+                <div
+                  className={`mt-1 font-semibold ${
+                    isBetterThanAguiar ? "text-[#9a3b16]" : "text-[#173d2f]"
+                  }`}
+                >
                   {formatComparableCurrency(sourcePrice)}
                 </div>
                 <UnitPriceDetail price={sourcePrice} />
+                {isBetterThanAguiar ? (
+                  <div className="mt-1 text-[11px] font-semibold text-[#9a3b16]">
+                    Mejor que Aguiar
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div>
@@ -1267,8 +1123,12 @@ function PriceListCards({
   return (
     <div className="grid gap-3 lg:hidden">
       {results.map((result) => {
-        const shouldReview =
-          result.bestSource !== null && result.bestSource.confidenceScore < 70;
+        const aguiarPrice = normalizeOptionalNumber(result.input.currentPrice);
+        const bestMarketPrice = normalizeOptionalNumber(result.bestPrice);
+        const aguiarIsAboveBest =
+          aguiarPrice !== null &&
+          bestMarketPrice !== null &&
+          aguiarPrice > bestMarketPrice;
 
         return (
           <article
@@ -1290,11 +1150,6 @@ function PriceListCards({
                   </p>
                 ) : null}
               </div>
-              {shouldReview ? (
-                <span className="shrink-0 rounded bg-[#fff8e6] px-2 py-1 text-[11px] font-semibold text-[#73510b]">
-                  Revisar
-                </span>
-              ) : null}
             </div>
 
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -1312,7 +1167,13 @@ function PriceListCards({
               </div>
             </dl>
 
-            <div className="mt-3">
+            <div
+              className={`mt-3 ${
+                aguiarIsAboveBest
+                  ? "rounded-md border border-[#ef9a63] bg-[#fff4e8] p-2"
+                  : ""
+              }`}
+            >
               <AraNumberInput
                 label="Precio Aguiar"
                 value={result.input.currentPrice ?? null}
@@ -1324,6 +1185,11 @@ function PriceListCards({
                   )
                 }
               />
+              {aguiarIsAboveBest ? (
+                <div className="mt-1 text-xs font-semibold text-[#9a3b16]">
+                  Aguiar está por encima del mejor precio encontrado.
+                </div>
+              ) : null}
             </div>
 
             {result.bestSource ? (
@@ -1362,35 +1228,46 @@ function PriceListCards({
                 </summary>
                 <div className="mt-2 divide-y divide-[#e5e9ef] rounded-md border border-[#d9dee7] bg-white">
                   {buildSortedSourceComparisons(result, sources).map(
-                    ({ source, sourcePrice }) => (
-                      <div
-                        key={`${result.input.rowNumber}-${source.sourceId}`}
-                        className="flex items-center justify-between gap-3 px-3 py-2"
-                      >
-                        <span>
-                          {sourcePrice
-                            ? sourceNames.get(sourcePrice.sourceId) ??
-                              sourcePrice.storeName
-                            : source.storeName}
-                        </span>
-                        <div className="shrink-0 text-right">
-                          <span
-                            className={
-                              sourcePrice
-                                ? "font-semibold text-[#173d2f]"
-                                : "text-[#9aa5b1]"
-                            }
-                          >
+                    ({ source, sourcePrice }) => {
+                      const isBetterThanAguiar =
+                        aguiarPrice !== null &&
+                        sourcePrice !== null &&
+                        getComparablePrice(sourcePrice) < aguiarPrice;
+
+                      return (
+                        <div
+                          key={`${result.input.rowNumber}-${source.sourceId}`}
+                          className={`flex items-center justify-between gap-3 px-3 py-2 ${
+                            isBetterThanAguiar ? "bg-[#fff4e8]" : ""
+                          }`}
+                        >
+                          <span>
                             {sourcePrice
-                              ? formatComparableCurrency(sourcePrice)
-                              : "-"}
+                              ? sourceNames.get(sourcePrice.sourceId) ??
+                                sourcePrice.storeName
+                              : source.storeName}
                           </span>
-                          {sourcePrice ? (
-                            <UnitPriceDetail price={sourcePrice} />
-                          ) : null}
+                          <div className="shrink-0 text-right">
+                            <span
+                              className={
+                                sourcePrice
+                                  ? isBetterThanAguiar
+                                    ? "font-semibold text-[#9a3b16]"
+                                    : "font-semibold text-[#173d2f]"
+                                  : "text-[#9aa5b1]"
+                              }
+                            >
+                              {sourcePrice
+                                ? formatComparableCurrency(sourcePrice)
+                                : "-"}
+                            </span>
+                            {sourcePrice ? (
+                              <UnitPriceDetail price={sourcePrice} />
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    ),
+                      );
+                    },
                   )}
                 </div>
               </details>
@@ -1773,11 +1650,8 @@ function filterPriceListItems(
   const normalizedSearch = normalizeSearchText(searchTerm);
 
   return results.filter((result) => {
-    const decision = analyzePriceDecision(result);
     const matchesStatus =
-      itemFilter === "all" ||
-      (itemFilter === "review" && decision.status !== "ready") ||
-      decision.status === itemFilter;
+      itemFilter === "all" || result.status === itemFilter;
 
     return (
       matchesStatus &&
@@ -1805,22 +1679,12 @@ function buildPriceListFilterCounts(
 ): PriceListFilterCounts {
   const counts: PriceListFilterCounts = {
     all: results.length,
-    review: 0,
-    ready: 0,
-    review_match: 0,
-    no_reference: 0,
-    missing_own_price: 0,
-    above_reference: 0,
-    opportunity: 0,
+    matched: 0,
+    not_found: 0,
   };
 
   for (const result of results) {
-    const status = analyzePriceDecision(result).status;
-    counts[status] += 1;
-
-    if (status !== "ready") {
-      counts.review += 1;
-    }
+    counts[result.status] += 1;
   }
 
   return counts;
@@ -2280,9 +2144,6 @@ function downloadPriceListCsv(
     "EAN 13 DI",
     "EAN 13 BU",
     "Precio Aguiar",
-    "Brecha vs referencia %",
-    "Precio sugerido",
-    "Estado decision",
     "Estado",
     "Mejor unitario",
     "Mejor fuente",
@@ -2292,7 +2153,6 @@ function downloadPriceListCsv(
   ];
   const rows = results.map((result) => {
     const comparisons = buildSortedSourceComparisons(result, sources);
-    const decision = analyzePriceDecision(result);
 
     return [
       result.input.rubro ?? "",
@@ -2301,9 +2161,6 @@ function downloadPriceListCsv(
       result.input.ean13Di ?? "",
       result.input.ean13Bu ?? "",
       result.input.currentPrice?.toFixed(2) ?? "",
-      decision.gapPercent === null ? "" : decision.gapPercent.toFixed(2),
-      decision.suggestedPrice === null ? "" : decision.suggestedPrice.toFixed(2),
-      decision.statusLabel,
       result.status === "matched" ? "Con precio" : "Sin precio",
       result.bestPrice === null ? "" : result.bestPrice.toFixed(2),
       result.bestSource?.storeName ?? "",
@@ -2341,31 +2198,16 @@ function downloadAraUploadCsv(
     "EAN 13 BU",
     "Descripcion",
     "Rubro",
-    "Precio a cargar Aguiar",
-    "Precio Aguiar actual",
-    "Precio referencia",
-    "Fuente referencia",
-    "Estado decision",
+    "Precio Aguiar",
   ];
   const rows = results.map((result) => {
-    const decision = analyzePriceDecision(result);
-    const priceToLoad =
-      decision.suggestedPrice ??
-      decision.currentPrice ??
-      decision.referencePrice ??
-      null;
-
     return [
       result.input.code ?? "",
       result.input.ean13Di ?? "",
       result.input.ean13Bu ?? "",
       result.input.description ?? "",
       result.input.rubro ?? "",
-      formatCsvAmount(priceToLoad),
-      formatCsvAmount(decision.currentPrice),
-      formatCsvAmount(decision.referencePrice),
-      result.bestSource?.storeName ?? "",
-      decision.statusLabel,
+      formatCsvAmount(normalizeOptionalNumber(result.input.currentPrice)),
     ];
   });
   const csv = [headers, ...rows]
