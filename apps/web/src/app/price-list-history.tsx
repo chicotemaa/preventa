@@ -116,7 +116,7 @@ export function PriceListHistory() {
   return (
     <section
       id="historial"
-      className="rounded-md border border-[#eadbd3] bg-white p-5 shadow-[0_14px_40px_rgba(77,41,25,0.08)]"
+      className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-5"
     >
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div>
@@ -129,7 +129,7 @@ export function PriceListHistory() {
           type="button"
           onClick={() => void loadHistory()}
           disabled={isLoadingRuns}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99]"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99] sm:w-fit"
         >
           {isLoadingRuns ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -166,7 +166,7 @@ export function PriceListHistory() {
       ) : null}
 
       {runs.length > 0 ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-[320px_1fr]">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[320px_1fr]">
           <RunList
             runs={runs}
             selectedRunId={selectedRunId}
@@ -265,7 +265,7 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
           </span>
         </div>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:flex">
           <button
             type="button"
             onClick={() => downloadRunResultCsv(detail)}
@@ -284,7 +284,7 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
           </button>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3">
           <HistoryMetric label="A revisar" value={reviewItems} />
           <HistoryMetric label="Fuentes con datos" value={sourcesWithResults} />
           <HistoryMetric label="Sin precio" value={detail.run.unmatchedCount} />
@@ -292,7 +292,7 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
       </div>
 
       {detail.items.length > 0 ? (
-        <div className="hidden overflow-x-auto md:block">
+        <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-[920px] w-full border-collapse text-left text-xs">
             <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
               <tr>
@@ -356,7 +356,7 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
       ) : null}
 
       {detail.items.length > 0 ? (
-        <div className="grid gap-2 p-3 md:hidden">
+        <div className="grid gap-2 p-3 lg:hidden">
           {detail.items.map((item) => (
             <article
               key={`${item.id}-mobile`}
@@ -451,8 +451,6 @@ function downloadRunResultCsv(detail: PriceListRunDetail) {
     "EAN 13 DI",
     "EAN 13 BU",
     "Precio Aguiar",
-    "Costo",
-    "Margen %",
     "Brecha %",
     "Precio sugerido",
     "Estado decision",
@@ -472,8 +470,6 @@ function downloadRunResultCsv(detail: PriceListRunDetail) {
       item.ean13Di ?? "",
       item.ean13Bu ?? "",
       formatCsvAmount(item.currentPrice),
-      formatCsvAmount(item.currentCost),
-      item.marginPercent === null ? "" : item.marginPercent.toFixed(2),
       item.gapPercent === null ? "" : item.gapPercent.toFixed(2),
       formatCsvAmount(item.suggestedPrice),
       item.decisionLabel,
@@ -504,7 +500,6 @@ function downloadRunAraCsv(detail: PriceListRunDetail) {
     "Rubro",
     "Precio a cargar Aguiar",
     "Precio Aguiar actual",
-    "Costo",
     "Precio referencia",
     "Fuente referencia",
     "Estado decision",
@@ -521,7 +516,6 @@ function downloadRunAraCsv(detail: PriceListRunDetail) {
       item.rubro ?? "",
       formatCsvAmount(priceToLoad),
       formatCsvAmount(item.currentPrice),
-      formatCsvAmount(item.currentCost),
       formatCsvAmount(item.bestPrice),
       item.bestSourceName ?? "",
       item.decisionLabel,

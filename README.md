@@ -214,7 +214,7 @@ Endpoints del worker:
 - `POST /catalog/sync`: recorre automáticamente las marcas objetivo en las fuentes configuradas y reemplaza el snapshot actual.
 - `GET /catalog`: devuelve el snapshot actual.
 - `POST /catalog/search`: busca sobre el snapshot ya scrapeado.
-- `POST /catalog/price-list`: recibe una lista de articulos con `rubro`, `description`, `code`, `ean13Di`, `ean13Bu` y opcionalmente `currentPrice`/`currentCost`, y devuelve el mejor precio y precios por fuente.
+- `POST /catalog/price-list`: recibe una lista de articulos con `rubro`, `description`, `code`, `ean13Di`, `ean13Bu` y opcionalmente `currentPrice`, completa el precio Aguiar desde Tokin cuando hay match y devuelve el mejor precio de referencia por fuente.
 - `POST /search`: mantiene la búsqueda live puntual para depuración.
 
 Las fuentes están en `worker/src/sources/argentina.ts`.
@@ -226,10 +226,10 @@ Cada fuente puede tener selectores explícitos o quedar sin selectores para usar
 El frontend permite importar `.xlsx`, `.xls` o `.csv` con columnas como:
 
 ```text
-Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio Aguiar | Costo
+Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio Aguiar
 ```
 
-La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado y precio por comercio. También permite descargar el resultado general o el archivo listo para cargar precios en Aguiar.
+La app conserva esos campos, consulta el catálogo server-side y usa el precio de Aguiar/Tokin como precio propio cuando lo encuentra. La tabla muestra mejor precio de referencia, fuente, producto detectado y precio por comercio. También permite descargar el resultado general o el archivo listo para cargar precios en Aguiar.
 
 La importación no guarda histórico por defecto. Para alimentar evolución de precios, activar la opción `Guardar esta carga para evolución` antes de importar la lista semanal.
 
@@ -247,7 +247,7 @@ Tablas principales:
 
 - `price_list_runs`: cada evaluación/importación semanal.
 - `price_list_run_sources`: estado de fuentes consultadas para esa corrida.
-- `price_list_run_items`: artículo, precio Aguiar, costo, mejor referencia, margen, brecha, precio sugerido y estado de decisión.
+- `price_list_run_items`: artículo, precio Aguiar, mejor referencia, brecha, precio sugerido y estado de decisión. Las columnas históricas de costo/margen pueden existir por compatibilidad, pero las cargas nuevas no las usan.
 
 Páginas disponibles:
 

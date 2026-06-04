@@ -30,6 +30,7 @@ import type {
 const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
 const catalogPath = path.resolve(workerRoot, "data/catalog.json");
+const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 
 let currentCatalog: CatalogSnapshot = {
   status: "empty",
@@ -287,24 +288,32 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   for (const query of buildPriceListQueries(item)) {
     const matches = findCatalogMatches(query, expectedBrand);
     const sourcePrices = summarizeSourcePrices(matches);
-    const comparableSourcePrices = filterComparableSourcePrices(sourcePrices);
+    const aguiarSourcePrice = sourcePrices.find(isAguiarTokinSourcePrice);
+    const comparableSourcePrices = filterComparableSourcePrices(
+      sourcePrices.filter((sourcePrice) => !isAguiarTokinSourcePrice(sourcePrice)),
+    );
+    const input = {
+      ...item,
+      currentPrice: aguiarSourcePrice?.price ?? item.currentPrice,
+      currentCost: undefined,
+    };
 
-    if (comparableSourcePrices.length === 0) {
+    if (!input.currentPrice && comparableSourcePrices.length === 0) {
       continue;
     }
 
     const bestSource = [...comparableSourcePrices].sort(
       (first, second) => first.price - second.price,
-    )[0];
+    )[0] ?? null;
 
     return {
-      input: item,
+      input,
       queryUsed: query,
-      status: "matched",
-      bestPrice: bestSource.price,
+      status: bestSource ? "matched" : "not_found",
+      bestPrice: bestSource?.price ?? null,
       bestSource,
       sourcePrices: comparableSourcePrices,
-      matchedCount: matches.length,
+      matchedCount: comparableSourcePrices.length + (aguiarSourcePrice ? 1 : 0),
     };
   }
 
@@ -317,6 +326,10 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     sourcePrices: [],
     matchedCount: 0,
   };
+}
+
+function isAguiarTokinSourcePrice(sourcePrice: PriceListSourcePrice) {
+  return sourcePrice.sourceId === AGUIAR_TOKIN_SOURCE_ID;
 }
 
 function filterComparableSourcePrices(sourcePrices: PriceListSourcePrice[]) {

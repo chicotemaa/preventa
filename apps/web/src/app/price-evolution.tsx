@@ -87,7 +87,7 @@ export function PriceEvolution() {
     null;
 
   return (
-    <section className="min-w-0 rounded-md border border-[#eadbd3] bg-white p-3 shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-5">
+    <section className="min-w-0 rounded-md border border-[#eadbd3] bg-white p-4 shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-5">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-extrabold text-[#171717]">
@@ -136,7 +136,7 @@ export function PriceEvolution() {
       ) : null}
 
       {products.length > 0 ? (
-        <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
+        <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
           <ProductSelector
             products={filteredProducts}
             selectedProductKey={selectedProduct?.productKey ?? null}
@@ -262,7 +262,7 @@ function ProductEvolutionDetail({
           </span>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
           <EvolutionMetric
             label="Aguiar actual"
             value={formatCurrency(stats.lastAra)}
@@ -469,7 +469,7 @@ function EvolutionTimelineTable({
           Cargas Aguiar guardadas
         </h3>
       </div>
-      <div className="grid gap-2 p-3 md:hidden">
+      <div className="grid gap-2 p-3 lg:hidden">
         {points.map((point) => (
           <article
             key={`${point.runId}-mobile`}
@@ -509,7 +509,7 @@ function EvolutionTimelineTable({
           </article>
         ))}
       </div>
-      <div className="hidden max-h-[360px] overflow-auto md:block">
+      <div className="hidden max-h-[360px] overflow-auto lg:block">
         <table className="min-w-[720px] w-full border-collapse text-left text-xs">
           <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
             <tr>
@@ -579,7 +579,7 @@ function SourceEvolutionTable({
         </div>
       ) : (
         <>
-          <div className="grid gap-2 p-3 md:hidden">
+          <div className="grid gap-2 p-3 lg:hidden">
             {points.map((point) => {
               const sourceRows = buildSourceRows(sourceNames, point);
 
@@ -625,50 +625,53 @@ function SourceEvolutionTable({
               );
             })}
           </div>
-          <div className="hidden max-h-[360px] overflow-auto md:block">
-          <table className="min-w-[720px] border-collapse text-left text-xs">
-            <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
-              <tr>
-                <th className="px-3 py-2">Fecha</th>
-                {sourceNames.map((sourceName) => (
-                  <th key={sourceName} className="px-3 py-2">
-                    {sourceName}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#e5e9ef]">
-              {points.map((point) => (
-                <tr key={`${point.runId}-sources`}>
-                  <td className="px-3 py-2 text-[#526170]">
-                    {formatShortDate(point.searchedAt)}
-                  </td>
-                  {sourceNames.map((sourceName) => {
-                    const sourcePrice = point.sourcePrices.find(
-                      (price) => price.storeName === sourceName,
-                    );
-
-                    return (
-                      <td key={`${point.runId}-${sourceName}`} className="px-3 py-2">
-                        {sourcePrice ? (
-                          <div>
-                            <div className="font-semibold text-[#173d2f]">
-                              {formatCurrency(sourcePrice.price)}
-                            </div>
-                            <div className="mt-1 text-[#667789]">
-                              {sourcePrice.storeType}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-[#9aa5b1]">Sin precio</span>
-                        )}
-                      </td>
-                    );
-                  })}
+          <div className="hidden max-h-[360px] overflow-auto lg:block">
+            <table className="min-w-[720px] border-collapse text-left text-xs">
+              <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
+                <tr>
+                  <th className="px-3 py-2">Fecha</th>
+                  {sourceNames.map((sourceName) => (
+                    <th key={sourceName} className="px-3 py-2">
+                      {sourceName}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[#e5e9ef]">
+                {points.map((point) => (
+                  <tr key={`${point.runId}-sources`}>
+                    <td className="px-3 py-2 text-[#526170]">
+                      {formatShortDate(point.searchedAt)}
+                    </td>
+                    {sourceNames.map((sourceName) => {
+                      const sourcePrice = point.sourcePrices.find(
+                        (price) => price.storeName === sourceName,
+                      );
+
+                      return (
+                        <td
+                          key={`${point.runId}-${sourceName}`}
+                          className="px-3 py-2"
+                        >
+                          {sourcePrice ? (
+                            <div>
+                              <div className="font-semibold text-[#173d2f]">
+                                {formatCurrency(sourcePrice.price)}
+                              </div>
+                              <div className="mt-1 text-[#667789]">
+                                {sourcePrice.storeType}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[#9aa5b1]">Sin precio</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

@@ -9,7 +9,6 @@ import {
   isSupabaseConfigured,
 } from "./supabase-admin";
 
-const MIN_MARGIN_PERCENT = 22;
 const HIGH_PRICE_GAP_PERCENT = 12;
 const OPPORTUNITY_GAP_PERCENT = -8;
 const INSERT_CHUNK_SIZE = 20;
@@ -19,7 +18,6 @@ type DecisionStatus =
   | "review_match"
   | "no_reference"
   | "missing_own_price"
-  | "low_margin"
   | "above_reference"
   | "opportunity";
 
@@ -162,7 +160,7 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
     ean13_di: result.input.ean13Di ?? null,
     ean13_bu: result.input.ean13Bu ?? null,
     current_price: result.input.currentPrice ?? null,
-    current_cost: result.input.currentCost ?? null,
+    current_cost: null,
     query_used: result.queryUsed ?? null,
     match_status: result.status,
     best_price: result.bestPrice ?? null,
@@ -185,19 +183,13 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
 
 function analyzeDecision(result: PriceListItemResult) {
   const currentPrice = normalizeOptionalNumber(result.input.currentPrice);
-  const currentCost = normalizeOptionalNumber(result.input.currentCost);
   const referencePrice = normalizeOptionalNumber(result.bestPrice);
-  const marginPercent =
-    currentPrice && currentCost
-      ? ((currentPrice - currentCost) / currentPrice) * 100
-      : null;
   const gapPercent =
     currentPrice && referencePrice
       ? ((currentPrice - referencePrice) / referencePrice) * 100
       : null;
   const suggestedPrice = calculateSuggestedPrice(
     currentPrice,
-    currentCost,
     referencePrice,
   );
 
@@ -206,10 +198,9 @@ function analyzeDecision(result: PriceListItemResult) {
       result,
       currentPrice,
       referencePrice,
-      marginPercent,
       gapPercent,
     ),
-    marginPercent,
+    marginPercent: null,
     gapPercent,
     suggestedPrice,
   };
@@ -219,7 +210,6 @@ function getDecisionStatus(
   result: PriceListItemResult,
   currentPrice: number | null,
   referencePrice: number | null,
-  marginPercent: number | null,
   gapPercent: number | null,
 ): DecisionStatus {
   if (!referencePrice) {
@@ -232,10 +222,6 @@ function getDecisionStatus(
 
   if (result.bestSource && result.bestSource.confidenceScore < 70) {
     return "review_match";
-  }
-
-  if (marginPercent !== null && marginPercent < MIN_MARGIN_PERCENT) {
-    return "low_margin";
   }
 
   if (gapPercent !== null && gapPercent > HIGH_PRICE_GAP_PERCENT) {
@@ -251,19 +237,14 @@ function getDecisionStatus(
 
 function calculateSuggestedPrice(
   currentPrice: number | null,
-  currentCost: number | null,
   referencePrice: number | null,
 ) {
-  if (!currentPrice && !referencePrice && !currentCost) {
+  if (!currentPrice && !referencePrice) {
     return null;
   }
 
-  const marginFloor = currentCost
-    ? currentCost / (1 - MIN_MARGIN_PERCENT / 100)
-    : null;
   const target = Math.max(
     referencePrice ?? 0,
-    marginFloor ?? 0,
     currentPrice ?? 0,
   );
 
@@ -281,7 +262,6 @@ function getDecisionStatusLabel(status: DecisionStatus) {
     review_match: "Revisar match",
     no_reference: "Sin referencia",
     missing_own_price: "Falta precio Aguiar",
-    low_margin: "Margen bajo",
     above_reference: "Muy arriba",
     opportunity: "Oportunidad",
   };

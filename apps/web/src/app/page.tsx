@@ -32,19 +32,18 @@ const percentFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 1,
 });
-const MIN_MARGIN_PERCENT = 22;
 const HIGH_PRICE_GAP_PERCENT = 12;
 const OPPORTUNITY_GAP_PERCENT = -8;
+const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 
 type SourceTypeFilter = "all" | ProductSearchResult["storeType"];
 type PriceListItemFilter = "all" | "review" | PriceDecisionStatus;
-type PriceListEditableField = "currentPrice" | "currentCost";
+type PriceListEditableField = "currentPrice";
 type PriceDecisionStatus =
   | "ready"
   | "review_match"
   | "no_reference"
   | "missing_own_price"
-  | "low_margin"
   | "above_reference"
   | "opportunity";
 
@@ -53,9 +52,7 @@ type PriceDecisionAnalysis = {
   status: PriceDecisionStatus;
   statusLabel: string;
   currentPrice: number | null;
-  currentCost: number | null;
   referencePrice: number | null;
-  marginPercent: number | null;
   gapPercent: number | null;
   suggestedPrice: number | null;
 };
@@ -65,7 +62,6 @@ type WeeklyAnalysis = {
   withReference: number;
   withoutReference: number;
   withOwnPrice: number;
-  lowMargin: number;
   opportunities: number;
   aboveReference: number;
   ready: number;
@@ -81,7 +77,6 @@ type WeeklyAnalysis = {
     total: number;
     withReference: number;
     withoutReference: number;
-    lowMargin: number;
     opportunities: number;
   }>;
   topGaps: PriceDecisionAnalysis[];
@@ -156,7 +151,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#fff8f2]">
+    <main className="min-h-screen overflow-x-hidden bg-[#fff8f2]">
       <section className="relative overflow-hidden bg-[#153d7b] text-white">
         <div
           aria-hidden="true"
@@ -170,12 +165,12 @@ export default function Home() {
           aria-hidden="true"
           className="absolute inset-0 bg-[#143a78]/88"
         />
-        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-7 px-5 py-10 md:grid-cols-[0.88fr_1.12fr] md:px-8 md:py-14">
+        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-5 px-4 py-8 sm:px-6 sm:py-10 lg:grid-cols-[0.78fr_1.22fr] lg:px-8 lg:py-12">
           <div className="flex flex-col justify-center">
-            <h1 className="max-w-xl text-4xl font-extrabold leading-[1.05] text-white md:text-5xl">
+            <h1 className="max-w-xl text-3xl font-extrabold leading-[1.08] text-white sm:text-4xl lg:text-5xl">
               Compará precios por lista
             </h1>
-            <p className="mt-4 max-w-lg text-base leading-7 text-white/88">
+            <p className="mt-3 max-w-lg text-sm leading-6 text-white/88 sm:text-base sm:leading-7">
               Importá la lista semanal, compará referencias y descargá el
               archivo para cargar precios en Aguiar.
             </p>
@@ -185,10 +180,10 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 md:py-6 lg:px-8">
         <section
           id="buscar"
-          className="rounded-md border border-[#eadbd3] bg-white p-5 shadow-[0_14px_40px_rgba(77,41,25,0.08)]"
+          className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-[0_14px_40px_rgba(77,41,25,0.08)] sm:p-5"
         >
           <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
             <div>
@@ -218,7 +213,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={isLoading}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#275fbd] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(39,95,189,0.22)] transition hover:bg-[#173e83] disabled:cursor-not-allowed disabled:bg-[#9ba8bf]"
+              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-md bg-[#275fbd] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(39,95,189,0.22)] transition hover:bg-[#173e83] disabled:cursor-not-allowed disabled:bg-[#9ba8bf] md:min-w-[132px]"
             >
               {isLoading ? (
                 <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
@@ -391,24 +386,24 @@ function PriceListImport() {
   return (
     <section
       id="lista"
-      className={`rounded-md border border-white/75 bg-white p-5 text-[#171717] shadow-[0_22px_60px_rgba(18,40,73,0.22)] ${
-        response ? "md:col-span-2" : ""
+      className={`rounded-md border border-white/75 bg-white p-4 text-[#171717] shadow-[0_22px_60px_rgba(18,40,73,0.22)] sm:p-5 ${
+        response ? "lg:col-span-2" : ""
       }`}
     >
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div>
+      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+        <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-lg font-bold text-[#171717]">
-            <FileSpreadsheet className="h-5 w-5 text-[#df2e38]" />
+            <FileSpreadsheet className="h-5 w-5 shrink-0 text-[#df2e38]" />
             Importar lista de artículos
           </h2>
-          <p className="mt-1 text-sm text-[#6f625d]">
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[#6f625d]">
             Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
-            Precio Aguiar y Costo, que también podés completar en pantalla. Solo
-            se guarda si activás evolución.
+            Precio Aguiar. Si Tokin encuentra el artículo, ese precio se completa
+            automáticamente. Solo se guarda si activás evolución.
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#df2e38] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(223,46,56,0.22)] transition hover:bg-[#bd1f2a]">
+        <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:shrink-0">
+          <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#df2e38] px-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(223,46,56,0.22)] transition hover:bg-[#bd1f2a] sm:h-11 sm:px-4">
             <Upload className="h-4 w-4" />
             Importar archivo
             <input
@@ -422,7 +417,7 @@ function PriceListImport() {
             type="button"
             disabled={!response}
             onClick={() => response && downloadPriceListCsv(response, sourceFilter)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-4 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99]"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd] disabled:cursor-not-allowed disabled:text-[#a99f99] sm:h-11 sm:px-4"
           >
             <Download className="h-4 w-4" />
             Descargar resultado
@@ -431,7 +426,7 @@ function PriceListImport() {
             type="button"
             disabled={!response}
             onClick={() => response && downloadAraUploadCsv(response, sourceFilter)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#275fbd] bg-[#f5f8ff] px-4 text-sm font-semibold text-[#173e83] transition hover:bg-[#eaf2ff] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99]"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#275fbd] bg-[#f5f8ff] px-3 text-sm font-semibold text-[#173e83] transition hover:bg-[#eaf2ff] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99] sm:h-11 sm:px-4"
           >
             <Download className="h-4 w-4" />
             Exportar para Aguiar
@@ -442,7 +437,7 @@ function PriceListImport() {
               !response || response.persistence?.saved || isSavingForEvolution
             }
             onClick={() => void handleSaveForEvolution()}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#173d2f] bg-[#f1fbf6] px-4 text-sm font-semibold text-[#173d2f] transition hover:bg-[#e4f6ed] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99]"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#173d2f] bg-[#f1fbf6] px-3 text-sm font-semibold text-[#173d2f] transition hover:bg-[#e4f6ed] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99] sm:h-11 sm:px-4"
           >
             {isSavingForEvolution ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -556,7 +551,10 @@ function PriceListResults({
 }) {
   const [itemFilter, setItemFilter] = useState<PriceListItemFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const visibleSources = filterSourcesByType(response.sources, sourceFilter);
+  const visibleSources = filterSourcesByType(
+    response.sources.filter((source) => !isAguiarTokinSource(source.sourceId)),
+    sourceFilter,
+  );
   const sourceFilteredResults = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
@@ -583,7 +581,7 @@ function PriceListResults({
 
       <SourceCoverageSummary coverage={sourceCoverage} />
 
-      <div className="grid gap-2 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
         <Metric label="Artículos" value={visibleResults.length} />
         <Metric label="Con Aguiar" value={analysis.withOwnPrice} />
         <Metric label="Con precio" value={matchedCount} />
@@ -609,19 +607,18 @@ function PriceListResults({
         <>
           <WeeklyAnalysisPanel analysis={analysis} />
 
-          <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white md:block">
-            <table className="min-w-[1320px] border-collapse text-left text-xs">
+          <div className="hidden overflow-x-auto rounded-md border border-[#d9dee7] bg-white lg:block">
+            <table className="min-w-[1120px] border-collapse text-left text-xs">
               <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
                 <tr>
-                  <th className="px-3 py-3">Artículo</th>
-                  <th className="px-3 py-3">Código / EAN</th>
-                  <th className="px-3 py-3">Precio Aguiar</th>
-                  <th className="px-3 py-3">Costo</th>
-                  <th className="px-3 py-3">Mejor precio</th>
-                  <th className="px-3 py-3">Comercio</th>
-                  <th className="px-3 py-3">Producto encontrado</th>
+                  <th className="px-2.5 py-3">Artículo</th>
+                  <th className="px-2.5 py-3">Código / EAN</th>
+                  <th className="px-2.5 py-3">Precio Aguiar</th>
+                  <th className="px-2.5 py-3">Mejor precio</th>
+                  <th className="px-2.5 py-3">Comercio</th>
+                  <th className="px-2.5 py-3">Producto encontrado</th>
                   {visibleSources.map((source, index) => (
-                    <th key={source.sourceId} className="px-3 py-3">
+                    <th key={source.sourceId} className="px-2.5 py-3">
                       Comparación {index + 1}
                     </th>
                   ))}
@@ -659,11 +656,13 @@ function PriceListResults({
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] p-3">
-      <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+    <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] p-2.5 sm:p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#667789] sm:text-xs">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold text-[#17202a]">{value}</div>
+      <div className="mt-1 text-xl font-semibold text-[#17202a] sm:text-2xl">
+        {value}
+      </div>
     </div>
   );
 }
@@ -734,7 +733,7 @@ function AraNumberInput({
           }
         }}
         placeholder="-"
-        className={`h-9 w-full min-w-[96px] rounded-md border bg-[#fffdfa] px-2 text-sm font-semibold text-[#17202a] outline-none transition focus:ring-4 ${
+        className={`h-9 w-full min-w-[88px] rounded-md border bg-[#fffdfa] px-2 text-sm font-semibold text-[#17202a] outline-none transition focus:ring-4 ${
           isInvalid
             ? "border-[#df2e38] focus:ring-[#df2e38]/15"
             : "border-[#dec8bd] focus:border-[#df2e38] focus:ring-[#df2e38]/15"
@@ -746,7 +745,7 @@ function AraNumberInput({
 
 function SourceCoverageSummary({ coverage }: { coverage: SourceCoverage }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
       <CoverageMetric
         label="Fuentes"
         value={coverage.totalSources}
@@ -785,7 +784,7 @@ function CoverageMetric({
       <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#667789]">
         {label}
       </div>
-      <div className="mt-1 flex items-baseline justify-between gap-2">
+      <div className="mt-1 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
         <span className="text-xl font-semibold text-[#17202a]">{value}</span>
         <span className="text-xs text-[#667789]">{helper}</span>
       </div>
@@ -816,7 +815,6 @@ function PriceListWorkbenchControls({
     { value: "review", label: "A revisar" },
     { value: "no_reference", label: "Sin referencia" },
     { value: "missing_own_price", label: "Falta Aguiar" },
-    { value: "low_margin", label: "Margen bajo" },
     { value: "above_reference", label: "Muy arriba" },
     { value: "opportunity", label: "Oportunidad" },
   ];
@@ -824,7 +822,7 @@ function PriceListWorkbenchControls({
   return (
     <div className="rounded-md border border-[#d9dee7] bg-white p-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {options.map((option) => {
             const isActive = itemFilter === option.value;
 
@@ -833,7 +831,7 @@ function PriceListWorkbenchControls({
                 key={option.value}
                 type="button"
                 onClick={() => onItemFilterChange(option.value)}
-                className={`rounded-md px-3 py-2 text-xs font-semibold transition ${
+                className={`rounded-md px-2.5 py-2 text-xs font-semibold transition ${
                   isActive
                     ? "bg-[#171717] text-white"
                     : "bg-[#f8fafc] text-[#526170] hover:bg-[#edf1f5] hover:text-[#17202a]"
@@ -849,7 +847,7 @@ function PriceListWorkbenchControls({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="relative w-full sm:w-[280px]">
+          <label className="relative w-full sm:w-[320px]">
             <span className="sr-only">Buscar dentro de la lista importada</span>
             <Search
               aria-hidden="true"
@@ -898,19 +896,19 @@ function WeeklyAnalysisPanel({ analysis }: { analysis: WeeklyAnalysis }) {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2 md:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Metric label="Listos" value={analysis.ready} />
         <Metric label="Oportunidades" value={analysis.opportunities} />
-        <Metric label="Margen bajo" value={analysis.lowMargin} />
         <Metric label="Muy arriba" value={analysis.aboveReference} />
+        <Metric label="Sin referencia" value={analysis.withoutReference} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <DecisionStatusChart analysis={analysis} />
         <RubroSummaryTable analysis={analysis} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <GapAnalysisTable analysis={analysis} />
         <DecisionTable analysis={analysis} />
       </div>
@@ -966,7 +964,6 @@ function RubroSummaryTable({ analysis }: { analysis: WeeklyAnalysis }) {
               <th className="px-3 py-2">Art.</th>
               <th className="px-3 py-2">Con ref.</th>
               <th className="px-3 py-2">Sin ref.</th>
-              <th className="px-3 py-2">Margen bajo</th>
               <th className="px-3 py-2">Oportunidad</th>
             </tr>
           </thead>
@@ -982,9 +979,6 @@ function RubroSummaryTable({ analysis }: { analysis: WeeklyAnalysis }) {
                 </td>
                 <td className="px-3 py-2 text-[#8f2d20]">
                   {rubro.withoutReference}
-                </td>
-                <td className="px-3 py-2 text-[#8f2d20]">
-                  {rubro.lowMargin}
                 </td>
                 <td className="px-3 py-2 text-[#73510b]">
                   {rubro.opportunities}
@@ -1008,7 +1002,7 @@ function GapAnalysisTable({ analysis }: { analysis: WeeklyAnalysis }) {
       </div>
       {analysis.topGaps.length === 0 ? (
         <div className="px-3 py-5 text-sm text-[#667789]">
-          Agregá una columna de precio Aguiar para calcular brechas.
+          No hay brechas para mostrar con los filtros actuales.
         </div>
       ) : (
         <div className="max-h-[280px] overflow-auto">
@@ -1120,21 +1114,21 @@ function PriceListRow({
 
   return (
     <tr className={result.bestSource ? "align-top" : "align-top bg-[#fff8f7]"}>
-      <td className="max-w-[300px] px-3 py-3">
-        <div className="font-medium text-[#17202a]">
+      <td className="max-w-[260px] px-2.5 py-3">
+        <div className="line-clamp-3 font-medium leading-5 text-[#17202a]">
           {result.input.description || "-"}
         </div>
         {result.input.rubro ? (
           <div className="mt-1 text-[#667789]">{result.input.rubro}</div>
         ) : null}
       </td>
-      <td className="px-3 py-3 text-[#526170]">
+      <td className="px-2.5 py-3 text-[#526170]">
         <div>{result.input.code || "-"}</div>
         <div className="mt-1">
           {result.input.ean13Di || result.input.ean13Bu || "-"}
         </div>
       </td>
-      <td className="px-3 py-3">
+      <td className="px-2.5 py-3">
         <AraNumberInput
           label="Precio Aguiar"
           value={result.input.currentPrice ?? null}
@@ -1144,22 +1138,12 @@ function PriceListRow({
           }
         />
       </td>
-      <td className="px-3 py-3">
-        <AraNumberInput
-          label="Costo"
-          value={result.input.currentCost ?? null}
-          hideLabel
-          onChange={(value) =>
-            onItemInputChange(result.input.rowNumber, "currentCost", value)
-          }
-        />
-      </td>
-      <td className="px-3 py-3 text-sm font-semibold text-[#173d2f]">
+      <td className="px-2.5 py-3 text-sm font-semibold text-[#173d2f]">
         {result.bestPrice === null
           ? "-"
           : currencyFormatter.format(result.bestPrice)}
       </td>
-      <td className="px-3 py-3">
+      <td className="px-2.5 py-3">
         {result.bestSource ? (
           <div>
             <div className="font-medium text-[#17202a]">
@@ -1175,7 +1159,7 @@ function PriceListRow({
           <span className="font-medium text-[#8f2d20]">Sin precio</span>
         )}
       </td>
-      <td className="max-w-[280px] px-3 py-3 text-[#17202a]">
+      <td className="max-w-[250px] px-2.5 py-3 text-[#17202a]">
         {result.bestSource?.productUrl ? (
           <a
             href={result.bestSource.productUrl}
@@ -1191,10 +1175,10 @@ function PriceListRow({
       </td>
       {sourceComparisons.map(({ source, sourcePrice }) => {
         return (
-          <td key={source.sourceId} className="px-3 py-3">
+          <td key={source.sourceId} className="px-2.5 py-3">
             {sourcePrice ? (
               <div title={sourcePrice.productName}>
-                <div className="font-medium text-[#17202a]">
+                <div className="line-clamp-2 font-medium text-[#17202a]">
                   {sourcePrice.storeName}
                 </div>
                 <div className="mt-1 font-semibold text-[#173d2f]">
@@ -1203,7 +1187,7 @@ function PriceListRow({
               </div>
             ) : (
               <div>
-                <div className="font-medium text-[#83909d]">
+                <div className="line-clamp-2 font-medium text-[#83909d]">
                   {source.storeName}
                 </div>
                 <div className="mt-1 text-[#9aa5b1]">Sin precio</div>
@@ -1234,7 +1218,7 @@ function PriceListCards({
   );
 
   return (
-    <div className="grid gap-3 md:hidden">
+    <div className="grid gap-3 lg:hidden">
       {results.map((result) => {
         const shouldReview =
           result.bestSource !== null && result.bestSource.confidenceScore < 70;
@@ -1242,7 +1226,7 @@ function PriceListCards({
         return (
           <article
             key={`${result.input.rowNumber}-${result.input.code ?? ""}-card`}
-            className={`rounded-md border p-4 ${
+            className={`rounded-md border p-3 sm:p-4 ${
               result.bestSource
                 ? "border-[#d9dee7] bg-white"
                 : "border-[#edd0cb] bg-[#fff8f7]"
@@ -1250,7 +1234,7 @@ function PriceListCards({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-base font-semibold text-[#17202a]">
+                <h3 className="line-clamp-3 text-sm font-semibold leading-5 text-[#17202a] sm:text-base">
                   {result.input.description || "Artículo sin descripción"}
                 </h3>
                 {result.input.rubro ? (
@@ -1266,7 +1250,7 @@ function PriceListCards({
               ) : null}
             </div>
 
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-[#667789]">Código</dt>
                 <dd className="mt-1 font-medium text-[#17202a]">
@@ -1281,7 +1265,7 @@ function PriceListCards({
               </div>
             </dl>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-3">
               <AraNumberInput
                 label="Precio Aguiar"
                 value={result.input.currentPrice ?? null}
@@ -1293,19 +1277,14 @@ function PriceListCards({
                   )
                 }
               />
-              <AraNumberInput
-                label="Costo"
-                value={result.input.currentCost ?? null}
-                onChange={(value) =>
-                  onItemInputChange(result.input.rowNumber, "currentCost", value)
-                }
-              />
             </div>
 
             {result.bestSource ? (
-              <div className="mt-4 rounded-md bg-[#f6f7f9] p-3">
-                <div className="text-sm text-[#667789]">Mejor precio</div>
-                <div className="mt-1 text-xl font-semibold text-[#173d2f]">
+              <div className="mt-3 rounded-md bg-[#f6f7f9] p-3">
+                <div className="text-xs font-medium uppercase tracking-[0.04em] text-[#667789]">
+                  Mejor precio
+                </div>
+                <div className="mt-1 text-lg font-semibold text-[#173d2f] sm:text-xl">
                   {currencyFormatter.format(result.bestSource.price)}
                 </div>
                 <div className="mt-1 text-sm font-medium text-[#17202a]">
@@ -1323,7 +1302,7 @@ function PriceListCards({
                 ) : null}
               </div>
             ) : (
-              <div className="mt-4 rounded-md bg-white px-3 py-2 text-sm font-medium text-[#8f2d20]">
+              <div className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-medium text-[#8f2d20]">
                 Sin precio disponible
               </div>
             )}
@@ -1438,7 +1417,7 @@ function SourceTypeFilterControl({
   ];
 
   return (
-    <div className="inline-flex w-full rounded-md border border-[#eadbd3] bg-[#fffdfa] p-1 sm:w-fit">
+    <div className="inline-flex w-full max-w-full overflow-x-auto rounded-md border border-[#eadbd3] bg-[#fffdfa] p-1 sm:w-fit">
       {options.map((option) => {
         const isActive = value === option.value;
 
@@ -1447,7 +1426,7 @@ function SourceTypeFilterControl({
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`h-9 flex-1 rounded px-3 text-sm font-semibold transition sm:flex-none ${
+            className={`h-9 flex-1 shrink-0 rounded px-3 text-sm font-semibold transition sm:flex-none ${
               isActive
                 ? "bg-[#171717] text-white"
                 : "text-[#6f625d] hover:bg-white hover:text-[#171717]"
@@ -1465,28 +1444,28 @@ function SourcesDetails({ sources }: { sources: SourceSearchStatus[] }) {
   const sortedSources = sortSourcesForDisplay(sources);
 
   return (
-    <details className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm text-[#526170]">
+    <details className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-3 text-sm text-[#526170] sm:px-4">
       <summary className="cursor-pointer font-medium text-[#17202a]">
         Fuentes consultadas
       </summary>
-      <div className="mt-3 grid gap-2 md:grid-cols-2">
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">
         {sortedSources.map((source) => (
           <div
             key={source.sourceId}
             className="rounded border border-[#d9dee7] bg-white px-3 py-2"
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               {source.sourceUrl ? (
                 <a
                   href={source.sourceUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-medium text-[#17202a] underline-offset-2 hover:underline"
+                  className="min-w-0 break-words font-medium text-[#17202a] underline-offset-2 hover:underline"
                 >
                   {source.storeName}
                 </a>
               ) : (
-                <span className="font-medium text-[#17202a]">
+                <span className="min-w-0 break-words font-medium text-[#17202a]">
                   {source.storeName}
                 </span>
               )}
@@ -1528,7 +1507,7 @@ function sortSourcesForDisplay(sources: SourceSearchStatus[]) {
 
 function ResultsTable({ results }: { results: ProductSearchResult[] }) {
   return (
-    <div className="hidden overflow-hidden rounded-md border border-[#d9dee7] bg-white md:block">
+    <div className="hidden overflow-hidden rounded-md border border-[#d9dee7] bg-white lg:block">
       <table className="w-full border-collapse text-left text-sm">
         <thead className="bg-[#edf1f5] text-xs uppercase tracking-[0.06em] text-[#526170]">
           <tr>
@@ -1596,11 +1575,11 @@ function ResultsTable({ results }: { results: ProductSearchResult[] }) {
 
 function ResultsCards({ results }: { results: ProductSearchResult[] }) {
   return (
-    <div className="grid gap-3 md:hidden">
+    <div className="grid gap-3 lg:hidden">
       {results.map((result) => (
         <article
           key={resultKey(result)}
-          className="rounded-md border border-[#d9dee7] bg-white p-4"
+          className="rounded-md border border-[#d9dee7] bg-white p-3 sm:p-4"
         >
           <div className="flex gap-3">
             {result.imageUrl ? (
@@ -1615,7 +1594,7 @@ function ResultsCards({ results }: { results: ProductSearchResult[] }) {
               <div className="text-sm font-medium text-[#526170]">
                 {result.storeName}
               </div>
-              <h3 className="mt-1 text-base font-semibold text-[#17202a]">
+              <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-5 text-[#17202a] sm:text-base">
                 {result.rawName}
               </h3>
               {result.brand ? (
@@ -1625,7 +1604,7 @@ function ResultsCards({ results }: { results: ProductSearchResult[] }) {
               ) : null}
             </div>
           </div>
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <span className="text-lg font-semibold text-[#173d2f]">
               {currencyFormatter.format(result.price)}
             </span>
@@ -1691,6 +1670,10 @@ function filterSourcesByType(
   return sources.filter((source) => source.storeType === sourceFilter);
 }
 
+function isAguiarTokinSource(sourceId: string) {
+  return sourceId === AGUIAR_TOKIN_SOURCE_ID;
+}
+
 function filterResultsBySourceType(
   results: ProductSearchResult[],
   sourceFilter: SourceTypeFilter,
@@ -1706,12 +1689,12 @@ function filterPriceListResultBySourceType(
   result: PriceListItemResult,
   sourceFilter: SourceTypeFilter,
 ): PriceListItemResult {
-  if (sourceFilter === "all") {
-    return result;
-  }
-
   const sourcePrices = result.sourcePrices
-    .filter((sourcePrice) => sourcePrice.storeType === sourceFilter)
+    .filter((sourcePrice) => !isAguiarTokinSource(sourcePrice.sourceId))
+    .filter(
+      (sourcePrice) =>
+        sourceFilter === "all" || sourcePrice.storeType === sourceFilter,
+    )
     .sort((first, second) => first.price - second.price);
   const bestSource = sourcePrices[0] ?? null;
 
@@ -1770,7 +1753,6 @@ function buildPriceListFilterCounts(
     review_match: 0,
     no_reference: 0,
     missing_own_price: 0,
-    low_margin: 0,
     above_reference: 0,
     opportunity: 0,
   };
@@ -1912,8 +1894,6 @@ function buildWeeklyAnalysis(results: PriceListItemResult[]): WeeklyAnalysis {
     ).length,
     withOwnPrice: decisions.filter((decision) => decision.currentPrice !== null)
       .length,
-    lowMargin: decisions.filter((decision) => decision.status === "low_margin")
-      .length,
     opportunities: decisions.filter((decision) => decision.status === "opportunity")
       .length,
     aboveReference: decisions.filter(
@@ -1932,24 +1912,19 @@ function analyzePriceDecision(
   result: PriceListItemResult,
 ): PriceDecisionAnalysis {
   const currentPrice = normalizeOptionalNumber(result.input.currentPrice);
-  const currentCost = normalizeOptionalNumber(result.input.currentCost);
   const referencePrice = normalizeOptionalNumber(result.bestPrice);
-  const marginPercent =
-    currentPrice && currentCost ? ((currentPrice - currentCost) / currentPrice) * 100 : null;
   const gapPercent =
     currentPrice && referencePrice
       ? ((currentPrice - referencePrice) / referencePrice) * 100
       : null;
   const suggestedPrice = calculateSuggestedPrice(
     currentPrice,
-    currentCost,
     referencePrice,
   );
   const status = getPriceDecisionStatus(
     result,
     currentPrice,
     referencePrice,
-    marginPercent,
     gapPercent,
   );
 
@@ -1958,9 +1933,7 @@ function analyzePriceDecision(
     status,
     statusLabel: getDecisionStatusLabel(status),
     currentPrice,
-    currentCost,
     referencePrice,
-    marginPercent,
     gapPercent,
     suggestedPrice,
   };
@@ -1970,7 +1943,6 @@ function getPriceDecisionStatus(
   result: PriceListItemResult,
   currentPrice: number | null,
   referencePrice: number | null,
-  marginPercent: number | null,
   gapPercent: number | null,
 ): PriceDecisionStatus {
   if (!referencePrice) {
@@ -1983,10 +1955,6 @@ function getPriceDecisionStatus(
 
   if (result.bestSource && result.bestSource.confidenceScore < 70) {
     return "review_match";
-  }
-
-  if (marginPercent !== null && marginPercent < MIN_MARGIN_PERCENT) {
-    return "low_margin";
   }
 
   if (gapPercent !== null && gapPercent > HIGH_PRICE_GAP_PERCENT) {
@@ -2002,19 +1970,14 @@ function getPriceDecisionStatus(
 
 function calculateSuggestedPrice(
   currentPrice: number | null,
-  currentCost: number | null,
   referencePrice: number | null,
 ) {
-  if (!currentPrice && !referencePrice && !currentCost) {
+  if (!currentPrice && !referencePrice) {
     return null;
   }
 
-  const marginFloor = currentCost
-    ? currentCost / (1 - MIN_MARGIN_PERCENT / 100)
-    : null;
   const target = Math.max(
     referencePrice ?? 0,
-    marginFloor ?? 0,
     currentPrice ?? 0,
   );
 
@@ -2036,23 +1999,17 @@ function summarizeRubros(decisions: PriceDecisionAnalysis[]) {
       total: 0,
       withReference: 0,
       withoutReference: 0,
-      lowMargin: 0,
       opportunities: 0,
     };
 
     current.total += 1;
     current.withReference += decision.referencePrice !== null ? 1 : 0;
     current.withoutReference += decision.referencePrice === null ? 1 : 0;
-    current.lowMargin += decision.status === "low_margin" ? 1 : 0;
     current.opportunities += decision.status === "opportunity" ? 1 : 0;
     rubros.set(rubro, current);
   }
 
   return Array.from(rubros.values()).sort((first, second) => {
-    if (second.lowMargin !== first.lowMargin) {
-      return second.lowMargin - first.lowMargin;
-    }
-
     if (second.withoutReference !== first.withoutReference) {
       return second.withoutReference - first.withoutReference;
     }
@@ -2066,7 +2023,6 @@ function buildDecisionStatusCounts(decisions: PriceDecisionAnalysis[]) {
     "ready",
     "opportunity",
     "above_reference",
-    "low_margin",
     "missing_own_price",
     "review_match",
     "no_reference",
@@ -2085,7 +2041,6 @@ function getDecisionStatusLabel(status: PriceDecisionStatus) {
     review_match: "Revisar match",
     no_reference: "Sin referencia",
     missing_own_price: "Falta precio Aguiar",
-    low_margin: "Margen bajo",
     above_reference: "Muy arriba",
     opportunity: "Oportunidad",
   };
@@ -2099,7 +2054,6 @@ function decisionBarClassName(status: PriceDecisionStatus) {
     review_match: "bg-[#d68b14]",
     no_reference: "bg-[#8b96a5]",
     missing_own_price: "bg-[#6b7c8f]",
-    low_margin: "bg-[#c0392b]",
     above_reference: "bg-[#d65f21]",
     opportunity: "bg-[#2d74c4]",
   };
@@ -2114,7 +2068,6 @@ function decisionBadgeClassName(status: PriceDecisionStatus) {
     review_match: "bg-[#fff8e6] text-[#73510b]",
     no_reference: "bg-[#eef1f4] text-[#526170]",
     missing_own_price: "bg-[#eef1f4] text-[#526170]",
-    low_margin: "bg-[#fff1ef] text-[#8f2d20]",
     above_reference: "bg-[#fff1ef] text-[#8f2d20]",
     opportunity: "bg-[#eaf2ff] text-[#1d5f8f]",
   };
@@ -2225,12 +2178,6 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
     "precio publico",
     "precio final",
   ]);
-  const currentCostIndex = findColumn(headers, [
-    "costo",
-    "costo actual",
-    "costo unitario",
-    "precio costo",
-  ]);
 
   return rows
     .slice(headerIndex + 1)
@@ -2244,7 +2191,6 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
       currentPrice: parseSpreadsheetAmount(
         readPriceListCell(row, currentPriceIndex),
       ),
-      currentCost: parseSpreadsheetAmount(readPriceListCell(row, currentCostIndex)),
     }))
     .filter(
       (item) =>
@@ -2259,7 +2205,10 @@ function downloadPriceListCsv(
   response: PriceListResponse,
   sourceFilter: SourceTypeFilter,
 ) {
-  const sources = filterSourcesByType(response.sources, sourceFilter);
+  const sources = filterSourcesByType(
+    response.sources.filter((source) => !isAguiarTokinSource(source.sourceId)),
+    sourceFilter,
+  );
   const results = response.results.map((result) =>
     filterPriceListResultBySourceType(result, sourceFilter),
   );
@@ -2271,8 +2220,6 @@ function downloadPriceListCsv(
     "EAN 13 DI",
     "EAN 13 BU",
     "Precio Aguiar",
-    "Costo",
-    "Margen actual %",
     "Brecha vs referencia %",
     "Precio sugerido",
     "Estado decision",
@@ -2294,8 +2241,6 @@ function downloadPriceListCsv(
       result.input.ean13Di ?? "",
       result.input.ean13Bu ?? "",
       result.input.currentPrice?.toFixed(2) ?? "",
-      result.input.currentCost?.toFixed(2) ?? "",
-      decision.marginPercent === null ? "" : decision.marginPercent.toFixed(2),
       decision.gapPercent === null ? "" : decision.gapPercent.toFixed(2),
       decision.suggestedPrice === null ? "" : decision.suggestedPrice.toFixed(2),
       decision.statusLabel,
@@ -2338,7 +2283,6 @@ function downloadAraUploadCsv(
     "Rubro",
     "Precio a cargar Aguiar",
     "Precio Aguiar actual",
-    "Costo",
     "Precio referencia",
     "Fuente referencia",
     "Estado decision",
@@ -2359,7 +2303,6 @@ function downloadAraUploadCsv(
       result.input.rubro ?? "",
       formatCsvAmount(priceToLoad),
       formatCsvAmount(decision.currentPrice),
-      formatCsvAmount(decision.currentCost),
       formatCsvAmount(decision.referencePrice),
       result.bestSource?.storeName ?? "",
       decision.statusLabel,
