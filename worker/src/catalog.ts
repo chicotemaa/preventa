@@ -138,11 +138,15 @@ export function searchCatalog(query: string) {
   };
 }
 
-export function matchPriceListItems(
+export async function matchPriceListItems(
   items: PriceListInputItem[],
-): PriceListResponse {
+): Promise<PriceListResponse> {
   const startedAt = Date.now();
-  const results = items.map((item) => matchPriceListItem(item));
+  const results = await mapWithConcurrency(
+    items,
+    4,
+    matchPriceListItemWithDirectAguiar,
+  );
   const matchedCount = results.filter((result) => result.status === "matched").length;
 
   return {
@@ -155,6 +159,28 @@ export function matchPriceListItems(
     catalog: getCatalogMetadata(),
     results,
   };
+}
+
+async function matchPriceListItemWithDirectAguiar(
+  item: PriceListInputItem,
+): Promise<PriceListItemResult> {
+  const catalogResult = matchPriceListItem(item);
+
+  if (normalizeOptionalPrice(catalogResult.input.currentPrice)) {
+    return catalogResult;
+  }
+
+  const expectedBrand = getExpectedBrandForPriceListItem(item);
+  const aguiarSourcePrice = await findDirectAguiarSourcePrice(
+    item,
+    expectedBrand,
+  );
+
+  if (!aguiarSourcePrice) {
+    return catalogResult;
+  }
+
+  return applyAguiarSourcePrice(catalogResult, aguiarSourcePrice);
 }
 
 async function runCatalogSync(): Promise<CatalogSnapshot> {
@@ -319,11 +345,12 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     const bestSource = [...comparableSourcePrices].sort(
       (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     )[0] ?? null;
+    const hasAguiarPrice = Boolean(normalizeOptionalPrice(input.currentPrice));
 
     return {
       input,
       queryUsed: query,
-      status: bestSource ? "matched" : "not_found",
+      status: bestSource || hasAguiarPrice ? "matched" : "not_found",
       bestPrice: bestSource ? getComparisonPrice(bestSource) : null,
       bestSource,
       sourcePrices: comparableSourcePrices,
@@ -340,6 +367,105 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     sourcePrices: [],
     matchedCount: 0,
   };
+}
+
+async function findDirectAguiarSourcePrice(
+  item: PriceListInputItem,
+  expectedBrand?: TargetBrand,
+) {
+  const source = scrapingSources.find(
+    (scrapingSource) => scrapingSource.id === AGUIAR_TOKIN_SOURCE_ID,
+  );
+
+  if (!source || source.enabled === false) {
+    return null;
+  }
+
+  const itemText = [item.description, item.rubro].filter(Boolean).join(" ");
+
+  for (const query of buildAguiarDirectQueries(item)) {
+    const result = await searchSource(source, query, undefined, {
+      filterByConfidence: false,
+      limitResults: false,
+    }).catch(() => null);
+
+    if (!result) {
+      continue;
+    }
+
+    const queryIdentifier = cleanIdentifier(query);
+    const matches = result.results
+      .filter((product) =>
+        expectedBrand ? productMatchesExpectedBrand(product, expectedBrand) : true,
+      )
+      .map((product) => {
+        const exactIdentifierMatch =
+          Boolean(queryIdentifier) &&
+          getProductIdentifiers(product).some(
+            (identifier) => cleanIdentifier(identifier) === queryIdentifier,
+          );
+        const baseScore = exactIdentifierMatch
+          ? 100
+          : calculateCatalogProductScore(query, product);
+        const confidenceScore = exactIdentifierMatch
+          ? 100
+          : applyCatalogAttributeScore(
+              baseScore,
+              itemText,
+              getProductMatchText(product),
+            );
+
+        return { ...product, confidenceScore };
+      })
+      .filter((product) => product.confidenceScore >= 60)
+      .sort((first, second) => {
+        if (second.confidenceScore !== first.confidenceScore) {
+          return second.confidenceScore - first.confidenceScore;
+        }
+
+        return getComparisonPrice(first) - getComparisonPrice(second);
+      });
+    const sourcePrice = summarizeSourcePrices(matches).find(
+      isAguiarTokinSourcePrice,
+    );
+
+    if (sourcePrice) {
+      return { query, sourcePrice };
+    }
+  }
+
+  return null;
+}
+
+function applyAguiarSourcePrice(
+  result: PriceListItemResult,
+  aguiarMatch: { query: string; sourcePrice: PriceListSourcePrice },
+): PriceListItemResult {
+  const input = {
+    ...result.input,
+    currentPrice: getComparisonPrice(aguiarMatch.sourcePrice),
+  };
+  const hasAnyPrice = result.bestSource !== null || Boolean(input.currentPrice);
+
+  return {
+    ...result,
+    input,
+    queryUsed: result.queryUsed ?? aguiarMatch.query,
+    status: hasAnyPrice ? "matched" : "not_found",
+    matchedCount: result.matchedCount + 1,
+  };
+}
+
+function buildAguiarDirectQueries(item: PriceListInputItem) {
+  const queries = [
+    cleanIdentifier(item.ean13Di),
+    cleanIdentifier(item.ean13Bu),
+    cleanIdentifier(item.code),
+    normalizeImportedProductDescription(item.description),
+    normalizeImportedProductDescription(item.description, { stripSizes: true }),
+  ].filter((query): query is string => Boolean(query && query.length >= 2));
+
+  return Array.from(new Set(queries)).slice(0, 5);
 }
 
 function isAguiarTokinSourcePrice(sourcePrice: PriceListSourcePrice) {
@@ -572,6 +698,34 @@ function getProductIdentifiers(product: ProductSearchResult) {
 function cleanIdentifier(value: string | number | null | undefined) {
   const normalizedValue = String(value ?? "").replace(/\D/g, "");
   return normalizedValue && normalizedValue !== "0" ? normalizedValue : "";
+}
+
+function normalizeOptionalPrice(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+async function mapWithConcurrency<TInput, TOutput>(
+  items: TInput[],
+  concurrency: number,
+  mapper: (item: TInput) => Promise<TOutput>,
+) {
+  const results = new Array<TOutput>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex]);
+      }
+    },
+  );
+
+  await Promise.all(workers);
+  return results;
 }
 
 function normalizeImportedProductDescription(

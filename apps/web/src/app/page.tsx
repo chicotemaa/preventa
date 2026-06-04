@@ -1009,9 +1009,10 @@ function PriceListRow({
     aguiarPrice !== null &&
     bestMarketPrice !== null &&
     aguiarPrice > bestMarketPrice;
+  const hasAnyPrice = aguiarPrice !== null || result.bestSource !== null;
 
   return (
-    <tr className={result.bestSource ? "align-top" : "align-top bg-[#fff8f7]"}>
+    <tr className={hasAnyPrice ? "align-top" : "align-top bg-[#fff8f7]"}>
       <td className="max-w-[260px] px-2.5 py-3">
         <div className="line-clamp-3 font-medium leading-5 text-[#17202a]">
           {result.input.description || "-"}
@@ -1129,12 +1130,13 @@ function PriceListCards({
           aguiarPrice !== null &&
           bestMarketPrice !== null &&
           aguiarPrice > bestMarketPrice;
+        const hasAnyPrice = aguiarPrice !== null || result.bestSource !== null;
 
         return (
           <article
             key={`${result.input.rowNumber}-${result.input.code ?? ""}-card`}
             className={`rounded-md border p-3 sm:p-4 ${
-              result.bestSource
+              hasAnyPrice
                 ? "border-[#d9dee7] bg-white"
                 : "border-[#edd0cb] bg-[#fff8f7]"
             }`}
@@ -1216,8 +1218,16 @@ function PriceListCards({
                 ) : null}
               </div>
             ) : (
-              <div className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-medium text-[#8f2d20]">
-                Sin precio disponible
+              <div
+                className={`mt-3 rounded-md px-3 py-2 text-sm font-medium ${
+                  aguiarPrice
+                    ? "bg-[#f6f7f9] text-[#526170]"
+                    : "bg-white text-[#8f2d20]"
+                }`}
+              >
+                {aguiarPrice
+                  ? "Sin referencia de mercado disponible"
+                  : "Sin precio disponible"}
               </div>
             )}
 
@@ -1631,14 +1641,16 @@ function filterPriceListResultBySourceType(
     )
     .sort((first, second) => getComparablePrice(first) - getComparablePrice(second));
   const bestSource = sourcePrices[0] ?? null;
+  const hasAguiarPrice =
+    normalizeOptionalNumber(result.input.currentPrice) !== null;
 
   return {
     ...result,
-    status: bestSource ? "matched" : "not_found",
+    status: bestSource || hasAguiarPrice ? "matched" : "not_found",
     bestSource,
     bestPrice: bestSource ? getComparablePrice(bestSource) : null,
     sourcePrices,
-    matchedCount: sourcePrices.length,
+    matchedCount: sourcePrices.length + (hasAguiarPrice ? 1 : 0),
   };
 }
 

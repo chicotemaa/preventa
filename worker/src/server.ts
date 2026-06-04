@@ -181,7 +181,7 @@ async function handleCatalogPriceList(
       return;
     }
 
-    sendJson(response, 200, matchPriceListItems(parsed.data.items));
+    sendJson(response, 200, await matchPriceListItems(parsed.data.items));
   } catch (error) {
     sendJson(response, 500, {
       error:
