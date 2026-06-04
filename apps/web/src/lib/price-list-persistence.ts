@@ -280,7 +280,7 @@ function getDecisionStatusLabel(status: DecisionStatus) {
     ready: "Listo",
     review_match: "Revisar match",
     no_reference: "Sin referencia",
-    missing_own_price: "Falta precio ARA",
+    missing_own_price: "Falta precio Aguiar",
     low_margin: "Margen bajo",
     above_reference: "Muy arriba",
     opportunity: "Oportunidad",

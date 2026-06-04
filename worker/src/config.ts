@@ -29,6 +29,17 @@ export const config = {
       getOptionalStringEnv("MAXICONSUMO_HOME_URL") ??
       "https://maxiconsumo.com/sucursal_chaco/",
   },
+  vea: {
+    enabled: process.env.VEA_ENABLED !== "false",
+    email: getOptionalStringEnv("VEA_EMAIL"),
+    password: getOptionalStringEnv("VEA_PASSWORD"),
+    accountName: getOptionalStringEnv("VEA_ACCOUNT_NAME") ?? "veaargentina",
+    scope: getOptionalStringEnv("VEA_SCOPE") ?? "veaargentina",
+    homeUrl: getOptionalStringEnv("VEA_HOME_URL") ?? "https://www.vea.com.ar/",
+    authBaseUrl:
+      getOptionalStringEnv("VEA_AUTH_BASE_URL") ??
+      "https://www.vea.com.ar/api/vtexid/pub/authentication",
+  },
   tokin: {
     enabled: process.env.TOKIN_ENABLED !== "false",
     email: getOptionalStringEnv("TOKIN_EMAIL"),

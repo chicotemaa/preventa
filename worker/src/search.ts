@@ -21,6 +21,7 @@ import {
 } from "./source-metadata.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { extractProductsFromTokin } from "./tokin.js";
+import { extractProductsFromVeaAuth } from "./vea.js";
 import type {
   ProductSearchResult,
   ScrapingSource,
@@ -81,6 +82,7 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
     "maxiconsumo_auth",
     "rednorte_api",
     "tokin",
+    "vea_vtex_auth",
     "vtex_api",
     "static_html",
     "woocommerce_pmw_json",
@@ -127,6 +129,28 @@ export async function searchSource(
   if (source.sourceKind === "vtex_api") {
     return withTimeout(
       runApiSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
+  if (source.sourceKind === "vea_vtex_auth") {
+    return withTimeout(
+      runVeaVtexAuthSourceSearch(source, query, startedAt, options),
       config.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
@@ -329,6 +353,37 @@ async function runApiSourceSearch(
 ): Promise<SearchSourceResult> {
   const url = buildSearchUrl(source.searchUrlTemplate, query);
   const rawResults = await extractProductsFromVtexApi(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runVeaVtexAuthSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const rawResults = await extractProductsFromVeaAuth(source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(

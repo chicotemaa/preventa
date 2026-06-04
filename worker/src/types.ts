@@ -144,6 +144,7 @@ export type ScrapingSource = {
     | "static_html"
     | "text_lines"
     | "tokin"
+    | "vea_vtex_auth"
     | "vtex_api"
     | "woocommerce_pmw_json";
   searchUrlTemplate: string;

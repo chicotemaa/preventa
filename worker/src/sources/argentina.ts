@@ -56,9 +56,10 @@ export const scrapingSources: ScrapingSource[] = [
     storeType: "minorista",
     city: "Argentina",
     sourceUrl: "https://www.vea.com.ar/",
-    dataOrigin: "API publica VTEX del catalogo de Vea Argentina",
+    dataOrigin:
+      "API VTEX del catalogo de Vea Argentina; intenta sesion con credenciales configuradas y usa API publica como respaldo",
     sourceScope: "Argentina",
-    sourceKind: "vtex_api",
+    sourceKind: "vea_vtex_auth",
     searchUrlTemplate:
       "https://www.vea.com.ar/api/catalog_system/pub/products/search?ft={query}&_from=0&_to=24",
     requiresJavascript: false,

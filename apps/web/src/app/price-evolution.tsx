@@ -95,7 +95,7 @@ export function PriceEvolution() {
             <span className="min-w-0">Evolución de precios</span>
           </h1>
           <p className="mt-1 text-sm text-[#667789]">
-            ARA contra referencias de mercado y fuentes consultadas.
+            Aguiar contra referencias de mercado y fuentes consultadas.
           </p>
         </div>
         <button
@@ -130,7 +130,7 @@ export function PriceEvolution() {
 
       {!isLoading && payload?.enabled && products.length === 0 ? (
         <StateMessage>
-          Todavía no hay cargas guardadas. En Carga ARA activá “guardar para
+          Todavía no hay cargas guardadas. En Carga de precios activá “guardar para
           evolución” cuando importes una lista semanal.
         </StateMessage>
       ) : null}
@@ -264,7 +264,7 @@ function ProductEvolutionDetail({
 
         <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
           <EvolutionMetric
-            label="ARA actual"
+            label="Aguiar actual"
             value={formatCurrency(stats.lastAra)}
           />
           <EvolutionMetric
@@ -272,7 +272,7 @@ function ProductEvolutionDetail({
             value={formatCurrency(stats.lastReference)}
           />
           <EvolutionMetric
-            label="Var. ARA"
+            label="Var. Aguiar"
             value={formatSignedPercent(stats.araVariationPercent)}
           />
           <EvolutionMetric
@@ -305,7 +305,7 @@ function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
   if (values.length === 0) {
     return (
       <StateMessage>
-        Este producto todavía no tiene precios ARA o referencias suficientes
+        Este producto todavía no tiene precios Aguiar o referencias suficientes
         para graficar.
       </StateMessage>
     );
@@ -333,12 +333,12 @@ function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
     <section className="min-w-0 rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3">
       <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
         <h3 className="text-sm font-semibold text-[#17202a]">
-          Evolución ARA vs mercado
+          Evolución Aguiar vs mercado
         </h3>
         <div className="flex gap-3 text-xs font-medium text-[#526170]">
           <span className="inline-flex items-center gap-1">
             <span className="h-2 w-5 rounded bg-[#df2e38]" />
-            ARA
+            Aguiar
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="h-2 w-5 rounded bg-[#275fbd]" />
@@ -466,7 +466,7 @@ function EvolutionTimelineTable({
     <section className="min-w-0 overflow-hidden rounded-md border border-[#e5e9ef] bg-white">
       <div className="border-b border-[#e5e9ef] px-3 py-3">
         <h3 className="text-sm font-semibold text-[#17202a]">
-          Cargas ARA guardadas
+          Cargas Aguiar guardadas
         </h3>
       </div>
       <div className="grid gap-2 p-3 md:hidden">
@@ -489,7 +489,7 @@ function EvolutionTimelineTable({
               </span>
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <MobileValue label="ARA" value={formatCurrency(point.araPrice)} />
+              <MobileValue label="Aguiar" value={formatCurrency(point.araPrice)} />
               <MobileValue
                 label="Referencia"
                 value={formatCurrency(point.referencePrice)}
@@ -514,7 +514,7 @@ function EvolutionTimelineTable({
           <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
             <tr>
               <th className="px-3 py-2">Fecha</th>
-              <th className="px-3 py-2">ARA</th>
+              <th className="px-3 py-2">Aguiar</th>
               <th className="px-3 py-2">Referencia</th>
               <th className="px-3 py-2">Sugerido</th>
               <th className="px-3 py-2">Brecha</th>

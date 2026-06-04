@@ -280,7 +280,7 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#275fbd] bg-[#f5f8ff] px-3 text-sm font-semibold text-[#173e83] transition hover:bg-[#eaf2ff]"
           >
             <Download className="h-4 w-4" />
-            Exportar para ARA
+            Exportar para Aguiar
           </button>
         </div>
 
@@ -297,7 +297,7 @@ function RunDetail({ detail }: { detail: PriceListRunDetail }) {
             <thead className="bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
               <tr>
                 <th className="px-3 py-3">Artículo</th>
-                <th className="px-3 py-3">ARA</th>
+                <th className="px-3 py-3">Aguiar</th>
                 <th className="px-3 py-3">Referencia</th>
                 <th className="px-3 py-3">Sugerido</th>
                 <th className="px-3 py-3">Estado</th>
@@ -450,7 +450,7 @@ function downloadRunResultCsv(detail: PriceListRunDetail) {
     "Codigo",
     "EAN 13 DI",
     "EAN 13 BU",
-    "Precio ARA",
+    "Precio Aguiar",
     "Costo",
     "Margen %",
     "Brecha %",
@@ -502,8 +502,8 @@ function downloadRunAraCsv(detail: PriceListRunDetail) {
     "EAN 13 BU",
     "Descripcion",
     "Rubro",
-    "Precio a cargar ARA",
-    "Precio ARA actual",
+    "Precio a cargar Aguiar",
+    "Precio Aguiar actual",
     "Costo",
     "Precio referencia",
     "Fuente referencia",
@@ -528,7 +528,7 @@ function downloadRunAraCsv(detail: PriceListRunDetail) {
     ];
   });
 
-  downloadCsvFile(`ara-${detail.run.weekStart ?? detail.run.id}.csv`, [
+  downloadCsvFile(`aguiar-${detail.run.weekStart ?? detail.run.id}.csv`, [
     headers,
     ...rows,
   ]);

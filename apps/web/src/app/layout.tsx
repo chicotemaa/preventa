@@ -3,7 +3,7 @@ import { AppHeader } from "./app-header";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ARA Distribuidora RAP",
+  title: "Aguiar Gestión de precios",
   description: "Comparador de precios para preventa y listas comerciales",
 };
 

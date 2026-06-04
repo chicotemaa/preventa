@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { href: "/", label: "Carga ARA" },
+  { href: "/", label: "Carga de precios" },
   { href: "/evolucion", label: "Evolución" },
   { href: "/historial", label: "Historial" },
 ];
@@ -25,10 +25,10 @@ export function AppHeader() {
           </div>
           <div>
             <div className="text-xl font-extrabold leading-none text-[#171717]">
-              ARA
+              Aguiar
             </div>
             <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#df2e38]">
-              Distribuidora RAP
+              Gestión de precios
             </div>
           </div>
         </Link>

@@ -177,7 +177,7 @@ export default function Home() {
             </h1>
             <p className="mt-4 max-w-lg text-base leading-7 text-white/88">
               Importá la lista semanal, compará referencias y descargá el
-              archivo para cargar precios en ARA.
+              archivo para cargar precios en Aguiar.
             </p>
           </div>
 
@@ -403,7 +403,7 @@ function PriceListImport() {
           </h2>
           <p className="mt-1 text-sm text-[#6f625d]">
             Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
-            Precio ARA y Costo, que también podés completar en pantalla. Solo
+            Precio Aguiar y Costo, que también podés completar en pantalla. Solo
             se guarda si activás evolución.
           </p>
         </div>
@@ -434,7 +434,7 @@ function PriceListImport() {
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#275fbd] bg-[#f5f8ff] px-4 text-sm font-semibold text-[#173e83] transition hover:bg-[#eaf2ff] disabled:cursor-not-allowed disabled:border-[#dec8bd] disabled:bg-white disabled:text-[#a99f99]"
           >
             <Download className="h-4 w-4" />
-            Exportar para ARA
+            Exportar para Aguiar
           </button>
           <button
             type="button"
@@ -467,7 +467,7 @@ function PriceListImport() {
           </span>
           <span className="mt-1 block text-sm text-[#667789]">
             Activá esto solo cuando quieras dejar la lista como referencia
-            semanal para comparar ARA y fuentes.
+            semanal para comparar Aguiar y fuentes.
           </span>
         </span>
       </label>
@@ -585,7 +585,7 @@ function PriceListResults({
 
       <div className="grid gap-2 md:grid-cols-5">
         <Metric label="Artículos" value={visibleResults.length} />
-        <Metric label="Con ARA" value={analysis.withOwnPrice} />
+        <Metric label="Con Aguiar" value={analysis.withOwnPrice} />
         <Metric label="Con precio" value={matchedCount} />
         <Metric label="Sin precio" value={visibleResults.length - matchedCount} />
         <Metric label="A revisar" value={reviewCount} />
@@ -615,7 +615,7 @@ function PriceListResults({
                 <tr>
                   <th className="px-3 py-3">Artículo</th>
                   <th className="px-3 py-3">Código / EAN</th>
-                  <th className="px-3 py-3">Precio ARA</th>
+                  <th className="px-3 py-3">Precio Aguiar</th>
                   <th className="px-3 py-3">Costo</th>
                   <th className="px-3 py-3">Mejor precio</th>
                   <th className="px-3 py-3">Comercio</th>
@@ -815,7 +815,7 @@ function PriceListWorkbenchControls({
     { value: "ready", label: "Listos" },
     { value: "review", label: "A revisar" },
     { value: "no_reference", label: "Sin referencia" },
-    { value: "missing_own_price", label: "Falta ARA" },
+    { value: "missing_own_price", label: "Falta Aguiar" },
     { value: "low_margin", label: "Margen bajo" },
     { value: "above_reference", label: "Muy arriba" },
     { value: "opportunity", label: "Oportunidad" },
@@ -894,7 +894,7 @@ function WeeklyAnalysisPanel({ analysis }: { analysis: WeeklyAnalysis }) {
           </p>
         </div>
         <div className="text-sm font-medium text-[#526170]">
-          {analysis.withOwnPrice}/{analysis.total} con precio ARA
+          {analysis.withOwnPrice}/{analysis.total} con precio Aguiar
         </div>
       </div>
 
@@ -1008,7 +1008,7 @@ function GapAnalysisTable({ analysis }: { analysis: WeeklyAnalysis }) {
       </div>
       {analysis.topGaps.length === 0 ? (
         <div className="px-3 py-5 text-sm text-[#667789]">
-          Agregá una columna de precio ARA para calcular brechas.
+          Agregá una columna de precio Aguiar para calcular brechas.
         </div>
       ) : (
         <div className="max-h-[280px] overflow-auto">
@@ -1016,7 +1016,7 @@ function GapAnalysisTable({ analysis }: { analysis: WeeklyAnalysis }) {
             <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
               <tr>
                 <th className="px-3 py-2">Artículo</th>
-                <th className="px-3 py-2">ARA</th>
+                <th className="px-3 py-2">Aguiar</th>
                 <th className="px-3 py-2">Ref.</th>
                 <th className="px-3 py-2">Brecha</th>
               </tr>
@@ -1136,7 +1136,7 @@ function PriceListRow({
       </td>
       <td className="px-3 py-3">
         <AraNumberInput
-          label="Precio ARA"
+          label="Precio Aguiar"
           value={result.input.currentPrice ?? null}
           hideLabel
           onChange={(value) =>
@@ -1283,7 +1283,7 @@ function PriceListCards({
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <AraNumberInput
-                label="Precio ARA"
+                label="Precio Aguiar"
                 value={result.input.currentPrice ?? null}
                 onChange={(value) =>
                   onItemInputChange(
@@ -2084,7 +2084,7 @@ function getDecisionStatusLabel(status: PriceDecisionStatus) {
     ready: "Listo",
     review_match: "Revisar match",
     no_reference: "Sin referencia",
-    missing_own_price: "Falta precio ARA",
+    missing_own_price: "Falta precio Aguiar",
     low_margin: "Margen bajo",
     above_reference: "Muy arriba",
     opportunity: "Oportunidad",
@@ -2217,6 +2217,7 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   const eanDiIndex = findColumn(headers, ["ean 13 di", "ean13 di", "ean di"]);
   const eanBuIndex = findColumn(headers, ["ean 13 bu", "ean13 bu", "ean bu"]);
   const currentPriceIndex = findColumn(headers, [
+    "precio aguiar",
     "precio ara",
     "precio actual",
     "precio lista",
@@ -2269,7 +2270,7 @@ function downloadPriceListCsv(
     "Codigo",
     "EAN 13 DI",
     "EAN 13 BU",
-    "Precio ARA",
+    "Precio Aguiar",
     "Costo",
     "Margen actual %",
     "Brecha vs referencia %",
@@ -2335,8 +2336,8 @@ function downloadAraUploadCsv(
     "EAN 13 BU",
     "Descripcion",
     "Rubro",
-    "Precio a cargar ARA",
-    "Precio ARA actual",
+    "Precio a cargar Aguiar",
+    "Precio Aguiar actual",
     "Costo",
     "Precio referencia",
     "Fuente referencia",
@@ -2371,7 +2372,7 @@ function downloadAraUploadCsv(
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `ara-precios-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `aguiar-precios-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }

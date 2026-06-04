@@ -93,12 +93,14 @@ export async function extractProductsFromVtexApi(
   url: string,
   source: ScrapingSource,
   query: string,
+  customHeaders: Record<string, string> = {},
 ): Promise<ProductSearchResult[]> {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
       "user-agent":
         "preventistas-mvp/0.1 (+https://preventa-web.vercel.app)",
+      ...customHeaders,
     },
   });
 

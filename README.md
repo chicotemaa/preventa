@@ -50,6 +50,9 @@ TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=
 MAXICONSUMO_PASSWORD=
+VEA_ENABLED=true
+VEA_EMAIL=
+VEA_PASSWORD=
 ```
 
 ## Correr localmente
@@ -115,6 +118,9 @@ TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=<EMAIL_MAXICONSUMO>
 MAXICONSUMO_PASSWORD=<PASSWORD_MAXICONSUMO>
+VEA_ENABLED=true
+VEA_EMAIL=<EMAIL_VEA_OPCIONAL>
+VEA_PASSWORD=<PASSWORD_VEA_OPCIONAL>
 ```
 
 Cuando Render termine, probar:
@@ -175,7 +181,6 @@ Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA
 - Carrefour Argentina: API publica VTEX del catalogo web.
 - Jumbo Argentina: API publica VTEX del catalogo web.
 - Disco Argentina: API publica VTEX del catalogo web.
-- Vea Argentina: API publica VTEX del catalogo web.
 - DIA Argentina: API publica VTEX del catalogo DIA Online.
 - MasOnline / ChangoMas: API publica VTEX del catalogo web.
 - Cordiez: API publica VTEX del catalogo web.
@@ -186,6 +191,7 @@ Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA
 - Distribuidora Centenario: catalogo publico de bebidas mayoristas en Corrientes.
 - Aguiar Resistencia: catalogo B2B en Tokin consultado por API HTTP, solo si `TOKIN_EMAIL` y `TOKIN_PASSWORD` estan configurados en el worker.
 - Maxiconsumo Chaco: catalogo de la sucursal Chaco por HTTP; intenta sesion con `MAXICONSUMO_PASSWORD` y usa HTML publico de Chaco como respaldo.
+- Vea Argentina: API VTEX con intento de sesion. Si `VEA_EMAIL` y `VEA_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`; si Vea no valida la sesion, mantiene la busqueda por API publica.
 
 Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Yaguar Chaco, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
 
@@ -220,10 +226,10 @@ Cada fuente puede tener selectores explícitos o quedar sin selectores para usar
 El frontend permite importar `.xlsx`, `.xls` o `.csv` con columnas como:
 
 ```text
-Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio ARA | Costo
+Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio Aguiar | Costo
 ```
 
-La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado y precio por comercio. También permite descargar el resultado general o el archivo listo para cargar precios en ARA.
+La app conserva esos campos, consulta el catálogo server-side y muestra una tabla para evaluación con mejor precio, fuente, producto detectado y precio por comercio. También permite descargar el resultado general o el archivo listo para cargar precios en Aguiar.
 
 La importación no guarda histórico por defecto. Para alimentar evolución de precios, activar la opción `Guardar esta carga para evolución` antes de importar la lista semanal.
 
@@ -241,12 +247,12 @@ Tablas principales:
 
 - `price_list_runs`: cada evaluación/importación semanal.
 - `price_list_run_sources`: estado de fuentes consultadas para esa corrida.
-- `price_list_run_items`: artículo, precio ARA, costo, mejor referencia, margen, brecha, precio sugerido y estado de decisión.
+- `price_list_run_items`: artículo, precio Aguiar, costo, mejor referencia, margen, brecha, precio sugerido y estado de decisión.
 
 Páginas disponibles:
 
-- `/`: carga de lista, comparación y exportación para ARA.
-- `/evolucion`: evolución de precios ARA, referencias y empresas por artículo.
+- `/`: carga de lista, comparación y exportación para Aguiar.
+- `/evolucion`: evolución de precios Aguiar, referencias y empresas por artículo.
 - `/historial`: detalle de corridas guardadas.
 
 Para aplicar el schema en un proyecto Supabase con CLI:
