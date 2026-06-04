@@ -1,11 +1,13 @@
 import type { Browser } from "playwright";
 import {
   extractProductsFromRedNorteApi,
+  extractProductsFromLaAnonimaHtml,
   extractProductsFromStaticHtml,
   extractProductsFromVtexApi,
   extractProductsFromWooCommercePmwJson,
 } from "./api-extractors.js";
 import { launchBrowser } from "./browser.js";
+import { extractProductsFromCarrefourAuth } from "./carrefour.js";
 import { config } from "./config.js";
 import {
   extractProductsAutomatically,
@@ -22,6 +24,7 @@ import {
 import { scrapingSources } from "./sources/argentina.js";
 import { extractProductsFromTokin } from "./tokin.js";
 import { extractProductsFromVeaAuth } from "./vea.js";
+import { extractProductsFromYaguarAuth } from "./yaguar.js";
 import type {
   ProductSearchResult,
   ScrapingSource,
@@ -79,11 +82,14 @@ export function getActiveSources() {
 
 export function sourceNeedsBrowser(source: ScrapingSource) {
   return ![
+    "carrefour_vtex_auth",
     "maxiconsumo_auth",
+    "laanonima_html",
     "rednorte_api",
     "tokin",
     "vea_vtex_auth",
     "vtex_api",
+    "yaguar_auth",
     "static_html",
     "woocommerce_pmw_json",
   ].includes(source.sourceKind ?? "playwright");
@@ -148,6 +154,28 @@ export async function searchSource(
     });
   }
 
+  if (source.sourceKind === "carrefour_vtex_auth") {
+    return withTimeout(
+      runCarrefourVtexAuthSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
   if (source.sourceKind === "vea_vtex_auth") {
     return withTimeout(
       runVeaVtexAuthSourceSearch(source, query, startedAt, options),
@@ -173,6 +201,28 @@ export async function searchSource(
   if (source.sourceKind === "rednorte_api") {
     return withTimeout(
       runRedNorteApiSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
+  if (source.sourceKind === "laanonima_html") {
+    return withTimeout(
+      runLaAnonimaHtmlSourceSearch(source, query, startedAt, options),
       config.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
@@ -261,6 +311,28 @@ export async function searchSource(
   if (source.sourceKind === "maxiconsumo_auth") {
     return withTimeout(
       runMaxiconsumoAuthSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
+  if (source.sourceKind === "yaguar_auth") {
+    return withTimeout(
+      runYaguarAuthSourceSearch(source, query, startedAt, options),
       config.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
@@ -408,6 +480,37 @@ async function runVeaVtexAuthSourceSearch(
   };
 }
 
+async function runCarrefourVtexAuthSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const rawResults = await extractProductsFromCarrefourAuth(source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
 async function runRedNorteApiSourceSearch(
   source: ScrapingSource,
   query: string,
@@ -416,6 +519,38 @@ async function runRedNorteApiSourceSearch(
 ): Promise<SearchSourceResult> {
   const url = buildSearchUrl(source.searchUrlTemplate, query);
   const rawResults = await extractProductsFromRedNorteApi(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runLaAnonimaHtmlSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const url = buildSearchUrl(source.searchUrlTemplate, query);
+  const rawResults = await extractProductsFromLaAnonimaHtml(url, source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(
@@ -510,6 +645,37 @@ async function runMaxiconsumoAuthSourceSearch(
   options: SearchSourceOptions,
 ): Promise<SearchSourceResult> {
   const rawResults = await extractProductsFromMaxiconsumoAuth(source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runYaguarAuthSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const rawResults = await extractProductsFromYaguarAuth(source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(

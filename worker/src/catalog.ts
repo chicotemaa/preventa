@@ -11,6 +11,7 @@ import {
 import { loadImportedCatalogProducts } from "./imports.js";
 import { calculateConfidenceScore } from "./matching.js";
 import { normalizeProductName, normalizeQuery } from "./normalizers.js";
+import { applyPresentationScore } from "./presentation.js";
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { scrapingSources } from "./sources/argentina.js";
@@ -286,7 +287,7 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   const expectedBrand = getExpectedBrandForPriceListItem(item);
 
   for (const query of buildPriceListQueries(item)) {
-    const matches = findCatalogMatches(query, expectedBrand);
+    const matches = findCatalogMatches(query, expectedBrand, item);
     const sourcePrices = summarizeSourcePrices(matches);
     const aguiarSourcePrice = sourcePrices.find(isAguiarTokinSourcePrice);
     const comparableSourcePrices = filterComparableSourcePrices(
@@ -360,15 +361,42 @@ function buildPriceListQueries(item: PriceListInputItem) {
   return Array.from(new Set(queries));
 }
 
-function findCatalogMatches(query: string, expectedBrand?: TargetBrand) {
+function findCatalogMatches(
+  query: string,
+  expectedBrand?: TargetBrand,
+  item?: PriceListInputItem,
+) {
+  const itemPresentationText = item
+    ? [item.description, item.rubro].filter(Boolean).join(" ")
+    : null;
+  const queryIdentifier = cleanIdentifier(query);
+
   return currentCatalog.products
     .filter((product) =>
       expectedBrand ? productMatchesExpectedBrand(product, expectedBrand) : true,
     )
-    .map((product) => ({
-      ...product,
-      confidenceScore: calculateCatalogProductScore(query, product),
-    }))
+    .map((product) => {
+      const exactIdentifierMatch =
+        Boolean(queryIdentifier) &&
+        getProductIdentifiers(product).some(
+          (identifier) => cleanIdentifier(identifier) === queryIdentifier,
+        );
+      const baseScore = calculateCatalogProductScore(query, product);
+      const confidenceScore = exactIdentifierMatch
+        ? 100
+        : itemPresentationText
+          ? applyPresentationScore(
+              baseScore,
+              itemPresentationText,
+              getProductMatchText(product),
+            )
+          : baseScore;
+
+      return {
+        ...product,
+        confidenceScore,
+      };
+    })
     .filter((product) => product.confidenceScore >= 60)
     .sort((first, second) => {
       if (second.confidenceScore !== first.confidenceScore) {

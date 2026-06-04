@@ -50,9 +50,15 @@ TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=
 MAXICONSUMO_PASSWORD=
+YAGUAR_ENABLED=true
+YAGUAR_EMAIL=
+YAGUAR_PASSWORD=
 VEA_ENABLED=true
 VEA_EMAIL=
 VEA_PASSWORD=
+CARREFOUR_ENABLED=true
+CARREFOUR_EMAIL=
+CARREFOUR_PASSWORD=
 ```
 
 ## Correr localmente
@@ -118,9 +124,15 @@ TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=<EMAIL_MAXICONSUMO>
 MAXICONSUMO_PASSWORD=<PASSWORD_MAXICONSUMO>
+YAGUAR_ENABLED=true
+YAGUAR_EMAIL=<EMAIL_YAGUAR_OPCIONAL>
+YAGUAR_PASSWORD=<PASSWORD_YAGUAR_OPCIONAL>
 VEA_ENABLED=true
 VEA_EMAIL=<EMAIL_VEA_OPCIONAL>
 VEA_PASSWORD=<PASSWORD_VEA_OPCIONAL>
+CARREFOUR_ENABLED=true
+CARREFOUR_EMAIL=<EMAIL_CARREFOUR_OPCIONAL>
+CARREFOUR_PASSWORD=<PASSWORD_CARREFOUR_OPCIONAL>
 ```
 
 Cuando Render termine, probar:
@@ -178,13 +190,15 @@ Notas para demo:
 
 Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA. Cada resultado expone comercio, tipo, origen de datos, URL de fuente y link del producto cuando la fuente lo informa.
 
-- Carrefour Argentina: API publica VTEX del catalogo web.
+- Carrefour Argentina: API VTEX con intento de sesion. Si `CARREFOUR_EMAIL` y `CARREFOUR_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`; si Carrefour no valida la sesion, mantiene la busqueda por API publica.
 - Jumbo Argentina: API publica VTEX del catalogo web.
 - Disco Argentina: API publica VTEX del catalogo web.
 - DIA Argentina: API publica VTEX del catalogo DIA Online.
+- La Anonima Supermercado: HTML publico del buscador, leyendo tarjetas con `data-precio` y `data-nombre`.
 - MasOnline / ChangoMas: API publica VTEX del catalogo web.
 - Cordiez: API publica VTEX del catalogo web.
 - Maxiconsumo Web: catalogo publico mayorista, sucursal web Moreno como referencia nacional.
+- Yaguar Chaco: tienda online WooCommerce para comerciantes. Si `YAGUAR_EMAIL` y `YAGUAR_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`.
 - Red Norte Distribuidora: catalogo publico online con alcance Chaco/Corrientes.
 - Sabor y Aroma Mayorista: HTML publico de tienda mayorista en Formosa.
 - Fresh Distribuidora: catalogo publico WooCommerce de Resistencia.
@@ -193,7 +207,7 @@ Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA
 - Maxiconsumo Chaco: catalogo de la sucursal Chaco por HTTP; intenta sesion con `MAXICONSUMO_PASSWORD` y usa HTML publico de Chaco como respaldo.
 - Vea Argentina: API VTEX con intento de sesion. Si `VEA_EMAIL` y `VEA_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`; si Vea no valida la sesion, mantiene la busqueda por API publica.
 
-Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Yaguar Chaco, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
+Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
 
 El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
 

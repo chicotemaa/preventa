@@ -29,6 +29,20 @@ export const config = {
       getOptionalStringEnv("MAXICONSUMO_HOME_URL") ??
       "https://maxiconsumo.com/sucursal_chaco/",
   },
+  yaguar: {
+    enabled: process.env.YAGUAR_ENABLED !== "false",
+    email: getOptionalStringEnv("YAGUAR_EMAIL"),
+    password: getOptionalStringEnv("YAGUAR_PASSWORD"),
+    loginUrl:
+      getOptionalStringEnv("YAGUAR_LOGIN_URL") ??
+      "https://yaguar.com.ar/chaco/login/",
+    homeUrl:
+      getOptionalStringEnv("YAGUAR_HOME_URL") ??
+      "https://yaguar.com.ar/chaco/tienda/",
+    ajaxUrl:
+      getOptionalStringEnv("YAGUAR_AJAX_URL") ??
+      "https://yaguar.com.ar/chaco/wp-admin/admin-ajax.php",
+  },
   vea: {
     enabled: process.env.VEA_ENABLED !== "false",
     email: getOptionalStringEnv("VEA_EMAIL"),
@@ -39,6 +53,20 @@ export const config = {
     authBaseUrl:
       getOptionalStringEnv("VEA_AUTH_BASE_URL") ??
       "https://www.vea.com.ar/api/vtexid/pub/authentication",
+  },
+  carrefour: {
+    enabled: process.env.CARREFOUR_ENABLED !== "false",
+    email: getOptionalStringEnv("CARREFOUR_EMAIL"),
+    password: getOptionalStringEnv("CARREFOUR_PASSWORD"),
+    accountName:
+      getOptionalStringEnv("CARREFOUR_ACCOUNT_NAME") ?? "carrefourar",
+    scope: getOptionalStringEnv("CARREFOUR_SCOPE") ?? "carrefourar",
+    homeUrl:
+      getOptionalStringEnv("CARREFOUR_HOME_URL") ??
+      "https://www.carrefour.com.ar/",
+    authBaseUrl:
+      getOptionalStringEnv("CARREFOUR_AUTH_BASE_URL") ??
+      "https://www.carrefour.com.ar/api/vtexid/pub/authentication",
   },
   tokin: {
     enabled: process.env.TOKIN_ENABLED !== "false",

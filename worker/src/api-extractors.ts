@@ -140,6 +140,33 @@ export async function extractProductsFromStaticHtml(
   return extractProductsFromStaticHtmlText(html, url, source, query);
 }
 
+export async function extractProductsFromLaAnonimaHtml(
+  url: string,
+  source: ScrapingSource,
+  query: string,
+): Promise<ProductSearchResult[]> {
+  const response = await fetch(url, {
+    headers: {
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      referer: "https://www.laanonima.com.ar/supermercado/",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `HTML La Anonima respondio ${response.status} para ${source.storeName}`,
+    );
+  }
+
+  const html = await response.text();
+  return extractLaAnonimaProductBlocks(html)
+    .slice(0, source.maxCards ?? 80)
+    .map((card) => toLaAnonimaProductResult(card, source, query, url))
+    .filter((result): result is ProductSearchResult => result !== null);
+}
+
 export function extractProductsFromStaticHtmlText(
   html: string,
   baseUrl: string,
@@ -351,14 +378,83 @@ function toWooCommercePmwProductResult(
   };
 }
 
+function toLaAnonimaProductResult(
+  cardHtml: string,
+  source: ScrapingSource,
+  query: string,
+  baseUrl: string,
+): ProductSearchResult | null {
+  const rawName = decodeHtml(readHtmlAttribute(cardHtml, "data-nombre"));
+  const rawPrice =
+    readHtmlAttribute(cardHtml, "data-precio_oferta") ||
+    readHtmlAttribute(cardHtml, "data-precio");
+  const price = normalizePrice(rawPrice);
+
+  if (!rawName || price === null) {
+    return null;
+  }
+
+  const sku =
+    readHtmlAttribute(cardHtml, "id-codigo-producto") ||
+    readHtmlAttribute(cardHtml, "data-codigo") ||
+    null;
+  const brand = decodeHtml(readHtmlAttribute(cardHtml, "data-marca"));
+  const categories = decodeHtml(readHtmlAttribute(cardHtml, "data-rutacategorias"));
+  const productUrl =
+    resolveUrl(readHtmlAttribute(cardHtml, "href"), baseUrl) ??
+    (sku ? resolveUrl(`/art_${sku}/`, baseUrl) : null);
+  const imageUrl = resolveUrl(findLaAnonimaImageUrl(cardHtml), baseUrl);
+  const matchText = [brand, categories, rawName].filter(Boolean).join(" ");
+
+  return {
+    sourceId: source.id,
+    storeName: source.storeName,
+    storeType: source.storeType,
+    sourceUrl: getSourceUrl(source),
+    dataOrigin: getDataOrigin(source),
+    sourceScope: getSourceScope(source),
+    sku,
+    barcodes: [],
+    brand: brand || undefined,
+    rawName,
+    normalizedName: normalizeProductName(rawName),
+    price,
+    currency: "ARS",
+    productUrl,
+    imageUrl,
+    confidenceScore: calculateConfidenceScore(query, matchText),
+  };
+}
+
+function extractLaAnonimaProductBlocks(html: string) {
+  return extractRepeatedBlocks(
+    html,
+    /<div[^>]*\bclass=["'][^"']*\bproducto-item\b[^"']*["'][^>]*>/gi,
+  );
+}
+
+function findLaAnonimaImageUrl(cardHtml: string) {
+  return (
+    matchFirst(cardHtml, /<img[^>]*\bdata-src=["']([^"']+)["'][^>]*>/i) ||
+    findStaticImageUrl(cardHtml)
+  );
+}
+
 function findStaticHtmlCards(html: string) {
   const cards = [
     ...(html.match(
       /<li[^>]*class=["'][^"']*product-item[^"']*["'][\s\S]*?<\/li>/gi,
     ) ?? []),
+    ...(html.match(
+      /<li[^>]*class=["'][^"']*\bproduct\b[^"']*["'][\s\S]*?<\/li>/gi,
+    ) ?? []),
     ...extractRepeatedBlocks(
       html,
       /<div[^>]*class=["'][^"']*\bproduct-card\b[^"']*\bproduct\b[^"']*["'][^>]*>/gi,
+    ),
+    ...extractRepeatedBlocks(
+      html,
+      /<div[^>]*class=["'][^"']*\bproduct\b[^"']*\btype-product\b[^"']*["'][^>]*>/gi,
     ),
   ];
 
@@ -425,6 +521,10 @@ function findStaticProductUrl(cardHtml: string) {
     matchFirst(
       cardHtml,
       /<a[^>]*class=["'][^"']*(?:woocommerce-LoopProduct-link|product-card__link)[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+    ) ||
+    matchFirst(
+      cardHtml,
+      /<a[^>]*href=["']([^"']+)["'][^>]*class=["'][^"']*(?:woocommerce-LoopProduct-link|product-card__link)[^"']*["'][^>]*>/i,
     )
   );
 }
@@ -538,6 +638,19 @@ function setQueryParam(url: string, name: string, value: string) {
 
 function matchFirst(value: string, pattern: RegExp) {
   return value.match(pattern)?.[1]?.trim() ?? "";
+}
+
+function readHtmlAttribute(html: string, attribute: string) {
+  const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const doubleQuoted = new RegExp(`${escapedAttribute}\\s*=\\s*"([^"]*)"`, "i");
+  const singleQuoted = new RegExp(`${escapedAttribute}\\s*=\\s*'([^']*)'`, "i");
+  const unquoted = new RegExp(`${escapedAttribute}\\s*=\\s*([^\\s>]+)`, "i");
+
+  return (
+    matchFirst(html, doubleQuoted) ||
+    matchFirst(html, singleQuoted) ||
+    matchFirst(html, unquoted)
+  );
 }
 
 function stripTags(value: string) {

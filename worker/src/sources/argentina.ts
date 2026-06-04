@@ -9,6 +9,10 @@ const hasMaxiconsumoChacoCredentials = Boolean(
 );
 const isMaxiconsumoChacoEnabled =
   config.maxiconsumo.enabled && hasMaxiconsumoChacoCredentials;
+const yaguarEmail = config.yaguar.email ?? config.tokin.email;
+const yaguarPassword = config.yaguar.password ?? config.tokin.password;
+const hasYaguarCredentials = Boolean(yaguarEmail && yaguarPassword);
+const isYaguarEnabled = config.yaguar.enabled && hasYaguarCredentials;
 
 export const scrapingSources: ScrapingSource[] = [
   {
@@ -17,9 +21,10 @@ export const scrapingSources: ScrapingSource[] = [
     storeType: "minorista",
     city: "Argentina",
     sourceUrl: "https://www.carrefour.com.ar/",
-    dataOrigin: "API publica VTEX del catalogo de Carrefour Argentina",
+    dataOrigin:
+      "API VTEX del catalogo de Carrefour Argentina; intenta sesion con credenciales configuradas y usa API publica como respaldo",
     sourceScope: "Argentina",
-    sourceKind: "vtex_api",
+    sourceKind: "carrefour_vtex_auth",
     searchUrlTemplate:
       "https://www.carrefour.com.ar/api/catalog_system/pub/products/search?ft={query}&_from=0&_to=24",
     requiresJavascript: false,
@@ -76,6 +81,20 @@ export const scrapingSources: ScrapingSource[] = [
     searchUrlTemplate:
       "https://diaonline.supermercadosdia.com.ar/api/catalog_system/pub/products/search?ft={query}&_from=0&_to=24",
     requiresJavascript: false,
+  },
+  {
+    id: "laanonima-argentina-html",
+    storeName: "La Anonima Supermercado",
+    storeType: "minorista",
+    city: "Argentina",
+    sourceUrl: "https://www.laanonima.com.ar/supermercado/",
+    dataOrigin:
+      "HTML publico del buscador de La Anonima Supermercado; lee tarjetas con data-precio y data-nombre",
+    sourceScope: "Argentina",
+    sourceKind: "laanonima_html",
+    searchUrlTemplate: "https://www.laanonima.com.ar/buscar/{query}",
+    requiresJavascript: false,
+    maxCards: 100,
   },
   {
     id: "masonline-changomas-vtex",
@@ -276,19 +295,24 @@ export const scrapingSources: ScrapingSource[] = [
       "Publica rubros y productos en GPedidos, pero los precios no quedan expuestos publicamente para comparar.",
   },
   {
-    id: "yaguar-chaco-ofertas",
-    storeName: "Yaguar Chaco Ofertas",
+    id: "yaguar-chaco-tienda-auth",
+    storeName: "Yaguar Chaco",
     storeType: "mayorista",
     city: "Resistencia, Chaco",
-    sourceUrl: "https://yaguar.com.ar/chaco/catalogos-y-ofertas/",
-    dataOrigin: "Catalogos y ofertas publicas de Yaguar Chaco",
+    sourceUrl: "https://yaguar.com.ar/chaco/tienda/",
+    dataOrigin:
+      "Tienda online WooCommerce de Yaguar Chaco; requiere login de comerciante y usa credenciales configuradas",
     sourceScope: "NEA: Chaco",
-    searchUrlTemplate: "https://yaguar.com.ar/chaco/catalogos-y-ofertas/",
+    sourceKind: "yaguar_auth",
+    searchUrlTemplate:
+      "https://yaguar.com.ar/chaco/tienda/?s={query}&post_type=product",
     requiresJavascript: false,
-    enabled: false,
-    disabledKind: "no_public_prices",
-    disabledReason:
-      "Publica ofertas en PDF/folleto; queda pendiente un extractor PDF/OCR para convertirlas en precios comparables.",
+    maxCards: 80,
+    enabled: isYaguarEnabled,
+    disabledKind: "requires_login",
+    disabledReason: hasYaguarCredentials
+      ? "Fuente Yaguar Chaco deshabilitada por YAGUAR_ENABLED=false."
+      : "Yaguar Chaco requiere login; cargar YAGUAR_EMAIL/YAGUAR_PASSWORD o TOKIN_EMAIL/TOKIN_PASSWORD para usar las mismas credenciales de Aguiar.",
   },
   {
     id: "mariano-santos-corrientes",

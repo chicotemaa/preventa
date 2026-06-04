@@ -139,13 +139,16 @@ export type ScrapingSource = {
   sourceScope?: string;
   sourceKind?:
     | "playwright"
+    | "carrefour_vtex_auth"
     | "maxiconsumo_auth"
+    | "laanonima_html"
     | "rednorte_api"
     | "static_html"
     | "text_lines"
     | "tokin"
     | "vea_vtex_auth"
     | "vtex_api"
+    | "yaguar_auth"
     | "woocommerce_pmw_json";
   searchUrlTemplate: string;
   requiresJavascript: boolean;
