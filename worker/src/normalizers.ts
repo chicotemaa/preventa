@@ -10,6 +10,22 @@ const accentMap: Record<string, string> = {
   ñ: "n",
 };
 
+const productAbbreviationPatterns: Array<[RegExp, string]> = [
+  [/\balfaj\.|\balfaj\b/gi, "alfajor "],
+  [/\balf\.|\balf\b/gi, "alfajor "],
+  [/\bbomb\.|\bbomb\b/gi, "bombon "],
+  [/\bbom\.|\bbom\b/gi, "bombon "],
+  [/\bchoc\.|\bchoc\b/gi, "chocolate "],
+  [/\bgallet\.|\bgallet\b/gi, "galletitas "],
+  [/\bgall\.|\bgall\b/gi, "galletitas "],
+  [/\bmerme?\.|\bmerme?\b/gi, "mermelada "],
+  [/\bjg\s*\.?\s*pv\.|\bjg\s*\.?\s*pv\b/gi, "jugo polvo "],
+  [/\bjugo\s+pv\.|\bjugo\s+pv\b/gi, "jugo polvo "],
+  [/\bcar\.|\bcar\b/gi, "caramelo "],
+  [/\brell\.|\brell\b/gi, "relleno "],
+  [/\bbob\.|\bbob\b/gi, "bon o bon "],
+];
+
 export function normalizeQuery(query: string): string {
   return normalizeText(query);
 }
@@ -69,11 +85,21 @@ export function normalizeProductName(name: string): string {
 }
 
 export function normalizeText(value: string): string {
-  return value
+  const normalizedValue = value
     .toLowerCase()
     .trim()
-    .replace(/[áéíóúüñ]/g, (letter) => accentMap[letter] ?? letter)
+    .replace(/[áéíóúüñ]/g, (letter) => accentMap[letter] ?? letter);
+
+  return expandCommonProductAbbreviations(normalizedValue)
     .replace(/[^a-z0-9.,\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function expandCommonProductAbbreviations(value: string): string {
+  return productAbbreviationPatterns.reduce(
+    (expandedValue, [pattern, replacement]) =>
+      expandedValue.replace(pattern, replacement),
+    value,
+  );
 }

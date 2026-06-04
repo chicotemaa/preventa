@@ -10,7 +10,11 @@ import {
 } from "./brands.js";
 import { loadImportedCatalogProducts } from "./imports.js";
 import { calculateConfidenceScore } from "./matching.js";
-import { normalizeProductName, normalizeQuery } from "./normalizers.js";
+import {
+  expandCommonProductAbbreviations,
+  normalizeProductName,
+  normalizeQuery,
+} from "./normalizers.js";
 import { applyPresentationScore } from "./presentation.js";
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
@@ -392,9 +396,9 @@ function findCatalogMatches(
         );
       const baseScore = calculateCatalogProductScore(query, product);
       const confidenceScore = exactIdentifierMatch
-        ? 100
-        : itemPresentationText
-          ? applyPresentationScore(
+          ? 100
+          : itemPresentationText
+          ? applyCatalogAttributeScore(
               baseScore,
               itemPresentationText,
               getProductMatchText(product),
@@ -429,6 +433,78 @@ function productMatchesExpectedBrand(
   const normalizedProductText = normalizeProductName(getProductMatchText(product));
 
   return productMatchesTargetBrand(normalizedProductText, expectedBrand);
+}
+
+function applyCatalogAttributeScore(
+  baseScore: number,
+  inputText: string,
+  productText: string,
+) {
+  const presentationScore = applyPresentationScore(
+    baseScore,
+    inputText,
+    productText,
+  );
+
+  return applyFlavorScore(presentationScore, inputText, productText);
+}
+
+function applyFlavorScore(
+  baseScore: number,
+  inputText: string,
+  productText: string,
+) {
+  if (baseScore <= 0) {
+    return 0;
+  }
+
+  const inputFlavors = findFlavorTags(inputText);
+
+  if (inputFlavors.length === 0) {
+    return baseScore;
+  }
+
+  const productFlavors = findFlavorTags(productText);
+
+  if (productFlavors.length === 0) {
+    return baseScore;
+  }
+
+  return inputFlavors.some((flavor) => productFlavors.includes(flavor))
+    ? baseScore
+    : 0;
+}
+
+function findFlavorTags(value: string) {
+  const normalizedValue = normalizeProductName(value);
+  const flavorGroups = [
+    ["multifruta", ["multifruta", "multi fruta"]],
+    ["limonada", ["limonada"]],
+    ["limon", ["limon"]],
+    ["naranja", ["naranja"]],
+    ["durazno", ["durazno"]],
+    ["frutilla", ["frutilla"]],
+    ["manzana", ["manzana"]],
+    ["anana", ["anana"]],
+    ["pera", ["pera"]],
+    ["ciruela", ["ciruela"]],
+    ["arandano", ["arandano"]],
+    ["chocolate", ["chocolate"]],
+    ["vainilla", ["vainilla"]],
+    ["leche", ["leche"]],
+    ["blanco", ["blanco", "blanca"]],
+    ["menta", ["menta"]],
+    ["mentol", ["mentol"]],
+    ["cherry", ["cherry", "cereza"]],
+  ] as const;
+
+  return flavorGroups
+    .filter(([, aliases]) =>
+      aliases.some((alias) =>
+        normalizedValue.split(/\s+/).includes(normalizeProductName(alias)),
+      ),
+    )
+    .map(([flavor]) => flavor);
 }
 
 function summarizeSourcePrices(products: ProductSearchResult[]) {
@@ -502,18 +578,9 @@ function normalizeImportedProductDescription(
   value: string | undefined,
   options: { stripSizes?: boolean } = {},
 ) {
-  let normalizedValue = String(value ?? "")
-    .replace(/\*/g, " ")
-    .replace(/\bALF\./gi, "alfajor ")
-    .replace(/\bBOM\./gi, "bombon ")
-    .replace(/\bCHOC\./gi, "chocolate ")
-    .replace(/\bGALL\./gi, "galletitas ")
-    .replace(/\bMERME?\./gi, "mermelada ")
-    .replace(/\bJG\.PV\./gi, "jugo polvo ")
-    .replace(/\bCAR\./gi, "caramelo ")
-    .replace(/\bRELL\b/gi, "relleno")
-    .replace(/\bBOB\b/gi, "bon o bon")
-    .replace(/\s+/g, " ");
+  let normalizedValue = expandCommonProductAbbreviations(
+    String(value ?? "").replace(/\*/g, " "),
+  ).replace(/\s+/g, " ");
 
   if (options.stripSizes) {
     normalizedValue = normalizedValue
