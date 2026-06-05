@@ -281,6 +281,7 @@ function serializeSourcePrice(sourcePrice: PriceListSourcePrice) {
     comparisonPrice: sourcePrice.comparisonPrice ?? sourcePrice.price,
     packageQuantity: sourcePrice.packageQuantity ?? null,
     packageLabel: sourcePrice.packageLabel ?? null,
+    category: sourcePrice.category ?? null,
     currency: sourcePrice.currency,
     productName: sourcePrice.productName,
     productUrl: sourcePrice.productUrl ?? null,

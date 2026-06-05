@@ -8,6 +8,11 @@ import {
   productMatchesTargetBrand,
   type TargetBrand,
 } from "./brands.js";
+import {
+  buildCatalogCategorySearchTerms,
+  findCatalogCategory,
+  getCategorySearchTermsForText,
+} from "./categories.js";
 import { loadImportedCatalogProducts } from "./imports.js";
 import { calculateConfidenceScore } from "./matching.js";
 import {
@@ -209,10 +214,7 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
       });
       const allowedProducts = result.results
         .filter((product) => isAllowedBrandProduct(getProductMatchText(product)))
-        .map((product) => ({
-          ...product,
-          brand: findAllowedBrand(getProductMatchText(product))?.name,
-        }));
+        .map((product) => decorateCatalogProduct(product));
 
       sourceStatuses.push({
         ...result.status,
@@ -267,14 +269,54 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
               .filter((product) =>
                 isAllowedBrandProduct(getProductMatchText(product)),
               )
-              .map((product) => ({
-                ...product,
-                brand:
-                  findAllowedBrand(getProductMatchText(product))?.name ??
-                  brand.name,
-              })),
+              .map((product) => decorateCatalogProduct(product, brand.name)),
           );
         }
+      }
+    }
+
+    const seenCategorySearchTerms = new Set<string>();
+
+    for (const searchTerm of buildCatalogCategorySearchTerms()) {
+      const normalizedSearchTerm = normalizeProductName(searchTerm);
+
+      if (seenCategorySearchTerms.has(normalizedSearchTerm)) {
+        continue;
+      }
+
+      seenCategorySearchTerms.add(normalizedSearchTerm);
+
+      const apiLikeQuerySources = querySources.filter(
+        (source) => !sourceNeedsBrowser(source),
+      );
+      const browserQuerySources = querySources.filter(sourceNeedsBrowser);
+      const apiLikeSourceResults = await Promise.all(
+        apiLikeQuerySources.map((source) => searchSource(source, searchTerm)),
+      );
+      const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
+
+      for (const source of browserQuerySources) {
+        browserSourceResults.push(await searchSource(source, searchTerm));
+      }
+
+      const sourceResults = [...apiLikeSourceResults, ...browserSourceResults];
+      const fallbackCategory = findCatalogCategory(searchTerm)?.name;
+
+      for (const result of sourceResults) {
+        sourceStatuses.push({
+          ...result.status,
+          sourceId: `${result.status.sourceId}:category:${normalizedSearchTerm}`,
+        });
+
+        products.push(
+          ...result.results
+            .filter((product) =>
+              isAllowedBrandProduct(getProductMatchText(product)),
+            )
+            .map((product) =>
+              decorateCatalogProduct(product, undefined, fallbackCategory),
+            ),
+        );
       }
     }
 
@@ -313,11 +355,29 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
 }
 
 function getProductMatchText(product: ProductSearchResult) {
-  if (findAllowedBrand(product.rawName)) {
-    return product.rawName;
-  }
+  const productCategory =
+    product.category ?? findCatalogCategory(product.rawName)?.name;
 
-  return [product.brand, product.rawName].filter(Boolean).join(" ");
+  return [product.brand, productCategory, product.rawName]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function decorateCatalogProduct(
+  product: ProductSearchResult,
+  fallbackBrand?: string,
+  fallbackCategory?: string,
+) {
+  const matchText = getProductMatchText(product);
+
+  return {
+    ...product,
+    brand: findAllowedBrand(matchText)?.name ?? product.brand ?? fallbackBrand,
+    category:
+      product.category ??
+      findCatalogCategory(matchText)?.name ??
+      fallbackCategory,
+  };
 }
 
 function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
@@ -457,15 +517,27 @@ function applyAguiarSourcePrice(
 }
 
 function buildAguiarDirectQueries(item: PriceListInputItem) {
+  const normalizedDescription = normalizeImportedProductDescription(item.description);
+  const descriptionWithoutSizes = normalizeImportedProductDescription(
+    item.description,
+    { stripSizes: true },
+  );
+  const categoryQueries = buildPriceListCategoryQueries(item);
   const queries = [
     cleanIdentifier(item.ean13Di),
     cleanIdentifier(item.ean13Bu),
     cleanIdentifier(item.code),
-    normalizeImportedProductDescription(item.description),
-    normalizeImportedProductDescription(item.description, { stripSizes: true }),
+    normalizedDescription,
+    descriptionWithoutSizes,
+    ...categoryQueries.map((categoryQuery) =>
+      [categoryQuery, normalizedDescription].filter(Boolean).join(" "),
+    ),
+    ...categoryQueries.map((categoryQuery) =>
+      [categoryQuery, descriptionWithoutSizes].filter(Boolean).join(" "),
+    ),
   ].filter((query): query is string => Boolean(query && query.length >= 2));
 
-  return Array.from(new Set(queries)).slice(0, 5);
+  return Array.from(new Set(queries)).slice(0, 8);
 }
 
 function isAguiarTokinSourcePrice(sourcePrice: PriceListSourcePrice) {
@@ -486,18 +558,36 @@ function filterComparableSourcePrices(sourcePrices: PriceListSourcePrice[]) {
 }
 
 function buildPriceListQueries(item: PriceListInputItem) {
+  const normalizedDescription = normalizeImportedProductDescription(item.description);
+  const descriptionWithoutSizes = normalizeImportedProductDescription(
+    item.description,
+    { stripSizes: true },
+  );
+  const normalizedRubro = normalizeImportedProductDescription(item.rubro);
+  const categoryQueries = buildPriceListCategoryQueries(item);
   const queries = [
     cleanIdentifier(item.ean13Di),
     cleanIdentifier(item.ean13Bu),
     cleanIdentifier(item.code),
-    normalizeImportedProductDescription(item.description),
-    normalizeImportedProductDescription(item.description, { stripSizes: true }),
-    [item.rubro, normalizeImportedProductDescription(item.description)]
-      .filter(Boolean)
-      .join(" "),
+    normalizedDescription,
+    descriptionWithoutSizes,
+    ...categoryQueries.map((categoryQuery) =>
+      [categoryQuery, normalizedDescription].filter(Boolean).join(" "),
+    ),
+    ...categoryQueries.map((categoryQuery) =>
+      [categoryQuery, descriptionWithoutSizes].filter(Boolean).join(" "),
+    ),
+    [normalizedRubro, normalizedDescription].filter(Boolean).join(" "),
   ].filter((query): query is string => Boolean(query && query.length >= 2));
 
   return Array.from(new Set(queries));
+}
+
+function buildPriceListCategoryQueries(item: PriceListInputItem) {
+  const descriptionCategories = getCategorySearchTermsForText(item.description);
+  const rubroCategories = getCategorySearchTermsForText(item.rubro);
+
+  return Array.from(new Set([...descriptionCategories, ...rubroCategories]));
 }
 
 function findCatalogMatches(
@@ -556,7 +646,9 @@ function productMatchesExpectedBrand(
   product: ProductSearchResult,
   expectedBrand: TargetBrand,
 ) {
-  const normalizedProductText = normalizeProductName(getProductMatchText(product));
+  const normalizedProductText = normalizeProductName(
+    [product.brand, product.rawName].filter(Boolean).join(" "),
+  );
 
   return productMatchesTargetBrand(normalizedProductText, expectedBrand);
 }
@@ -659,6 +751,7 @@ function summarizeSourcePrices(products: ProductSearchResult[]) {
       comparisonPrice: getComparisonPrice(product),
       packageQuantity: product.packageQuantity ?? null,
       packageLabel: product.packageLabel ?? null,
+      category: product.category,
       currency: product.currency,
       productName: product.rawName,
       productUrl: product.productUrl,
@@ -739,7 +832,7 @@ function normalizeImportedProductDescription(
   if (options.stripSizes) {
     normalizedValue = normalizedValue
       .replace(
-        /\b\d+(?:[,.]\d+)?\s*(grs?|g|kg|cc|ml|unid\.?|unidad(?:es)?|u)\b/gi,
+        /\b\d+(?:[,.]\d+)?\s*(grs?|g|kg|cc|ml|lts?|lt|l|unid\.?|unidad(?:es)?|uni|uds?|u)\b/gi,
         " ",
       )
       .replace(/\b\d+\b/g, " ");

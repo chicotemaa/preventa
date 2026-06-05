@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findCatalogCategory } from "./categories.js";
 import { findAllowedBrand } from "./brands.js";
 import { normalizePrice, normalizeProductName } from "./normalizers.js";
 import type { ProductSearchResult, SourceSearchStatus, StoreType } from "./types.js";
@@ -112,6 +113,11 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
       ? `${brandName} ${rawName}`
       : rawName;
   const brand = findAllowedBrand(displayName);
+  const rawCategory = readField(row, "category", "categoria", "rubro");
+  const category =
+    findCatalogCategory(rawCategory)?.name ||
+    rawCategory ||
+    findCatalogCategory(displayName)?.name;
 
   if (!brand) {
     return null;
@@ -133,6 +139,7 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
       .map((value) => value.replace(/\D/g, ""))
       .filter((value) => /^\d{8,14}$/.test(value)),
     brand: brand.name,
+    category: category || undefined,
     rawName: displayName,
     normalizedName: normalizeProductName(displayName),
     price,

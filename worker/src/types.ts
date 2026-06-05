@@ -16,6 +16,7 @@ export type ProductSearchResult = {
   sku?: string | null;
   barcodes?: string[];
   brand?: string;
+  category?: string;
   rawName: string;
   normalizedName: string;
   price: number;
@@ -92,6 +93,7 @@ export type PriceListSourcePrice = {
   comparisonPrice?: number;
   packageQuantity?: number | null;
   packageLabel?: string | null;
+  category?: string;
   currency: "ARS";
   productName: string;
   productUrl: string | null;

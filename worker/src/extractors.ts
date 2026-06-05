@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { findCatalogCategory } from "./categories.js";
 import { calculateConfidenceScore } from "./matching.js";
 import { normalizePrice, normalizeProductName } from "./normalizers.js";
 import {
@@ -241,6 +242,7 @@ export function createProductResult(
     sourceScope: getSourceScope(source),
     sku: null,
     barcodes: [],
+    category: findCatalogCategory(rawName)?.name,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,

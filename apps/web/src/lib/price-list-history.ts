@@ -300,6 +300,10 @@ function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
           typeof sourcePrice.packageLabel === "string"
             ? sourcePrice.packageLabel
             : null,
+        category:
+          typeof sourcePrice.category === "string"
+            ? sourcePrice.category
+            : undefined,
         currency: "ARS",
         productName: sourcePrice.productName,
         productUrl: sourcePrice.productUrl ?? null,

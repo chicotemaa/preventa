@@ -116,7 +116,8 @@ function comparePackPresentation(
 
 export function extractProductPresentation(value: string): ProductPresentation {
   const normalizedValue = normalizePresentationText(value);
-  const unitPattern = "(grs?|g|kg|ml|cc|lts?|lt|l|unid(?:ad)?(?:es)?|u)";
+  const unitPattern =
+    "(grs?|g|kg|ml|cc|lts?|lt|l|unid(?:ad)?(?:es)?|uni|uds?|u)";
   const packMatch = normalizedValue.match(
     new RegExp(
       `\\b(\\d+(?:[,.]\\d+)?)\\s*(?:x|por|\\*)\\s*(\\d+(?:[,.]\\d+)?)\\s*${unitPattern}\\b`,
@@ -223,7 +224,11 @@ function normalizePresentationUnit(
     return "l";
   }
 
-  if (["u", "unid", "unidad", "unidades"].includes(normalizedUnit)) {
+  if (
+    ["u", "ud", "uds", "uni", "unid", "unidad", "unidades"].includes(
+      normalizedUnit,
+    )
+  ) {
     return "u";
   }
 

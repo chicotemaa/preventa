@@ -1,6 +1,12 @@
 import { findAllowedBrand } from "./brands.js";
+import { findCatalogCategory } from "./categories.js";
 import { calculateConfidenceScore } from "./matching.js";
-import { normalizePrice, normalizeProductName } from "./normalizers.js";
+import {
+  detectQueryType,
+  normalizeQuery,
+  normalizePrice,
+  normalizeProductName,
+} from "./normalizers.js";
 import {
   getDataOrigin,
   getSourceScope,
@@ -13,6 +19,7 @@ import { withUnitPricing } from "./unit-pricing.js";
 type VtexProduct = {
   productName?: string;
   brand?: string;
+  categories?: string[];
   link?: string;
   productReference?: string;
   productReferenceCode?: string | null;
@@ -21,18 +28,44 @@ type VtexProduct = {
 
 type VtexItem = {
   itemId?: string;
+  name?: string;
   ean?: string;
   referenceId?: Array<{ Value?: string }>;
+  measurementUnit?: string;
+  unitMultiplier?: number;
   images?: Array<{ imageUrl?: string }>;
-  sellers?: Array<{
-    commertialOffer?: {
-      Price?: number;
-      ListPrice?: number;
-      AvailableQuantity?: number;
-      IsAvailable?: boolean;
-    };
-  }>;
+  sellers?: VtexSeller[];
 };
+
+type VtexSeller = {
+  sellerId?: string;
+  sellerName?: string;
+  commertialOffer?: VtexCommercialOffer;
+};
+
+type VtexCommercialOffer = {
+  Price?: number;
+  ListPrice?: number;
+  PriceWithoutDiscount?: number;
+  FullSellingPrice?: number;
+  SpotPrice?: number;
+  spotPrice?: number;
+  AvailableQuantity?: number;
+  IsAvailable?: boolean;
+  PriceValidUntil?: string;
+  DiscountHighLight?: unknown[];
+  PromotionTeasers?: unknown[];
+  Teasers?: unknown[];
+};
+
+type VtexOfferSelection = {
+  item: VtexItem;
+  seller: VtexSeller;
+  offer: VtexCommercialOffer;
+  price: number;
+};
+
+const VTEX_MIN_USEFUL_CONFIDENCE_SCORE = 60;
 
 type RedNorteCatalogResponse = {
   productos?: RedNorteProduct[];
@@ -96,28 +129,35 @@ export async function extractProductsFromVtexApi(
   query: string,
   customHeaders: Record<string, string> = {},
 ): Promise<ProductSearchResult[]> {
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent":
-        "preventistas-mvp/0.1 (+https://preventa-web.vercel.app)",
-      ...customHeaders,
-    },
-  });
+  const searchUrls = buildVtexProductSearchUrls(url, query);
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    throw new Error(`VTEX respondio ${response.status} para ${source.storeName}`);
+  for (const searchUrl of searchUrls) {
+    try {
+      const products = await fetchVtexProducts(searchUrl, source, customHeaders);
+      const results = products
+        .map((product) => toVtexProductResult(source, query, product))
+        .filter((result): result is ProductSearchResult => result !== null);
+      const hasUsefulResults = results.some(
+        (result) => result.confidenceScore >= VTEX_MIN_USEFUL_CONFIDENCE_SCORE,
+      );
+
+      if (
+        hasUsefulResults ||
+        searchUrl === searchUrls[searchUrls.length - 1]
+      ) {
+        return results;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
   }
 
-  const payload = (await response.json()) as unknown;
-
-  if (!Array.isArray(payload)) {
-    throw new Error(`Respuesta VTEX inesperada en ${source.storeName}`);
+  if (lastError) {
+    throw lastError;
   }
 
-  return payload
-    .map((product) => toVtexProductResult(source, query, product as VtexProduct))
-    .filter((result): result is ProductSearchResult => result !== null);
+  return [];
 }
 
 export async function extractProductsFromStaticHtml(
@@ -139,6 +179,33 @@ export async function extractProductsFromStaticHtml(
 
   const html = await response.text();
   return extractProductsFromStaticHtmlText(html, url, source, query);
+}
+
+async function fetchVtexProducts(
+  url: string,
+  source: ScrapingSource,
+  customHeaders: Record<string, string>,
+) {
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent":
+        "preventistas-mvp/0.1 (+https://preventa-web.vercel.app)",
+      ...customHeaders,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`VTEX respondio ${response.status} para ${source.storeName}`);
+  }
+
+  const payload = (await response.json()) as unknown;
+
+  if (!Array.isArray(payload)) {
+    throw new Error(`Respuesta VTEX inesperada en ${source.storeName}`);
+  }
+
+  return payload as VtexProduct[];
 }
 
 export async function extractProductsFromLaAnonimaHtml(
@@ -246,7 +313,12 @@ function toRedNorteProductResult(
     return null;
   }
 
-  const matchText = [product.categoria_nombre, rawName].filter(Boolean).join(" ");
+  const category =
+    findCatalogCategory(rawName)?.name ??
+    cleanCategoryValue(product.categoria_nombre);
+  const matchText = [category, product.categoria_nombre, rawName]
+    .filter(Boolean)
+    .join(" ");
   const pricingText = [
     matchText,
     presentation?.nombre,
@@ -266,6 +338,7 @@ function toRedNorteProductResult(
     sourceScope: getSourceScope(source),
     sku: product.sku_externo ?? (product.id ? String(product.id) : null),
     barcodes: [],
+    category: category ?? undefined,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
@@ -286,16 +359,39 @@ function toVtexProductResult(
   query: string,
   product: VtexProduct,
 ): ProductSearchResult | null {
-  const rawName = product.productName?.replace(/\s+/g, " ").trim();
-  const price = findVtexPrice(product);
+  const selectedOffer = findBestVtexOffer(product);
+  const rawName = (
+    selectedOffer?.item.name ??
+    product.productName ??
+    ""
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  const price = selectedOffer?.price ?? null;
 
   if (!rawName || price === null) {
     return null;
   }
 
+  const sourceCategory = findVtexCategory(product);
+  const category = findCatalogCategory(rawName)?.name ?? sourceCategory;
   const matchText = findAllowedBrand(rawName)
-    ? rawName
-    : [product.brand, rawName].filter(Boolean).join(" ");
+    ? [category, rawName].filter(Boolean).join(" ")
+    : [product.brand, category, product.productName, rawName]
+        .filter(Boolean)
+        .join(" ");
+  const sku = findVtexSku(product, selectedOffer?.item);
+  const barcodes = findVtexBarcodes(product);
+  const pricingText = [
+    matchText,
+    selectedOffer?.item.measurementUnit &&
+    selectedOffer.item.unitMultiplier &&
+    selectedOffer.item.unitMultiplier !== 1
+      ? `${selectedOffer.item.unitMultiplier} ${selectedOffer.item.measurementUnit}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return withUnitPricing({
     sourceId: source.id,
@@ -304,17 +400,21 @@ function toVtexProductResult(
     sourceUrl: getSourceUrl(source),
     dataOrigin: getDataOrigin(source),
     sourceScope: getSourceScope(source),
-    sku: findVtexSku(product),
-    barcodes: findVtexBarcodes(product),
+    sku,
+    barcodes,
     brand: product.brand || undefined,
+    category: category ?? undefined,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
     currency: "ARS",
     productUrl: product.link ?? null,
-    imageUrl: findVtexImageUrl(product),
-    confidenceScore: calculateConfidenceScore(query, matchText),
-  }, matchText);
+    imageUrl: findVtexImageUrl(product, selectedOffer?.item),
+    confidenceScore: calculateVtexConfidenceScore(query, matchText, [
+      sku,
+      ...barcodes,
+    ]),
+  }, pricingText);
 }
 
 function toStaticHtmlProductResult(
@@ -345,6 +445,7 @@ function toStaticHtmlProductResult(
     sku:
       decodeHtml(stripTags(matchFirst(cardHtml, /product-sku[\s\S]*?SKU<\/span>\s*([^<]+)/i))) ||
       null,
+    category: product.category ?? findCatalogCategory(rawName)?.name,
   };
 }
 
@@ -364,8 +465,11 @@ function toWooCommercePmwProductResult(
   }
 
   const brand = product.brand || inferBrandFromCategories(product.category);
+  const category =
+    findCatalogCategory(rawName)?.name ??
+    findWooCommerceCategory(product.category);
   const matchText = findAllowedBrand(rawName)
-    ? rawName
+    ? [category, rawName].filter(Boolean).join(" ")
     : [brand, ...(product.category ?? []), rawName].filter(Boolean).join(" ");
 
   return withUnitPricing({
@@ -378,6 +482,7 @@ function toWooCommercePmwProductResult(
     sku: product.sku || String(product.id ?? "") || null,
     barcodes: findWooCommerceBarcodes(product),
     brand: brand || undefined,
+    category: category ?? undefined,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
@@ -410,6 +515,8 @@ function toLaAnonimaProductResult(
     null;
   const brand = decodeHtml(readHtmlAttribute(cardHtml, "data-marca"));
   const categories = decodeHtml(readHtmlAttribute(cardHtml, "data-rutacategorias"));
+  const category =
+    findCatalogCategory(rawName)?.name ?? cleanCategoryValue(categories);
   const productUrl =
     resolveUrl(readHtmlAttribute(cardHtml, "href"), baseUrl) ??
     (sku ? resolveUrl(`/art_${sku}/`, baseUrl) : null);
@@ -426,6 +533,7 @@ function toLaAnonimaProductResult(
     sku,
     barcodes: [],
     brand: brand || undefined,
+    category: category ?? undefined,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
@@ -625,10 +733,45 @@ function inferBrandFromCategories(categories: string[] | undefined) {
   return categories?.find((category) => !isGenericWooCommerceCategory(category)) ?? "";
 }
 
+function findWooCommerceCategory(categories: string[] | undefined) {
+  const category = categories?.find((item) => isUsefulSourceCategory(item));
+
+  return cleanCategoryValue(category);
+}
+
+function findVtexCategory(product: VtexProduct) {
+  const category = product.categories
+    ?.map((item) => item.replace(/^\/|\/$/g, "").split("/").filter(Boolean))
+    .flat()
+    .reverse()
+    .find((item) => isUsefulSourceCategory(item));
+
+  return cleanCategoryValue(category);
+}
+
+function cleanCategoryValue(value: string | null | undefined) {
+  const cleanedValue = value?.replace(/[/>]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (!cleanedValue || !isUsefulSourceCategory(cleanedValue)) {
+    return null;
+  }
+
+  return cleanedValue;
+}
+
+function isUsefulSourceCategory(value: string | null | undefined) {
+  const normalized = normalizeProductName(value ?? "");
+
+  return Boolean(normalized) && !isGenericWooCommerceCategory(normalized);
+}
+
 function isGenericWooCommerceCategory(category: string) {
   const normalized = normalizeProductName(category);
   const genericTerms = [
     "nuevo",
+    "productos",
+    "supermercado",
+    "almacen",
     "granel",
     "otros snacks salados",
     "otros snacks dulces",
@@ -650,10 +793,38 @@ function findWooCommerceBarcodes(product: WooCommercePmwProduct) {
   return values.filter((value) => /^\d{8,14}$/.test(value.replace(/\D/g, "")));
 }
 
-function findVtexSku(product: VtexProduct) {
+function calculateVtexConfidenceScore(
+  query: string,
+  matchText: string,
+  identifiers: Array<string | null | undefined>,
+) {
+  const queryType = detectQueryType(query);
+
+  if (queryType === "barcode" || queryType === "sku") {
+    const normalizedQueryIdentifier = normalizeIdentifier(query);
+    const exactIdentifierMatch = identifiers.some(
+      (identifier) => normalizeIdentifier(identifier) === normalizedQueryIdentifier,
+    );
+
+    if (normalizedQueryIdentifier && exactIdentifierMatch) {
+      return 100;
+    }
+  }
+
+  return calculateConfidenceScore(query, matchText);
+}
+
+function normalizeIdentifier(value: string | null | undefined) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function findVtexSku(product: VtexProduct, preferredItem?: VtexItem) {
   return (
     product.productReferenceCode ||
     product.productReference ||
+    preferredItem?.itemId ||
     product.items?.find((item) => item.itemId)?.itemId ||
     null
   );
@@ -691,6 +862,113 @@ function setQueryParam(url: string, name: string, value: string) {
     return parsedUrl.toString();
   } catch {
     return url;
+  }
+}
+
+function buildVtexProductSearchUrls(url: string, query: string) {
+  const urls = new Set<string>();
+  const compactQuery = query.replace(/\D/g, "");
+  const queryType = detectQueryType(query);
+  const shouldUseTextFallbacks =
+    queryType === "text" || /\s/.test(query.trim());
+
+  if (queryType === "barcode" && compactQuery) {
+    const eanUrl = replaceVtexSearchWithFilter(
+      url,
+      "alternateIds_Ean",
+      compactQuery,
+    );
+
+    if (eanUrl) {
+      urls.add(eanUrl);
+    }
+  }
+
+  urls.add(url);
+
+  if (shouldUseTextFallbacks) {
+    for (const fallbackQuery of buildVtexFallbackQueries(query)) {
+      const fallbackUrl = replaceVtexTextSearch(url, fallbackQuery);
+
+      if (fallbackUrl) {
+        urls.add(fallbackUrl);
+      }
+    }
+  }
+
+  return Array.from(urls);
+}
+
+function buildVtexFallbackQueries(query: string) {
+  const normalizedQuery = normalizeQuery(query);
+  const withoutPackCount = stripVtexPackCount(normalizedQuery);
+  const withoutSizes = stripVtexSizes(withoutPackCount);
+
+  return Array.from(
+    new Set([normalizedQuery, withoutPackCount, withoutSizes].filter(Boolean)),
+  ).filter((fallbackQuery) => fallbackQuery !== query.trim());
+}
+
+function stripVtexPackCount(value: string) {
+  const unitPattern = "(?:grs?|g|kg|cc|ml|lts?|lt|l|unid\\.?|unidad(?:es)?|uni|u)";
+
+  return value
+    .replace(
+      new RegExp(
+        `\\b(?:pack|caja|cajon|display|bulto|fardo|bolsa|paquete)\\s*(?:x|por|de)?\\s*\\d{1,3}\\b`,
+        "gi",
+      ),
+      " ",
+    )
+    .replace(
+      new RegExp(`\\b\\d{1,3}\\s*(?:x|\\*)\\s*(?=\\d+(?:[,.]\\d+)?\\s*${unitPattern}\\b)`, "gi"),
+      " ",
+    )
+    .replace(
+      new RegExp(`\\b\\d{1,3}\\s+(?=\\d+(?:[,.]\\d+)?\\s*${unitPattern}\\b)`, "gi"),
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripVtexSizes(value: string) {
+  return value
+    .replace(
+      /\b\d+(?:[,.]\d+)?\s*(grs?|g|kg|cc|ml|lts?|lt|l|unid\.?|unidad(?:es)?|uni|u)\b/gi,
+      " ",
+    )
+    .replace(/\b\d+\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function replaceVtexTextSearch(url: string, query: string) {
+  try {
+    const parsedUrl = new URL(url);
+    const placeholder = "__VTEX_QUERY__";
+    parsedUrl.searchParams.delete("fq");
+    parsedUrl.searchParams.set("ft", placeholder);
+    return parsedUrl.toString().replace(placeholder, encodeURIComponent(query));
+  } catch {
+    return null;
+  }
+}
+
+function replaceVtexSearchWithFilter(
+  url: string,
+  fieldName: string,
+  value: string,
+) {
+  try {
+    const parsedUrl = new URL(url);
+    parsedUrl.searchParams.delete("ft");
+    parsedUrl.searchParams.delete("_from");
+    parsedUrl.searchParams.delete("_to");
+    parsedUrl.searchParams.set("fq", `${fieldName}:${value}`);
+    return parsedUrl.toString();
+  } catch {
+    return null;
   }
 }
 
@@ -743,11 +1021,16 @@ function resolveUrl(value: string, baseUrl: string) {
   }
 }
 
-function findVtexPrice(product: VtexProduct) {
+function findBestVtexOffer(product: VtexProduct): VtexOfferSelection | null {
+  const selections: VtexOfferSelection[] = [];
+
   for (const item of product.items ?? []) {
     for (const seller of item.sellers ?? []) {
       const offer = seller.commertialOffer;
-      const price = offer?.Price;
+
+      if (!offer) {
+        continue;
+      }
 
       if (
         offer?.IsAvailable === false ||
@@ -757,17 +1040,75 @@ function findVtexPrice(product: VtexProduct) {
         continue;
       }
 
-      if (typeof price === "number" && Number.isFinite(price) && price > 0) {
-        return price;
+      const price = findVtexOfferPrice(offer);
+
+      if (price !== null) {
+        selections.push({ item, seller, offer, price });
       }
     }
   }
 
-  return null;
+  return (
+    selections.sort((first, second) => {
+      const sellerPriority =
+        getVtexSellerPriority(first.seller) - getVtexSellerPriority(second.seller);
+
+      if (sellerPriority !== 0) {
+        return sellerPriority;
+      }
+
+      return first.price - second.price;
+    })[0] ?? null
+  );
 }
 
-function findVtexImageUrl(product: VtexProduct) {
-  for (const item of product.items ?? []) {
+function findVtexOfferPrice(offer: VtexCommercialOffer | undefined) {
+  if (!offer) {
+    return null;
+  }
+
+  const currentPrices = [
+    offer.Price,
+    offer.spotPrice,
+    offer.SpotPrice,
+    offer.FullSellingPrice,
+  ].flatMap((value) => {
+    const normalizedValue = normalizePositiveNumber(value);
+    return normalizedValue === null ? [] : [normalizedValue];
+  });
+
+  if (currentPrices.length > 0) {
+    return Math.min(...currentPrices);
+  }
+
+  return (
+    normalizePositiveNumber(offer.PriceWithoutDiscount) ??
+    normalizePositiveNumber(offer.ListPrice)
+  );
+}
+
+function normalizePositiveNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+function getVtexSellerPriority(seller: VtexSeller) {
+  const sellerName = seller.sellerName?.toLowerCase() ?? "";
+
+  if (seller.sellerId === "1" || sellerName.includes("carrefour")) {
+    return 0;
+  }
+
+  return 1;
+}
+
+function findVtexImageUrl(product: VtexProduct, preferredItem?: VtexItem) {
+  const items = [preferredItem, ...(product.items ?? [])].filter(
+    (item): item is VtexItem => Boolean(item),
+  );
+
+  for (const item of items) {
     const imageUrl = item.images?.find((image) => image.imageUrl)?.imageUrl;
 
     if (imageUrl) {

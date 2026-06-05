@@ -1,4 +1,5 @@
 import { findAllowedBrand } from "./brands.js";
+import { findCatalogCategory } from "./categories.js";
 import { config } from "./config.js";
 import { calculateConfidenceScore } from "./matching.js";
 import { normalizePrice, normalizeProductName } from "./normalizers.js";
@@ -68,7 +69,7 @@ type TokinRawField = {
   raw?: string | number;
 };
 
-type TokinVariant = {
+type TokinVariant = Record<string, unknown> & {
   barcode?: string;
   ean?: string;
   price?: TokinPrice | number;
@@ -109,7 +110,7 @@ export async function extractProductsFromTokin(
   const payload = await postTokinSearch(session, query, source.maxCards ?? 80);
 
   return (payload.results ?? [])
-    .map((product) => toTokinProductResult(product, source, query))
+    .flatMap((product) => toTokinProductResults(product, source, query))
     .filter((result): result is ProductSearchResult => result !== null);
 }
 
@@ -222,13 +223,23 @@ async function postTokinSearch(
   return payload;
 }
 
+function toTokinProductResults(
+  product: TokinSearchHit,
+  source: ScrapingSource,
+  query: string,
+) {
+  return findPricedTokinVariants(product).map((variant) =>
+    toTokinProductResult(product, source, query, variant),
+  );
+}
+
 function toTokinProductResult(
   product: TokinSearchHit,
   source: ScrapingSource,
   query: string,
+  variant: TokinVariant,
 ): ProductSearchResult | null {
   const rawName = getRawValue(product.name);
-  const variant = findBestTokinVariant(product);
   const price = findTokinVariantPrice(variant);
 
   if (!rawName || price === null) {
@@ -236,11 +247,13 @@ function toTokinProductResult(
   }
 
   const brand = findTokinBrand(product);
+  const category = findTokinCategory(product, rawName);
   const matchText = findAllowedBrand(rawName)
-    ? rawName
-    : [brand, getRawValue(product.parent_category), getRawValue(product.child_category), rawName]
+    ? [category, rawName].filter(Boolean).join(" ")
+    : [brand, category, rawName]
         .filter(Boolean)
         .join(" ");
+  const pricingContext = buildTokinPricingContext(product, variant, matchText);
 
   return withUnitPricing({
     sourceId: source.id,
@@ -252,6 +265,7 @@ function toTokinProductResult(
     sku: getTokinSku(variant, product),
     barcodes: getTokinBarcodes(variant),
     brand: brand || undefined,
+    category: category || undefined,
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
@@ -259,14 +273,14 @@ function toTokinProductResult(
     productUrl: null,
     imageUrl: findTokinImageUrl(product),
     confidenceScore: calculateConfidenceScore(query, matchText),
-  }, [matchText, variant?.uom].filter(Boolean).join(" "));
+  }, pricingContext);
 }
 
-function findBestTokinVariant(product: TokinSearchHit) {
+function findPricedTokinVariants(product: TokinSearchHit) {
   const variants =
     product.additional_content?.raw?.variants ?? product.variants ?? [];
 
-  return variants.find((variant) => findTokinVariantPrice(variant) !== null);
+  return variants.filter((variant) => findTokinVariantPrice(variant) !== null);
 }
 
 function findTokinVariantPrice(variant: TokinVariant | undefined) {
@@ -293,6 +307,158 @@ function findTokinVariantPrice(variant: TokinVariant | undefined) {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
+function buildTokinPricingContext(
+  product: TokinSearchHit,
+  variant: TokinVariant,
+  matchText: string,
+) {
+  const packageQuantity = findTokinPackageQuantity(variant);
+  const fragments = [
+    matchText,
+    getRawValue(product.parent_category),
+    getRawValue(product.child_category),
+    ...getTokinVariantPackagingFragments(variant),
+    packageQuantity ? `bulto x ${packageQuantity}` : null,
+  ];
+
+  return Array.from(
+    new Set(
+      fragments
+        .map((fragment) => String(fragment ?? "").replace(/\s+/g, " ").trim())
+        .filter(Boolean),
+    ),
+  ).join(" ");
+}
+
+function getTokinVariantPackagingFragments(variant: TokinVariant) {
+  const fragments: string[] = [];
+
+  for (const [key, value] of Object.entries(variant)) {
+    if (key === "price" || key === "prices" || key === "stock") {
+      continue;
+    }
+
+    if (!isTokinPackagingTextKey(key) && key !== "uom") {
+      continue;
+    }
+
+    const text = stringifyTokinVariantValue(value);
+
+    if (text) {
+      fragments.push(`${key} ${text}`);
+    }
+  }
+
+  return fragments;
+}
+
+function findTokinPackageQuantity(variant: TokinVariant) {
+  for (const [key, value] of Object.entries(variant)) {
+    if (!isTokinPackageQuantityKey(key)) {
+      continue;
+    }
+
+    const quantity = parseTokinPackageQuantity(value);
+
+    if (quantity !== null) {
+      return quantity;
+    }
+  }
+
+  return null;
+}
+
+function isTokinPackageQuantityKey(key: string) {
+  const normalizedKey = normalizeTokinKey(key);
+
+  return (
+    /(?:units|unidades|items|cantidad|cant|qty|contenido|content).*(?:pack|package|box|case|bulto|caja|display)/i.test(
+      normalizedKey,
+    ) ||
+    /(?:pack|package|box|case|bulto|caja|display).*(?:units|unidades|items|cantidad|cant|qty|quantity|contenido|content|size)/i.test(
+      normalizedKey,
+    ) ||
+    [
+      "casepack",
+      "packsize",
+      "packagequantity",
+      "packquantity",
+      "bulkquantity",
+      "boxquantity",
+      "bultoquantity",
+      "cajaquantity",
+      "itemsperpack",
+      "itemspercase",
+      "unitsperpack",
+      "unitsperpackage",
+      "unitsperbox",
+      "unitspercase",
+      "unidadesporbulto",
+      "unidadesporcaja",
+      "cantidadporbulto",
+      "cantidadporcaja",
+      "cantporbulto",
+      "cantporcaja",
+    ].includes(normalizedKey)
+  );
+}
+
+function isTokinPackagingTextKey(key: string) {
+  const normalizedKey = normalizeTokinKey(key);
+
+  return (
+    /(?:uom|unidad|unit|presentacion|presentation|empaque|packaging|package|pack|bulto|caja|display|contenido|content|formato|format|medida|measure)/i.test(
+      normalizedKey,
+    ) || isTokinPackageQuantityKey(key)
+  );
+}
+
+function parseTokinPackageQuantity(value: unknown) {
+  if (typeof value === "number") {
+    return isValidTokinPackageQuantity(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const match = value.replace(",", ".").match(/\b(\d{1,3})(?:\.0+)?\b/);
+    const parsedValue = match?.[1] ? Number(match[1]) : NaN;
+    return isValidTokinPackageQuantity(parsedValue) ? parsedValue : null;
+  }
+
+  if (value && typeof value === "object" && "raw" in value) {
+    return parseTokinPackageQuantity((value as TokinRawField).raw);
+  }
+
+  return null;
+}
+
+function isValidTokinPackageQuantity(value: number) {
+  return Number.isInteger(value) && value > 1 && value <= 200;
+}
+
+function stringifyTokinVariantValue(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (value && typeof value === "object" && "raw" in value) {
+    return getRawValue(value as TokinRawField);
+  }
+
+  return "";
+}
+
+function normalizeTokinKey(key: string) {
+  return key
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 function findTokinBrand(product: TokinSearchHit) {
   const brand =
     product.additional_content?.raw?.brand ?? product.brand ?? product.brand_name;
@@ -306,6 +472,15 @@ function findTokinBrand(product: TokinSearchHit) {
   }
 
   return getRawValue(brand as TokinRawField | undefined);
+}
+
+function findTokinCategory(product: TokinSearchHit, rawName: string) {
+  return (
+    findCatalogCategory(rawName)?.name ||
+    getRawValue(product.child_category) ||
+    getRawValue(product.parent_category) ||
+    ""
+  );
 }
 
 function findTokinImageUrl(product: TokinSearchHit) {

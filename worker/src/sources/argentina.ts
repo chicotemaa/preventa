@@ -17,7 +17,7 @@ export const scrapingSources: ScrapingSource[] = [
     city: "Argentina",
     sourceUrl: "https://www.carrefour.com.ar/",
     dataOrigin:
-      "API VTEX del catalogo de Carrefour Argentina; intenta sesion con credenciales configuradas y usa API publica como respaldo",
+      "API VTEX de Carrefour Argentina; intenta sesion con credenciales configuradas, prioriza vendedor Carrefour, disponibilidad y precio vigente de venta",
     sourceScope: "Argentina",
     sourceKind: "carrefour_vtex_auth",
     searchUrlTemplate:
