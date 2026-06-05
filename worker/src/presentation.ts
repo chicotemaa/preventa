@@ -21,6 +21,10 @@ export function applyPresentationScore(
   productText: string,
 ) {
   const inputPresentation = extractProductPresentation(inputText);
+  const allowsWeightLiquidCompatibility = shouldAllowWeightLiquidCompatibility(
+    inputText,
+    productText,
+  );
 
   if (
     !inputPresentation.hasExplicitPresentation &&
@@ -34,6 +38,7 @@ export function applyPresentationScore(
   const compatibility = comparePresentations(
     inputPresentation,
     productPresentation,
+    allowsWeightLiquidCompatibility,
   );
 
   if (!compatibility.compatible) {
@@ -46,19 +51,33 @@ export function applyPresentationScore(
 function comparePresentations(
   input: ProductPresentation,
   product: ProductPresentation,
+  allowsWeightLiquidCompatibility: boolean,
 ) {
-  if (input.hasPowderSignal && product.family === "liquid") {
-    return { compatible: false, penalty: 0 };
-  }
-
-  if (input.hasLiquidSignal && product.family === "weight") {
+  if (
+    input.hasPowderSignal &&
+    product.family === "liquid" &&
+    !allowsWeightLiquidCompatibility
+  ) {
     return { compatible: false, penalty: 0 };
   }
 
   if (
+    input.hasLiquidSignal &&
+    product.family === "weight" &&
+    !allowsWeightLiquidCompatibility
+  ) {
+    return { compatible: false, penalty: 0 };
+  }
+
+  const hasWeightLiquidMismatch =
+    (input.family === "weight" && product.family === "liquid") ||
+    (input.family === "liquid" && product.family === "weight");
+
+  if (
     input.family !== "unknown" &&
     product.family !== "unknown" &&
-    input.family !== product.family
+    input.family !== product.family &&
+    !(hasWeightLiquidMismatch && allowsWeightLiquidCompatibility)
   ) {
     return { compatible: false, penalty: 0 };
   }
@@ -102,6 +121,13 @@ function comparePackPresentation(
   }
 
   if (input.totalAmount && product.amount) {
+    if (input.amount && amountsAreClose(input.amount, product.amount)) {
+      return {
+        compatible: true,
+        penalty: 6,
+      };
+    }
+
     return {
       compatible: amountsAreClose(input.totalAmount, product.amount),
       penalty: 0,
@@ -273,4 +299,15 @@ function convertPresentationAmount(
 function amountsAreClose(first: number, second: number) {
   const reference = Math.max(first, second, 1);
   return Math.abs(first - second) / reference <= PRESENTATION_AMOUNT_TOLERANCE;
+}
+
+function shouldAllowWeightLiquidCompatibility(
+  inputText: string,
+  productText: string,
+) {
+  const normalizedText = normalizePresentationText(`${inputText} ${productText}`);
+
+  return /\b(mayonesa|ketchup|mostaza|salsa|aderezo|dressing)\b/i.test(
+    normalizedText,
+  );
 }

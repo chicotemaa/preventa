@@ -696,7 +696,10 @@ function applyFlavorScore(
 function findFlavorTags(value: string) {
   const normalizedValue = normalizeProductName(value);
   const flavorGroups = [
-    ["multifruta", ["multifruta", "multi fruta"]],
+    [
+      "multifruta",
+      ["multifruta", "multi fruta", "mix frutal", "mix fruta", "frutal"],
+    ],
     ["limonada", ["limonada"]],
     ["limon", ["limon"]],
     ["naranja", ["naranja"]],
@@ -718,11 +721,23 @@ function findFlavorTags(value: string) {
 
   return flavorGroups
     .filter(([, aliases]) =>
-      aliases.some((alias) =>
-        normalizedValue.split(/\s+/).includes(normalizeProductName(alias)),
-      ),
+      aliases.some((alias) => flavorAliasMatches(normalizedValue, alias)),
     )
     .map(([flavor]) => flavor);
+}
+
+function flavorAliasMatches(normalizedValue: string, alias: string) {
+  const normalizedAlias = normalizeProductName(alias);
+
+  if (!normalizedAlias) {
+    return false;
+  }
+
+  if (normalizedAlias.includes(" ")) {
+    return normalizedValue.includes(normalizedAlias);
+  }
+
+  return normalizedValue.split(/\s+/).includes(normalizedAlias);
 }
 
 function summarizeSourcePrices(products: ProductSearchResult[]) {

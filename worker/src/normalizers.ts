@@ -24,6 +24,9 @@ const productAbbreviationPatterns: Array<[RegExp, string]> = [
   [/\bcar\.|\bcar\b/gi, "caramelo "],
   [/\brell\.|\brell\b/gi, "relleno "],
   [/\bbob\.|\bbob\b/gi, "bon o bon "],
+  [/\byoghurt\b|\byogurt\b|\byog\.|\byog\b/gi, "yogur "],
+  [/\bfrut\.|\bfrut\b/gi, "frutilla "],
+  [/\bfru\./gi, "frutilla "],
 ];
 
 export function normalizeQuery(query: string): string {
@@ -92,6 +95,11 @@ export function normalizeText(value: string): string {
 
   return expandCommonProductAbbreviations(normalizedValue)
     .replace(/[^a-z0-9.,\s-]/g, " ")
+    .replace(
+      /\b(\d+(?:[,.]\d+)?)(grs?|g|kg|ml|cc|lts?|lt|l|unid\.?|unidad(?:es)?|uni|uds?|u)\b/g,
+      "$1 $2",
+    )
+    .replace(/\b([a-z]{2,})\.(?=\s|$)/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
 }
