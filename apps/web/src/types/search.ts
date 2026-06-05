@@ -101,6 +101,49 @@ export type PriceListSourcePrice = {
   confidenceScore: number;
 };
 
+export type PriceListRejectReason =
+  | "brand_mismatch"
+  | "score_below_threshold"
+  | "presentation_or_flavor_mismatch"
+  | "no_candidates";
+
+export type PriceListRejectedCandidate = {
+  sourceId: string;
+  storeName: string;
+  storeType: "mayorista" | "minorista";
+  productName: string;
+  productUrl: string | null;
+  reason: PriceListRejectReason;
+  baseScore: number;
+  finalScore: number;
+};
+
+export type PriceListQueryDiagnostic = {
+  query: string;
+  candidatesCount: number;
+  matchesCount: number;
+  rejectedCount: number;
+  topRejected: PriceListRejectedCandidate[];
+};
+
+export type PriceListDirectSourceDiagnostics = {
+  sourceId: string;
+  storeName: string;
+  status: "skipped" | "matched" | "no_results" | "failed";
+  queriesTried: string[];
+  matchedQuery: string | null;
+  queryDiagnostics: PriceListQueryDiagnostic[];
+  errorMessage?: string;
+};
+
+export type PriceListMatchDiagnostics = {
+  expectedBrand: string | null;
+  queriesTried: string[];
+  matchedQuery: string | null;
+  queryDiagnostics: PriceListQueryDiagnostic[];
+  directAguiar?: PriceListDirectSourceDiagnostics;
+};
+
 export type PriceListItemResult = {
   input: PriceListInputItem;
   queryUsed: string | null;
@@ -109,6 +152,7 @@ export type PriceListItemResult = {
   bestSource: PriceListSourcePrice | null;
   sourcePrices: PriceListSourcePrice[];
   matchedCount: number;
+  diagnostics?: PriceListMatchDiagnostics;
 };
 
 export type PriceListResponse = {

@@ -28,8 +28,12 @@ import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
+  PriceListDirectSourceDiagnostics,
   PriceListInputItem,
   PriceListItemResult,
+  PriceListMatchDiagnostics,
+  PriceListQueryDiagnostic,
+  PriceListRejectedCandidate,
   PriceListResponse,
   PriceListSourcePrice,
   ProductSearchResult,
@@ -42,6 +46,8 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
 const catalogPath = path.resolve(workerRoot, "data/catalog.json");
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
+const MIN_PRICE_LIST_CONFIDENCE_SCORE = 60;
+const DIAGNOSTIC_REJECT_LIMIT = 5;
 
 let currentCatalog: CatalogSnapshot = {
   status: "empty",
@@ -181,8 +187,16 @@ async function matchPriceListItemWithDirectAguiar(
     expectedBrand,
   );
 
-  if (!aguiarSourcePrice) {
-    return catalogResult;
+  if (!aguiarSourcePrice.sourcePrice) {
+    return {
+      ...catalogResult,
+      diagnostics: catalogResult.diagnostics
+        ? {
+            ...catalogResult.diagnostics,
+            directAguiar: aguiarSourcePrice.diagnostics,
+          }
+        : catalogResult.diagnostics,
+    };
   }
 
   return applyAguiarSourcePrice(catalogResult, aguiarSourcePrice);
@@ -382,9 +396,19 @@ function decorateCatalogProduct(
 
 function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   const expectedBrand = getExpectedBrandForPriceListItem(item);
+  const diagnostics = createPriceListDiagnostics(expectedBrand);
 
   for (const query of buildPriceListQueries(item)) {
-    const matches = findCatalogMatches(query, expectedBrand, item);
+    const analysis = analyzeProductMatches(
+      query,
+      currentCatalog.products,
+      expectedBrand,
+      item,
+    );
+    diagnostics.queriesTried.push(query);
+    diagnostics.queryDiagnostics.push(analysis.diagnostic);
+
+    const matches = analysis.matches;
     const sourcePrices = summarizeSourcePrices(matches);
     const aguiarSourcePrice = sourcePrices.find(isAguiarTokinSourcePrice);
     const comparableSourcePrices = filterComparableSourcePrices(
@@ -415,6 +439,10 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
       bestSource,
       sourcePrices: comparableSourcePrices,
       matchedCount: comparableSourcePrices.length + (aguiarSourcePrice ? 1 : 0),
+      diagnostics: {
+        ...diagnostics,
+        matchedQuery: query,
+      },
     };
   }
 
@@ -426,6 +454,7 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     bestSource: null,
     sourcePrices: [],
     matchedCount: 0,
+    diagnostics,
   };
 }
 
@@ -438,68 +467,85 @@ async function findDirectAguiarSourcePrice(
   );
 
   if (!source || source.enabled === false) {
-    return null;
+    const diagnostics = createDirectSourceDiagnostics(
+      source ?? {
+        id: AGUIAR_TOKIN_SOURCE_ID,
+        storeName: "Aguiar Resistencia",
+      },
+    );
+
+    return {
+      query: null,
+      sourcePrice: null,
+      diagnostics: {
+        ...diagnostics,
+        errorMessage:
+          source?.disabledReason ?? "Fuente Aguiar/Tokin no configurada.",
+      },
+    };
   }
 
-  const itemText = [item.description, item.rubro].filter(Boolean).join(" ");
+  const diagnostics = createDirectSourceDiagnostics(source);
+  let lastErrorMessage: string | undefined;
 
   for (const query of buildAguiarDirectQueries(item)) {
+    diagnostics.queriesTried.push(query);
     const result = await searchSource(source, query, undefined, {
       filterByConfidence: false,
       limitResults: false,
-    }).catch(() => null);
+    }).catch((error) => {
+      lastErrorMessage =
+        error instanceof Error ? error.message : "Error consultando Aguiar.";
+      return null;
+    });
 
     if (!result) {
+      diagnostics.queryDiagnostics.push(createEmptyQueryDiagnostic(query));
       continue;
     }
 
-    const queryIdentifier = cleanIdentifier(query);
-    const matches = result.results
-      .filter((product) =>
-        expectedBrand ? productMatchesExpectedBrand(product, expectedBrand) : true,
-      )
-      .map((product) => {
-        const exactIdentifierMatch =
-          Boolean(queryIdentifier) &&
-          getProductIdentifiers(product).some(
-            (identifier) => cleanIdentifier(identifier) === queryIdentifier,
-          );
-        const baseScore = exactIdentifierMatch
-          ? 100
-          : calculateCatalogProductScore(query, product);
-        const confidenceScore = exactIdentifierMatch
-          ? 100
-          : applyCatalogAttributeScore(
-              baseScore,
-              itemText,
-              getProductMatchText(product),
-            );
-
-        return { ...product, confidenceScore };
-      })
-      .filter((product) => product.confidenceScore >= 60)
-      .sort((first, second) => {
-        if (second.confidenceScore !== first.confidenceScore) {
-          return second.confidenceScore - first.confidenceScore;
-        }
-
-        return getComparisonPrice(first) - getComparisonPrice(second);
-      });
-    const sourcePrice = summarizeSourcePrices(matches).find(
+    const analysis = analyzeProductMatches(
+      query,
+      result.results,
+      expectedBrand,
+      item,
+    );
+    diagnostics.queryDiagnostics.push(analysis.diagnostic);
+    const sourcePrice = summarizeSourcePrices(analysis.matches).find(
       isAguiarTokinSourcePrice,
     );
 
     if (sourcePrice) {
-      return { query, sourcePrice };
+      return {
+        query,
+        sourcePrice,
+        diagnostics: {
+          ...diagnostics,
+          status: "matched" as const,
+          matchedQuery: query,
+        },
+      };
     }
   }
 
-  return null;
+  return {
+    query: null,
+    sourcePrice: null,
+    diagnostics: {
+      ...diagnostics,
+      status: lastErrorMessage ? ("failed" as const) : ("no_results" as const),
+      errorMessage: lastErrorMessage,
+    },
+  };
 }
 
 function applyAguiarSourcePrice(
   result: PriceListItemResult,
-  aguiarMatch: { query: string; sourcePrice: PriceListSourcePrice },
+  aguiarMatch: {
+    query: string | null;
+    sourcePrice: PriceListSourcePrice;
+    diagnostics: PriceListDirectSourceDiagnostics;
+  },
 ): PriceListItemResult {
   const input = {
     ...result.input,
@@ -513,6 +559,12 @@ function applyAguiarSourcePrice(
     queryUsed: result.queryUsed ?? aguiarMatch.query,
     status: hasAnyPrice ? "matched" : "not_found",
     matchedCount: result.matchedCount + 1,
+    diagnostics: result.diagnostics
+      ? {
+          ...result.diagnostics,
+          directAguiar: aguiarMatch.diagnostics,
+        }
+      : result.diagnostics,
   };
 }
 
@@ -530,10 +582,10 @@ function buildAguiarDirectQueries(item: PriceListInputItem) {
     normalizedDescription,
     descriptionWithoutSizes,
     ...categoryQueries.map((categoryQuery) =>
-      [categoryQuery, normalizedDescription].filter(Boolean).join(" "),
+      combineQueryParts(categoryQuery, normalizedDescription),
     ),
     ...categoryQueries.map((categoryQuery) =>
-      [categoryQuery, descriptionWithoutSizes].filter(Boolean).join(" "),
+      combineQueryParts(categoryQuery, descriptionWithoutSizes),
     ),
   ].filter((query): query is string => Boolean(query && query.length >= 2));
 
@@ -572,12 +624,12 @@ function buildPriceListQueries(item: PriceListInputItem) {
     normalizedDescription,
     descriptionWithoutSizes,
     ...categoryQueries.map((categoryQuery) =>
-      [categoryQuery, normalizedDescription].filter(Boolean).join(" "),
+      combineQueryParts(categoryQuery, normalizedDescription),
     ),
     ...categoryQueries.map((categoryQuery) =>
-      [categoryQuery, descriptionWithoutSizes].filter(Boolean).join(" "),
+      combineQueryParts(categoryQuery, descriptionWithoutSizes),
     ),
-    [normalizedRubro, normalizedDescription].filter(Boolean).join(" "),
+    combineQueryParts(normalizedRubro, normalizedDescription),
   ].filter((query): query is string => Boolean(query && query.length >= 2));
 
   return Array.from(new Set(queries));
@@ -590,8 +642,54 @@ function buildPriceListCategoryQueries(item: PriceListInputItem) {
   return Array.from(new Set([...descriptionCategories, ...rubroCategories]));
 }
 
+function combineQueryParts(...parts: Array<string | undefined>) {
+  const queryParts: string[] = [];
+
+  for (const rawPart of parts) {
+    const part = rawPart?.trim();
+
+    if (!part) {
+      continue;
+    }
+
+    const normalizedPart = normalizeProductName(part);
+    const normalizedQuery = normalizeProductName(queryParts.join(" "));
+
+    if (!normalizedPart) {
+      continue;
+    }
+
+    if (normalizedQuery && normalizedPart.includes(normalizedQuery)) {
+      queryParts.splice(0, queryParts.length, part);
+      continue;
+    }
+
+    if (normalizedQuery && normalizedQuery.includes(normalizedPart)) {
+      continue;
+    }
+
+    queryParts.push(part);
+  }
+
+  return queryParts.join(" ");
+}
+
 function findCatalogMatches(
   query: string,
+  expectedBrand?: TargetBrand,
+  item?: PriceListInputItem,
+) {
+  return analyzeProductMatches(
+    query,
+    currentCatalog.products,
+    expectedBrand,
+    item,
+  ).matches;
+}
+
+function analyzeProductMatches(
+  query: string,
+  products: ProductSearchResult[],
   expectedBrand?: TargetBrand,
   item?: PriceListInputItem,
 ) {
@@ -599,46 +697,163 @@ function findCatalogMatches(
     ? [item.description, item.rubro].filter(Boolean).join(" ")
     : null;
   const queryIdentifier = cleanIdentifier(query);
+  const matches: ProductSearchResult[] = [];
+  const rejected: PriceListRejectedCandidate[] = [];
+  let candidatesCount = 0;
+  let rejectedCount = 0;
 
-  return currentCatalog.products
-    .filter((product) =>
-      expectedBrand ? productMatchesExpectedBrand(product, expectedBrand) : true,
-    )
-    .map((product) => {
-      const exactIdentifierMatch =
-        Boolean(queryIdentifier) &&
-        getProductIdentifiers(product).some(
-          (identifier) => cleanIdentifier(identifier) === queryIdentifier,
+  for (const product of products) {
+    const exactIdentifierMatch =
+      Boolean(queryIdentifier) &&
+      getProductIdentifiers(product).some(
+        (identifier) => cleanIdentifier(identifier) === queryIdentifier,
+      );
+    const baseScore = exactIdentifierMatch
+      ? 100
+      : calculateCatalogProductScore(query, product);
+
+    if (expectedBrand && !productMatchesExpectedBrand(product, expectedBrand)) {
+      if (baseScore >= 45) {
+        rejectedCount += 1;
+        pushRejectedCandidate(
+          rejected,
+          product,
+          "brand_mismatch",
+          baseScore,
+          baseScore,
         );
-      const baseScore = calculateCatalogProductScore(query, product);
-      const confidenceScore = exactIdentifierMatch
-          ? 100
-          : itemPresentationText
-          ? applyCatalogAttributeScore(
-              baseScore,
-              itemPresentationText,
-              getProductMatchText(product),
-            )
-          : baseScore;
-
-      return {
-        ...product,
-        confidenceScore,
-      };
-    })
-    .filter((product) => product.confidenceScore >= 60)
-    .sort((first, second) => {
-      if (second.confidenceScore !== first.confidenceScore) {
-        return second.confidenceScore - first.confidenceScore;
       }
 
-      return getComparisonPrice(first) - getComparisonPrice(second);
-    });
+      continue;
+    }
+
+    candidatesCount += 1;
+
+    const confidenceScore = exactIdentifierMatch
+      ? 100
+      : itemPresentationText
+        ? applyCatalogAttributeScore(
+            baseScore,
+            itemPresentationText,
+            getProductMatchText(product),
+          )
+        : baseScore;
+
+    if (confidenceScore >= MIN_PRICE_LIST_CONFIDENCE_SCORE) {
+      matches.push({
+        ...product,
+        confidenceScore,
+      });
+      continue;
+    }
+
+    rejectedCount += 1;
+
+    if (baseScore >= 35 || confidenceScore > 0) {
+      pushRejectedCandidate(
+        rejected,
+        product,
+        baseScore >= MIN_PRICE_LIST_CONFIDENCE_SCORE
+          ? "presentation_or_flavor_mismatch"
+          : "score_below_threshold",
+        baseScore,
+        confidenceScore,
+      );
+    }
+  }
+
+  matches.sort((first, second) => {
+    if (second.confidenceScore !== first.confidenceScore) {
+      return second.confidenceScore - first.confidenceScore;
+    }
+
+    return getComparisonPrice(first) - getComparisonPrice(second);
+  });
+
+  const diagnostic: PriceListQueryDiagnostic = {
+    query,
+    candidatesCount,
+    matchesCount: matches.length,
+    rejectedCount,
+    topRejected: rejected
+      .sort((first, second) => {
+        if (second.baseScore !== first.baseScore) {
+          return second.baseScore - first.baseScore;
+        }
+
+        return second.finalScore - first.finalScore;
+      })
+      .slice(0, DIAGNOSTIC_REJECT_LIMIT),
+  };
+
+  return { matches, diagnostic };
+}
+
+function createPriceListDiagnostics(
+  expectedBrand?: TargetBrand,
+): PriceListMatchDiagnostics {
+  return {
+    expectedBrand: expectedBrand?.name ?? null,
+    queriesTried: [],
+    matchedQuery: null,
+    queryDiagnostics: [],
+  };
+}
+
+function createDirectSourceDiagnostics(source: {
+  id: string;
+  storeName: string;
+}): PriceListDirectSourceDiagnostics {
+  return {
+    sourceId: source.id,
+    storeName: source.storeName,
+    status: "skipped",
+    queriesTried: [],
+    matchedQuery: null,
+    queryDiagnostics: [],
+  };
+}
+
+function createEmptyQueryDiagnostic(query: string): PriceListQueryDiagnostic {
+  return {
+    query,
+    candidatesCount: 0,
+    matchesCount: 0,
+    rejectedCount: 0,
+    topRejected: [],
+  };
+}
+
+function pushRejectedCandidate(
+  candidates: PriceListRejectedCandidate[],
+  product: ProductSearchResult,
+  reason: PriceListRejectedCandidate["reason"],
+  baseScore: number,
+  finalScore: number,
+) {
+  candidates.push({
+    sourceId: product.sourceId,
+    storeName: product.storeName,
+    storeType: product.storeType,
+    productName: product.rawName,
+    productUrl: product.productUrl,
+    reason,
+    baseScore,
+    finalScore,
+  });
 }
 
 function getExpectedBrandForPriceListItem(item: PriceListInputItem) {
-  return findAllowedBrand(
+  const descriptionBrand = findAllowedBrand(
     normalizeImportedProductDescription(item.description, { stripSizes: true }),
+  );
+
+  if (descriptionBrand) {
+    return descriptionBrand;
+  }
+
+  return findAllowedBrand(
+    normalizeImportedProductDescription(item.rubro, { stripSizes: true }),
   );
 }
 
