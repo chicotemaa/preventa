@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import type {
   PriceListInputItem,
   PriceListItemResult,
@@ -100,9 +100,6 @@ type SourceCoverage = {
 };
 
 type PriceListFilterCounts = Record<PriceListItemFilter, number>;
-type DiagnosticRejectedCandidate = PriceListRejectedCandidate & {
-  query: string;
-};
 
 function getComparablePrice(price: ComparablePrice) {
   return normalizeOptionalNumber(price.comparisonPrice) ?? price.price;
@@ -161,19 +158,142 @@ export default function Home() {
         />
         <div className="relative mx-auto flex w-full max-w-[1800px] flex-col gap-2 px-4 py-6 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-extrabold leading-tight text-white sm:text-3xl lg:text-4xl">
-            Carga semanal de precios
+            Búsqueda y carga semanal de precios
           </h1>
           <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
-            Importá la lista, revisá precios de Aguiar contra fuentes y descargá
-            el archivo operativo.
+            Buscá productos puntuales o importá la lista para revisar precios de
+            Aguiar contra fuentes y descargar el archivo operativo.
           </p>
         </div>
       </section>
 
-      <section className="w-full px-3 py-4 sm:px-4 md:py-5 lg:px-6">
+      <section className="flex w-full flex-col gap-4 px-3 py-4 sm:px-4 md:py-5 lg:px-6">
+        <LiveProductSearch />
         <PriceListImport />
       </section>
     </main>
+  );
+}
+
+function LiveProductSearch() {
+  const [query, setQuery] = useState("");
+  const [response, setResponse] = useState<SearchResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedQuery = query.trim();
+
+    if (trimmedQuery.length < 2) {
+      setError("Ingresá al menos 2 caracteres para buscar.");
+      return;
+    }
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const result = await fetch("/api/live-search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: trimmedQuery }),
+      });
+      const payload = await result.json();
+
+      if (!result.ok) {
+        throw new Error(payload.error ?? "No se pudo completar la búsqueda.");
+      }
+
+      setResponse(payload as SearchResponse);
+    } catch (caughtError) {
+      setResponse(null);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo completar la búsqueda.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function clearSearch() {
+    setQuery("");
+    setResponse(null);
+    setError(null);
+  }
+
+  return (
+    <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-bold text-[#17202a]">Buscar producto</h2>
+        <p className="text-sm text-[#5d6b7a]">
+          Consultá por descripción, código interno o EAN antes de trabajar la
+          lista completa.
+        </p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="mt-4 flex flex-col gap-2 lg:flex-row"
+      >
+        <label className="relative flex-1">
+          <span className="sr-only">Buscar producto</span>
+          <Search
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8a96a3]"
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Ej: alfajor tatin, 7790040405608, cereal mix 26 gr"
+            className="h-12 w-full rounded-md border border-[#d9dee7] bg-[#fffdfa] pl-10 pr-11 text-base font-medium text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+          />
+          {query.length > 0 ? (
+            <button
+              type="button"
+              onClick={clearSearch}
+              aria-label="Limpiar búsqueda"
+              className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#667789] transition hover:bg-[#f0f3f7] hover:text-[#17202a]"
+            >
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          ) : null}
+        </label>
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#153d7b] px-5 text-sm font-bold text-white transition hover:bg-[#0f3165] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isLoading ? (
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+          ) : (
+            <Search aria-hidden="true" className="h-4 w-4" />
+          )}
+          {isLoading ? "Buscando..." : "Buscar"}
+        </button>
+      </form>
+
+      {error ? (
+        <div className="mt-3 rounded-md border border-[#f5c9c1] bg-[#fff2f0] px-3 py-2 text-sm font-semibold text-[#9b2f1c]">
+          {error}
+        </div>
+      ) : null}
+
+      {response ? (
+        <SearchResults
+          response={response}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={setSourceFilter}
+        />
+      ) : null}
+    </section>
   );
 }
 
@@ -558,127 +678,336 @@ function PriceListResults({
 }
 
 function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
   const itemsToReview = response.results.filter(resultNeedsMatchingReview);
+  const sourceProblems = getSourceProblems(response.sources);
+  const summary = buildDebugSummary(response, itemsToReview, sourceProblems);
 
-  if (itemsToReview.length === 0) {
-    return null;
+  async function copyDebugJson() {
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(buildDebugPayload(response), null, 2),
+      );
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch {
+      setCopyStatus("failed");
+      window.setTimeout(() => setCopyStatus("idle"), 2500);
+    }
   }
 
   return (
-    <details className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-3 text-sm text-[#526170] sm:px-4">
-      <summary className="cursor-pointer font-medium text-[#17202a]">
-        Log de matching ({itemsToReview.length} articulos para revisar)
+    <details
+      open={itemsToReview.length > 0 || sourceProblems.length > 0}
+      className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-3 text-sm text-[#526170] sm:px-4"
+    >
+      <summary className="cursor-pointer font-semibold text-[#17202a]">
+        Depuración de búsqueda ({summary.totalIssues} alertas)
       </summary>
       <div className="mt-3 flex flex-col gap-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
           <p className="text-sm leading-6 text-[#526170]">
-            Muestra busquedas probadas y candidatos descartados por marca, score
-            o presentacion.
+            Este panel muestra consultas probadas, fuentes sin datos o con error
+            y candidatos descartados. Descargá el JSON completo para pasarme el
+            caso exacto sin perder contexto.
           </p>
-          <button
-            type="button"
-            onClick={() => downloadMatchingLogCsv(response)}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd]"
-          >
-            <Download className="h-4 w-4" />
-            Descargar log
-          </button>
+          <div className="grid gap-2 sm:flex sm:shrink-0 sm:flex-wrap sm:justify-end">
+            <button
+              type="button"
+              onClick={() => downloadMatchingLogCsv(response)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd]"
+            >
+              <Download className="h-4 w-4" />
+              CSV matching
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadDebugJson(response)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd]"
+            >
+              <Download className="h-4 w-4" />
+              JSON completo
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyDebugJson()}
+              className="inline-flex h-9 items-center justify-center rounded-md border border-[#dec8bd] bg-white px-3 text-sm font-semibold text-[#171717] transition hover:border-[#275fbd] hover:text-[#275fbd]"
+            >
+              {copyStatus === "copied"
+                ? "Copiado"
+                : copyStatus === "failed"
+                  ? "No se pudo copiar"
+                  : "Copiar JSON"}
+            </button>
+          </div>
         </div>
 
-        <div className="grid gap-2">
-          {itemsToReview.slice(0, 20).map((result) => {
-            const rejectedCandidates = getRejectedDiagnosticCandidates(result, 3);
-            const directAguiar = result.diagnostics?.directAguiar;
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+          <DebugMetric label="Sin match" value={summary.unmatchedItems} />
+          <DebugMetric label="Sin Aguiar" value={summary.itemsWithoutAguiar} />
+          <DebugMetric label="Sin mercado" value={summary.itemsWithoutMarket} />
+          <DebugMetric label="Fuentes error" value={summary.failedSources} />
+          <DebugMetric label="Fuentes sin datos" value={summary.emptySources} />
+          <DebugMetric label="Descartes" value={summary.rejectedCandidates} />
+        </div>
 
-            return (
-              <div
-                key={`diag-${result.input.rowNumber}-${result.input.code ?? ""}`}
-                className="rounded border border-[#d9dee7] bg-white px-3 py-2"
-              >
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                  <div className="min-w-0">
-                    <div className="line-clamp-2 font-semibold text-[#17202a]">
-                      {result.input.description || "Articulo sin descripcion"}
+        {sourceProblems.length > 0 ? (
+          <div className="rounded-md border border-[#e5e9ef] bg-white">
+            <div className="border-b border-[#e5e9ef] px-3 py-2">
+              <h4 className="text-sm font-semibold text-[#17202a]">
+                Fuentes con error o sin datos
+              </h4>
+            </div>
+            <div className="max-h-[300px] overflow-auto divide-y divide-[#e5e9ef]">
+              {sourceProblems.map((source) => (
+                <div key={`debug-source-${source.sourceId}`} className="px-3 py-2">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[#17202a]">
+                        {source.storeName}
+                      </div>
+                      <div className="mt-0.5 text-xs text-[#667789]">
+                        {source.sourceId} · {source.storeType} ·{" "}
+                        {source.resultsCount} resultados ·{" "}
+                        {formatDurationMs(source.durationMs)}
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-[#667789]">
-                      {result.input.code || "-"} ·{" "}
-                      {result.input.ean13Di || result.input.ean13Bu || "sin EAN"}
-                    </div>
+                    <span className={statusClassName(source.status)}>
+                      {sourceStatusLabel(source.status)}
+                    </span>
                   </div>
-                  <div className="shrink-0 text-xs font-semibold text-[#8f2d20]">
-                    {result.status === "not_found"
-                      ? "Sin match"
-                      : "Match incompleto"}
+                  <div className="mt-1 text-xs leading-5 text-[#526170]">
+                    {source.errorMessage ??
+                      (source.status === "no_results" || source.resultsCount === 0
+                        ? "La fuente respondió, pero no devolvió productos útiles para esta corrida."
+                        : "Sin detalle de error informado por la fuente.")}
                   </div>
-                </div>
-
-                <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
-                  <div>
-                    <span className="font-semibold text-[#526170]">
-                      Marca esperada:
-                    </span>{" "}
-                    {result.diagnostics?.expectedBrand ?? "-"}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-[#526170]">
-                      Query usada:
-                    </span>{" "}
-                    {result.queryUsed ?? "-"}
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className="font-semibold text-[#526170]">
-                      Busquedas:
-                    </span>{" "}
-                    {result.diagnostics?.queriesTried.slice(0, 6).join(" | ") ??
-                      "-"}
-                  </div>
-                  {directAguiar ? (
-                    <div className="md:col-span-2">
-                      <span className="font-semibold text-[#526170]">
-                        Aguiar directo:
-                      </span>{" "}
-                      {directSourceStatusLabel(directAguiar.status)}
-                      {directAguiar.matchedQuery
-                        ? ` con "${directAguiar.matchedQuery}"`
-                        : ""}
-                      {directAguiar.errorMessage
-                        ? ` · ${directAguiar.errorMessage}`
-                        : ""}
-                    </div>
+                  {source.sourceUrl ? (
+                    <a
+                      href={source.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex text-xs font-medium text-[#1d5f8f] underline-offset-2 hover:underline"
+                    >
+                      Abrir fuente
+                    </a>
                   ) : null}
                 </div>
-
-                {rejectedCandidates.length > 0 ? (
-                  <div className="mt-2 divide-y divide-[#e5e9ef] rounded border border-[#e5e9ef]">
-                    {rejectedCandidates.map((candidate) => (
-                      <div
-                        key={`${candidate.query}-${candidate.sourceId}-${candidate.productName}`}
-                        className="px-2 py-2 text-xs"
-                      >
-                        <div className="font-medium text-[#17202a]">
-                          {candidate.productName}
-                        </div>
-                        <div className="mt-1 text-[#667789]">
-                          {candidate.storeName} ·{" "}
-                          {rejectReasonLabel(candidate.reason)} · base{" "}
-                          {candidate.baseScore} / final {candidate.finalScore}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-
-        {itemsToReview.length > 20 ? (
-          <div className="text-xs text-[#667789]">
-            Se muestran 20 casos. El CSV incluye el log completo.
+              ))}
+            </div>
           </div>
         ) : null}
+
+        <div className="rounded-md border border-[#e5e9ef] bg-white">
+          <div className="flex flex-col gap-1 border-b border-[#e5e9ef] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <h4 className="text-sm font-semibold text-[#17202a]">
+              Artículos para depurar
+            </h4>
+            <span className="text-xs text-[#667789]">
+              {itemsToReview.length} de {response.results.length} artículos
+            </span>
+          </div>
+
+          {itemsToReview.length === 0 ? (
+            <div className="px-3 py-5 text-sm text-[#667789]">
+              No hay artículos con alertas de matching en esta evaluación.
+            </div>
+          ) : (
+            <div className="max-h-[560px] overflow-auto divide-y divide-[#e5e9ef]">
+              {itemsToReview.map((result) => {
+                const directAguiar = result.diagnostics?.directAguiar;
+                const issueLabels = getResultIssueLabels(result);
+
+                return (
+                  <details
+                    key={`diag-${result.input.rowNumber}-${result.input.code ?? ""}`}
+                    className="px-3 py-2"
+                  >
+                    <summary className="cursor-pointer">
+                      <div className="inline-flex w-[calc(100%-1rem)] flex-col gap-1 align-top sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                        <div className="min-w-0">
+                          <div className="line-clamp-2 font-semibold text-[#17202a]">
+                            {result.input.description ||
+                              "Artículo sin descripción"}
+                          </div>
+                          <div className="mt-1 text-xs text-[#667789]">
+                            Fila {result.input.rowNumber} ·{" "}
+                            {result.input.code || "-"} ·{" "}
+                            {result.input.ean13Di ||
+                              result.input.ean13Bu ||
+                              "sin EAN"}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-1">
+                          {issueLabels.map((label) => (
+                            <span
+                              key={`${result.input.rowNumber}-${label}`}
+                              className="rounded bg-[#fff1ef] px-2 py-1 text-[11px] font-semibold text-[#8f2d20]"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </summary>
+
+                    <div className="mt-3 grid gap-3 text-xs">
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div>
+                          <span className="font-semibold text-[#526170]">
+                            Marca esperada:
+                          </span>{" "}
+                          {result.diagnostics?.expectedBrand ?? "-"}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#526170]">
+                            Query usada:
+                          </span>{" "}
+                          {result.queryUsed ?? "-"}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#526170]">
+                            Precio Aguiar:
+                          </span>{" "}
+                          {formatCurrencyValue(
+                            normalizeOptionalNumber(result.input.currentPrice),
+                          )}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#526170]">
+                            Mejor mercado:
+                          </span>{" "}
+                          {formatCurrencyValue(result.bestPrice)}
+                        </div>
+                      </div>
+
+                      {directAguiar ? (
+                        <div className="rounded border border-[#e5e9ef] bg-[#f8fafc] px-2 py-2">
+                          <span className="font-semibold text-[#526170]">
+                            Aguiar directo:
+                          </span>{" "}
+                          {directSourceStatusLabel(directAguiar.status)}
+                          {directAguiar.matchedQuery
+                            ? ` con "${directAguiar.matchedQuery}"`
+                            : ""}
+                          {directAguiar.errorMessage
+                            ? ` · ${directAguiar.errorMessage}`
+                            : ""}
+                          <div className="mt-1 text-[#667789]">
+                            Consultas:{" "}
+                            {directAguiar.queriesTried.join(" | ") || "-"}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="grid gap-2">
+                        {result.diagnostics?.queryDiagnostics.map(
+                          (diagnostic) => (
+                            <div
+                              key={`${result.input.rowNumber}-${diagnostic.query}`}
+                              className="rounded border border-[#e5e9ef] px-2 py-2"
+                            >
+                              <div className="font-semibold text-[#17202a]">
+                                Query: "{diagnostic.query}"
+                              </div>
+                              <div className="mt-1 text-[#667789]">
+                                candidatos {diagnostic.candidatesCount} · matches{" "}
+                                {diagnostic.matchesCount} · descartados{" "}
+                                {diagnostic.rejectedCount}
+                              </div>
+                              {diagnostic.topRejected.length > 0 ? (
+                                <div className="mt-2 divide-y divide-[#eef1f4] rounded border border-[#eef1f4]">
+                                  {diagnostic.topRejected.map((candidate) => (
+                                    <DiagnosticCandidateRow
+                                      key={`${diagnostic.query}-${candidate.sourceId}-${candidate.productName}-${candidate.reason}`}
+                                      candidate={candidate}
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="mt-2 rounded bg-[#f8fafc] px-2 py-2 text-[#667789]">
+                                  Sin candidatos descartados registrados para
+                                  esta query.
+                                </div>
+                              )}
+                            </div>
+                          ),
+                        ) ?? null}
+
+                        {directAguiar?.queryDiagnostics.map((diagnostic) => (
+                          <div
+                            key={`${result.input.rowNumber}-aguiar-${diagnostic.query}`}
+                            className="rounded border border-[#f0d898] bg-[#fffaf0] px-2 py-2"
+                          >
+                            <div className="font-semibold text-[#17202a]">
+                              Aguiar query: "{diagnostic.query}"
+                            </div>
+                            <div className="mt-1 text-[#667789]">
+                              candidatos {diagnostic.candidatesCount} · matches{" "}
+                              {diagnostic.matchesCount} · descartados{" "}
+                              {diagnostic.rejectedCount}
+                            </div>
+                            {diagnostic.topRejected.length > 0 ? (
+                              <div className="mt-2 divide-y divide-[#f0d898] rounded border border-[#f0d898] bg-white">
+                                {diagnostic.topRejected.map((candidate) => (
+                                  <DiagnosticCandidateRow
+                                    key={`aguiar-${diagnostic.query}-${candidate.sourceId}-${candidate.productName}-${candidate.reason}`}
+                                    candidate={candidate}
+                                  />
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </details>
+  );
+}
+
+function DebugMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-[#e5e9ef] bg-white px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#667789]">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold text-[#17202a]">{value}</div>
+    </div>
+  );
+}
+
+function DiagnosticCandidateRow({
+  candidate,
+}: {
+  candidate: PriceListRejectedCandidate;
+}) {
+  return (
+    <div className="px-2 py-2">
+      <div className="font-medium text-[#17202a]">{candidate.productName}</div>
+      <div className="mt-1 text-[#667789]">
+        {candidate.storeName} · {rejectReasonLabel(candidate.reason)} · base{" "}
+        {candidate.baseScore} / final {candidate.finalScore}
+      </div>
+      {candidate.productUrl ? (
+        <a
+          href={candidate.productUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1 inline-flex text-[#1d5f8f] underline-offset-2 hover:underline"
+        >
+          Ver candidato
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -1544,11 +1873,17 @@ function SourcesDetails({ sources }: { sources: SourceSearchStatus[] }) {
               </span>
             </div>
             <div className="mt-1 text-xs text-[#667789]">
-              {source.sourceScope ?? source.storeType}
+              {source.sourceScope ?? source.storeType} · {source.resultsCount}{" "}
+              resultados · {formatDurationMs(source.durationMs)}
             </div>
             {source.dataOrigin ? (
               <p className="mt-1 text-xs leading-5 text-[#526170]">
                 {source.dataOrigin}
+              </p>
+            ) : null}
+            {source.errorMessage ? (
+              <p className="mt-1 rounded bg-[#fff1ef] px-2 py-1 text-xs leading-5 text-[#8f2d20]">
+                {source.errorMessage}
               </p>
             ) : null}
           </div>
@@ -1947,67 +2282,112 @@ function buildSortedSourceComparisons(
     .sort(compareSourceComparisons);
 }
 
+function getSourceProblems(sources: SourceSearchStatus[]) {
+  return sources.filter(
+    (source) =>
+      source.status !== "success" ||
+      source.resultsCount === 0 ||
+      Boolean(source.errorMessage),
+  );
+}
+
+function buildDebugSummary(
+  response: PriceListResponse,
+  itemsToReview: PriceListItemResult[],
+  sourceProblems: SourceSearchStatus[],
+) {
+  return {
+    totalIssues: itemsToReview.length + sourceProblems.length,
+    unmatchedItems: response.results.filter(
+      (result) => result.status === "not_found",
+    ).length,
+    itemsWithoutAguiar: response.results.filter(
+      (result) => normalizeOptionalNumber(result.input.currentPrice) === null,
+    ).length,
+    itemsWithoutMarket: response.results.filter(
+      (result) => result.sourcePrices.length === 0,
+    ).length,
+    failedSources: response.sources.filter(
+      (source) => source.status === "failed" || source.status === "timeout",
+    ).length,
+    emptySources: response.sources.filter(
+      (source) => source.status === "no_results" || source.resultsCount === 0,
+    ).length,
+    rejectedCandidates: response.results.reduce(
+      (total, result) => total + countRejectedDiagnostics(result),
+      0,
+    ),
+  };
+}
+
+function countRejectedDiagnostics(result: PriceListItemResult) {
+  const catalogRejected =
+    result.diagnostics?.queryDiagnostics.reduce(
+      (total, diagnostic) => total + diagnostic.topRejected.length,
+      0,
+    ) ?? 0;
+  const directAguiarRejected =
+    result.diagnostics?.directAguiar?.queryDiagnostics.reduce(
+      (total, diagnostic) => total + diagnostic.topRejected.length,
+      0,
+    ) ?? 0;
+
+  return catalogRejected + directAguiarRejected;
+}
+
+function getResultIssueLabels(result: PriceListItemResult) {
+  const labels: string[] = [];
+
+  if (result.status === "not_found") {
+    labels.push("Sin match");
+  }
+
+  if (normalizeOptionalNumber(result.input.currentPrice) === null) {
+    labels.push("Sin Aguiar");
+  }
+
+  if (result.sourcePrices.length === 0) {
+    labels.push("Sin mercado");
+  }
+
+  if (labels.length === 0) {
+    labels.push("Revisar");
+  }
+
+  return labels;
+}
+
+function buildDebugPayload(response: PriceListResponse) {
+  const sourceProblems = getSourceProblems(response.sources);
+  const itemsToReview = response.results.filter(resultNeedsMatchingReview);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: buildDebugSummary(response, itemsToReview, sourceProblems),
+    searchedAt: response.searchedAt,
+    durationMs: response.durationMs,
+    catalog: response.catalog,
+    sourceProblems,
+    sources: response.sources,
+    itemsToReview,
+    results: response.results,
+  };
+}
+
+function formatDurationMs(durationMs: number) {
+  if (durationMs >= 1000) {
+    return `${(durationMs / 1000).toFixed(1)} s`;
+  }
+
+  return `${durationMs} ms`;
+}
+
 function resultNeedsMatchingReview(result: PriceListItemResult) {
   return (
     result.status === "not_found" ||
     result.sourcePrices.length === 0 ||
     normalizeOptionalNumber(result.input.currentPrice) === null
   );
-}
-
-function getRejectedDiagnosticCandidates(
-  result: PriceListItemResult,
-  limit: number,
-): DiagnosticRejectedCandidate[] {
-  const catalogCandidates =
-    result.diagnostics?.queryDiagnostics.flatMap((diagnostic) =>
-      diagnostic.topRejected.map((candidate) => ({
-        ...candidate,
-        query: diagnostic.query,
-      })),
-    ) ?? [];
-  const aguiarCandidates =
-    result.diagnostics?.directAguiar?.queryDiagnostics.flatMap((diagnostic) =>
-      diagnostic.topRejected.map((candidate) => ({
-        ...candidate,
-        query: `Aguiar: ${diagnostic.query}`,
-      })),
-    ) ?? [];
-
-  return dedupeDiagnosticCandidates([...catalogCandidates, ...aguiarCandidates])
-    .sort((first, second) => {
-      if (second.baseScore !== first.baseScore) {
-        return second.baseScore - first.baseScore;
-      }
-
-      return second.finalScore - first.finalScore;
-    })
-    .slice(0, limit);
-}
-
-function dedupeDiagnosticCandidates(
-  candidates: DiagnosticRejectedCandidate[],
-) {
-  const seen = new Set<string>();
-  const deduped: DiagnosticRejectedCandidate[] = [];
-
-  for (const candidate of candidates) {
-    const key = [
-      candidate.query,
-      candidate.sourceId,
-      candidate.productName,
-      candidate.reason,
-    ].join("|");
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    deduped.push(candidate);
-  }
-
-  return deduped;
 }
 
 function compareSourceComparisons(
@@ -2462,6 +2842,17 @@ function downloadMatchingLogCsv(response: PriceListResponse) {
   const link = document.createElement("a");
   link.href = url;
   link.download = `log-matching-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadDebugJson(response: PriceListResponse) {
+  const json = JSON.stringify(buildDebugPayload(response), null, 2);
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `debug-precios-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
