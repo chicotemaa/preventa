@@ -452,12 +452,31 @@ function getPackagePriceLabel(price: PriceListSourcePrice) {
   return `${price.packageLabel ?? `pack x ${price.packageQuantity}`}: ${formatCurrency(price.price)}`;
 }
 
+function getAlternatePriceLabels(price: PriceListSourcePrice) {
+  return (price.alternatePrices ?? [])
+    .filter(
+      (alternatePrice) =>
+        typeof alternatePrice.price === "number" &&
+        Number.isFinite(alternatePrice.price) &&
+        alternatePrice.price > 0,
+    )
+    .map(
+      (alternatePrice) =>
+        `${alternatePrice.label}: ${formatCurrency(alternatePrice.price)}`,
+    );
+}
+
 function formatSourceCsvPrice(sourcePrice: PriceListSourcePrice) {
   const packageLabel = getPackagePriceLabel(sourcePrice);
   const unitPrice = getComparablePrice(sourcePrice).toFixed(2);
+  const details = [
+    sourcePrice.priceCondition,
+    packageLabel ? `unitario (${packageLabel})` : null,
+    ...getAlternatePriceLabels(sourcePrice),
+  ].filter(Boolean);
 
-  return packageLabel
-    ? `${sourcePrice.storeName}: ${unitPrice} unitario (${packageLabel})`
+  return details.length > 0
+    ? `${sourcePrice.storeName}: ${unitPrice} (${details.join("; ")})`
     : `${sourcePrice.storeName}: ${unitPrice}`;
 }
 

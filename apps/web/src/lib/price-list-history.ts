@@ -292,6 +292,11 @@ function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
           typeof sourcePrice.comparisonPrice === "number"
             ? sourcePrice.comparisonPrice
             : sourcePrice.price,
+        priceCondition:
+          typeof sourcePrice.priceCondition === "string"
+            ? sourcePrice.priceCondition
+            : null,
+        alternatePrices: parseAlternatePrices(sourcePrice.alternatePrices),
         packageQuantity:
           typeof sourcePrice.packageQuantity === "number"
             ? sourcePrice.packageQuantity
@@ -311,6 +316,43 @@ function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
           typeof sourcePrice.confidenceScore === "number"
             ? sourcePrice.confidenceScore
             : 0,
+      },
+    ];
+  });
+}
+
+function parseAlternatePrices(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+
+    const alternatePrice = item as {
+      label?: unknown;
+      price?: unknown;
+      comparisonPrice?: unknown;
+    };
+
+    if (
+      typeof alternatePrice.label !== "string" ||
+      typeof alternatePrice.price !== "number" ||
+      !Number.isFinite(alternatePrice.price)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        label: alternatePrice.label,
+        price: alternatePrice.price,
+        comparisonPrice:
+          typeof alternatePrice.comparisonPrice === "number"
+            ? alternatePrice.comparisonPrice
+            : alternatePrice.price,
       },
     ];
   });

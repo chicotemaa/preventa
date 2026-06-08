@@ -857,14 +857,33 @@ function formatComparableSourceCurrency(price: PriceListSourcePrice) {
 }
 
 function PackagePriceDetail({ price }: { price: PriceListSourcePrice }) {
-  if (!price.packageQuantity || price.packageQuantity <= 1) {
+  const packageLabel =
+    price.packageQuantity && price.packageQuantity > 1
+      ? `${price.packageLabel ?? `pack x ${price.packageQuantity}`}: ${formatCurrency(price.price)}`
+      : null;
+  const alternatePriceLabels = (price.alternatePrices ?? [])
+    .filter(
+      (alternatePrice) =>
+        typeof alternatePrice.price === "number" &&
+        Number.isFinite(alternatePrice.price) &&
+        alternatePrice.price > 0,
+    )
+    .map(
+      (alternatePrice) =>
+        `${alternatePrice.label}: ${formatCurrency(alternatePrice.price)}`,
+    );
+
+  if (!packageLabel && !price.priceCondition && alternatePriceLabels.length === 0) {
     return null;
   }
 
   return (
     <div className="mt-1 text-xs font-normal text-[#667789]">
-      {price.packageLabel ?? `pack x ${price.packageQuantity}`}:{" "}
-      {formatCurrency(price.price)}
+      {price.priceCondition ? <div>{price.priceCondition}</div> : null}
+      {packageLabel ? <div>{packageLabel}</div> : null}
+      {alternatePriceLabels.map((label) => (
+        <div key={label}>{label}</div>
+      ))}
     </div>
   );
 }

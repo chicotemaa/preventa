@@ -239,7 +239,9 @@ function toTokinProductResult(
   query: string,
   variant: TokinVariant,
 ): ProductSearchResult | null {
-  const rawName = getRawValue(product.name);
+  const productName = getRawValue(product.name);
+  const variantName = findTokinVariantName(variant);
+  const rawName = mergeTokinProductName(productName, variantName);
   const price = findTokinVariantPrice(variant);
 
   if (!rawName || price === null) {
@@ -263,7 +265,7 @@ function toTokinProductResult(
     dataOrigin: getDataOrigin(source),
     sourceScope: getSourceScope(source),
     sku: getTokinSku(variant, product),
-    barcodes: getTokinBarcodes(variant),
+    barcodes: getTokinBarcodes(variant, product),
     brand: brand || undefined,
     category: category || undefined,
     rawName,
@@ -274,6 +276,51 @@ function toTokinProductResult(
     imageUrl: findTokinImageUrl(product),
     confidenceScore: calculateConfidenceScore(query, matchText),
   }, pricingContext);
+}
+
+function findTokinVariantName(variant: TokinVariant) {
+  const preferredKeys = [
+    "name",
+    "variantName",
+    "variant_name",
+    "description",
+    "descripcion",
+    "presentation",
+    "presentacion",
+  ];
+
+  for (const key of preferredKeys) {
+    const value = stringifyTokinVariantValue(variant[key]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function mergeTokinProductName(productName: string, variantName: string) {
+  if (!productName) {
+    return variantName;
+  }
+
+  if (!variantName) {
+    return productName;
+  }
+
+  const normalizedProductName = normalizeProductName(productName);
+  const normalizedVariantName = normalizeProductName(variantName);
+
+  if (normalizedProductName.includes(normalizedVariantName)) {
+    return productName;
+  }
+
+  if (normalizedVariantName.includes(normalizedProductName)) {
+    return variantName;
+  }
+
+  return `${productName} ${variantName}`.replace(/\s+/g, " ").trim();
 }
 
 function findPricedTokinVariants(product: TokinSearchHit) {
@@ -501,18 +548,110 @@ function getTokinSku(
   variant: TokinVariant | undefined,
   product: TokinSearchHit,
 ) {
-  return (
-    String(variant?.skuId ?? variant?.sku ?? "") ||
-    String(getRawValue(product.ref_id_product) || getRawValue(product.product_id) || "") ||
-    null
-  );
+  const sku =
+    findTokinIdentifierValue(variant, [
+      "sku",
+      "skuId",
+      "sku_id",
+      "refId",
+      "ref_id",
+      "refIdProduct",
+      "ref_id_product",
+      "codigo",
+      "code",
+      "internalCode",
+      "internal_code",
+    ]) ||
+    getRawValue(product.ref_id_product) ||
+    getRawValue(product.product_id) ||
+    getRawValue(product.id as TokinRawField | string | number | undefined);
+
+  return sku || null;
 }
 
-function getTokinBarcodes(variant: TokinVariant | undefined) {
-  return [variant?.barcode, variant?.ean]
-    .filter((value): value is string => Boolean(value))
+function getTokinBarcodes(
+  variant: TokinVariant | undefined,
+  product: TokinSearchHit,
+) {
+  const values = new Set<string>();
+
+  collectTokinIdentifierValues(variant, values);
+  collectTokinIdentifierValues(product, values);
+
+  return Array.from(values)
     .map((value) => value.replace(/\D/g, ""))
     .filter((value) => /^\d{8,14}$/.test(value));
+}
+
+function findTokinIdentifierValue(
+  value: unknown,
+  keys: string[],
+): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const normalizedKeys = new Set(keys.map(normalizeTokinKey));
+
+  for (const [key, itemValue] of Object.entries(value)) {
+    if (!normalizedKeys.has(normalizeTokinKey(key))) {
+      continue;
+    }
+
+    const text = stringifyTokinVariantValue(itemValue);
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function collectTokinIdentifierValues(
+  value: unknown,
+  identifiers: Set<string>,
+  depth = 0,
+) {
+  if (!value || typeof value !== "object" || depth > 2) {
+    return;
+  }
+
+  for (const [key, itemValue] of Object.entries(value)) {
+    const normalizedKey = normalizeTokinKey(key);
+    const shouldReadValue =
+      /(?:ean|barcode|barcod|barras|barra|gtin|upc)/i.test(normalizedKey);
+
+    if (shouldReadValue) {
+      for (const identifier of extractTokinNumericIdentifiers(itemValue)) {
+        identifiers.add(identifier);
+      }
+    }
+
+    if (
+      itemValue &&
+      typeof itemValue === "object" &&
+      !["price", "prices", "stock"].includes(normalizedKey)
+    ) {
+      collectTokinIdentifierValues(itemValue, identifiers, depth + 1);
+    }
+  }
+}
+
+function extractTokinNumericIdentifiers(value: unknown): string[] {
+  if (typeof value === "number") {
+    return [String(value)];
+  }
+
+  if (typeof value === "string") {
+    return value.match(/\d{8,14}/g) ?? [];
+  }
+
+  if (value && typeof value === "object" && "raw" in value) {
+    return extractTokinNumericIdentifiers((value as TokinRawField).raw);
+  }
+
+  return [];
 }
 
 function getRawValue(field: TokinRawField | string | number | undefined) {

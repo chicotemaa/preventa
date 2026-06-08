@@ -12,7 +12,11 @@ import {
   getSourceScope,
   getSourceUrl,
 } from "./source-metadata.js";
-import type { ProductSearchResult, ScrapingSource } from "./types.js";
+import type {
+  AlternatePrice,
+  ProductSearchResult,
+  ScrapingSource,
+} from "./types.js";
 import { createProductResult } from "./extractors.js";
 import { withUnitPricing } from "./unit-pricing.js";
 
@@ -74,6 +78,12 @@ type WooCommercePmwProduct = {
   brand?: string;
   name?: string;
   category?: string[];
+};
+
+type MaxiconsumoUnitPricing = {
+  price: number;
+  priceCondition: string | null;
+  alternatePrices: AlternatePrice[];
 };
 
 export async function extractProductsFromVtexApi(
@@ -298,7 +308,8 @@ function toStaticHtmlProductResult(
 ): ProductSearchResult | null {
   const rawName = decodeHtml(stripTags(findStaticProductName(cardHtml)));
   const rawPrice = decodeHtml(stripTags(findStaticProductPrice(cardHtml)));
-  const price = normalizePrice(rawPrice);
+  const maxiconsumoPricing = findMaxiconsumoUnitPricing(cardHtml, source);
+  const price = maxiconsumoPricing?.price ?? normalizePrice(rawPrice);
 
   if (!rawName || price === null) {
     return null;
@@ -315,11 +326,122 @@ function toStaticHtmlProductResult(
 
   return {
     ...product,
+    ...(maxiconsumoPricing
+      ? {
+          comparisonPrice: maxiconsumoPricing.price,
+          priceCondition: maxiconsumoPricing.priceCondition,
+          alternatePrices: maxiconsumoPricing.alternatePrices,
+          packageQuantity: null,
+          packageLabel: null,
+        }
+      : {}),
     sku:
       decodeHtml(stripTags(matchFirst(cardHtml, /product-sku[\s\S]*?SKU<\/span>\s*([^<]+)/i))) ||
       null,
     category: product.category ?? findCatalogCategory(rawName)?.name,
   };
+}
+
+function findMaxiconsumoUnitPricing(
+  cardHtml: string,
+  source: ScrapingSource,
+): MaxiconsumoUnitPricing | null {
+  if (!source.id.startsWith("maxiconsumo")) {
+    return null;
+  }
+
+  const text = decodeHtml(stripTags(cardHtml));
+  const bulkClosedUnitPrice = findPriceAfterLabel(
+    text,
+    "Precio unitario por bulto cerrado",
+  );
+  const unitPrice = findPriceAfterLabel(text, "Precio unitario", [
+    "Precio unitario por bulto cerrado",
+  ]);
+
+  if (bulkClosedUnitPrice === null && unitPrice === null) {
+    return null;
+  }
+
+  if (bulkClosedUnitPrice !== null) {
+    return {
+      price: bulkClosedUnitPrice,
+      priceCondition: "Unitario por bulto cerrado",
+      alternatePrices:
+        unitPrice !== null && !pricesAreEqual(unitPrice, bulkClosedUnitPrice)
+          ? [
+              {
+                label: "Precio unitario",
+                price: unitPrice,
+                comparisonPrice: unitPrice,
+              },
+            ]
+          : [],
+    };
+  }
+
+  if (unitPrice === null) {
+    return null;
+  }
+
+  return {
+    price: unitPrice,
+    priceCondition: "Precio unitario",
+    alternatePrices: [],
+  };
+}
+
+function findPriceAfterLabel(
+  text: string,
+  label: string,
+  excludedLabels: string[] = [],
+) {
+  const pricePattern = "\\$\\s*\\d[\\d.,]*";
+  const pattern = new RegExp(
+    `${buildFlexibleTextPattern(label)}\\s*(${pricePattern})`,
+    "gi",
+  );
+
+  for (const match of text.matchAll(pattern)) {
+    const matchIndex = match.index ?? 0;
+    const snippet = normalizeComparableText(text.slice(matchIndex, matchIndex + 90));
+    const isExcluded = excludedLabels.some((excludedLabel) =>
+      snippet.startsWith(normalizeComparableText(excludedLabel)),
+    );
+
+    if (isExcluded) {
+      continue;
+    }
+
+    const price = normalizePrice(match[1] ?? "");
+
+    if (price !== null) {
+      return price;
+    }
+  }
+
+  return null;
+}
+
+function buildFlexibleTextPattern(value: string) {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+}
+
+function normalizeComparableText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pricesAreEqual(first: number, second: number) {
+  return Math.abs(first - second) < 0.01;
 }
 
 function toWooCommercePmwProductResult(

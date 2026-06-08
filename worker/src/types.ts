@@ -21,12 +21,20 @@ export type ProductSearchResult = {
   normalizedName: string;
   price: number;
   comparisonPrice?: number;
+  priceCondition?: string | null;
+  alternatePrices?: AlternatePrice[];
   packageQuantity?: number | null;
   packageLabel?: string | null;
   currency: "ARS";
   productUrl: string | null;
   imageUrl: string | null;
   confidenceScore: number;
+};
+
+export type AlternatePrice = {
+  label: string;
+  price: number;
+  comparisonPrice?: number | null;
 };
 
 export type SourceSearchStatus = {
@@ -91,6 +99,8 @@ export type PriceListSourcePrice = {
   sourceScope?: string;
   price: number;
   comparisonPrice?: number;
+  priceCondition?: string | null;
+  alternatePrices?: AlternatePrice[];
   packageQuantity?: number | null;
   packageLabel?: string | null;
   category?: string;
@@ -119,6 +129,7 @@ export type PriceListRejectedCandidate = {
 
 export type PriceListQueryDiagnostic = {
   query: string;
+  sourceResultsCount?: number;
   candidatesCount: number;
   matchesCount: number;
   rejectedCount: number;

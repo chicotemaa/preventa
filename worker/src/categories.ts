@@ -99,12 +99,18 @@ export function findCatalogCategory(value: string | null | undefined) {
 
 export function getCategorySearchTermsForText(value: string | null | undefined) {
   const category = findCatalogCategory(value);
+  const normalizedValue = normalizeCategoryText(value ?? "");
 
   if (!category) {
     return [];
   }
 
-  return Array.from(new Set(category.searchTerms.map(normalizeCategoryText)));
+  const searchTerms = category.searchTerms.map(normalizeCategoryText);
+  const directTerms = searchTerms.filter((term) =>
+    categoryAliasMatches(normalizedValue, term),
+  );
+
+  return Array.from(new Set([...directTerms, ...searchTerms]));
 }
 
 function categoryAliasMatches(normalizedValue: string, normalizedAlias: string) {

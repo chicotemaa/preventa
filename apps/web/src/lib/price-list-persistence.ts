@@ -279,6 +279,8 @@ function serializeSourcePrice(sourcePrice: PriceListSourcePrice) {
     sourceScope: sourcePrice.sourceScope ?? null,
     price: sourcePrice.price,
     comparisonPrice: sourcePrice.comparisonPrice ?? sourcePrice.price,
+    priceCondition: sourcePrice.priceCondition ?? null,
+    alternatePrices: sourcePrice.alternatePrices ?? [],
     packageQuantity: sourcePrice.packageQuantity ?? null,
     packageLabel: sourcePrice.packageLabel ?? null,
     category: sourcePrice.category ?? null,

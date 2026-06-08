@@ -39,6 +39,12 @@ const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 type ComparablePrice = {
   price: number;
   comparisonPrice?: number | null;
+  priceCondition?: string | null;
+  alternatePrices?: Array<{
+    label: string;
+    price: number;
+    comparisonPrice?: number | null;
+  }>;
   packageQuantity?: number | null;
   packageLabel?: string | null;
 };
@@ -117,16 +123,35 @@ function getPackagePriceLabel(price: ComparablePrice) {
   return `${price.packageLabel ?? `pack x ${price.packageQuantity}`}: ${currencyFormatter.format(price.price)}`;
 }
 
+function getAlternatePriceLabels(price: ComparablePrice) {
+  return (price.alternatePrices ?? [])
+    .filter(
+      (alternatePrice) =>
+        typeof alternatePrice.price === "number" &&
+        Number.isFinite(alternatePrice.price) &&
+        alternatePrice.price > 0,
+    )
+    .map(
+      (alternatePrice) =>
+        `${alternatePrice.label}: ${currencyFormatter.format(alternatePrice.price)}`,
+    );
+}
+
 function UnitPriceDetail({ price }: { price: ComparablePrice }) {
   const packageLabel = getPackagePriceLabel(price);
+  const alternatePrices = getAlternatePriceLabels(price);
 
-  if (!packageLabel) {
+  if (!packageLabel && !price.priceCondition && alternatePrices.length === 0) {
     return null;
   }
 
   return (
     <div className="mt-1 text-xs font-normal leading-4 text-[#667789]">
-      Unitario. {packageLabel}
+      {price.priceCondition ? <div>{price.priceCondition}</div> : null}
+      {packageLabel ? <div>Unitario. {packageLabel}</div> : null}
+      {alternatePrices.map((label) => (
+        <div key={label}>{label}</div>
+      ))}
     </div>
   );
 }
@@ -134,9 +159,14 @@ function UnitPriceDetail({ price }: { price: ComparablePrice }) {
 function formatSourceCsvPrice(sourcePrice: PriceListSourcePrice) {
   const unitPrice = getComparablePrice(sourcePrice).toFixed(2);
   const packageLabel = getPackagePriceLabel(sourcePrice);
+  const details = [
+    sourcePrice.priceCondition,
+    packageLabel ? `unitario (${packageLabel})` : null,
+    ...getAlternatePriceLabels(sourcePrice),
+  ].filter(Boolean);
 
-  return packageLabel
-    ? `${sourcePrice.storeName}: ${unitPrice} unitario (${packageLabel})`
+  return details.length > 0
+    ? `${sourcePrice.storeName}: ${unitPrice} (${details.join("; ")})`
     : `${sourcePrice.storeName}: ${unitPrice}`;
 }
 
@@ -913,8 +943,10 @@ function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
                                 Query: "{diagnostic.query}"
                               </div>
                               <div className="mt-1 text-[#667789]">
-                                candidatos {diagnostic.candidatesCount} · matches{" "}
-                                {diagnostic.matchesCount} · descartados{" "}
+                                devueltos{" "}
+                                {diagnostic.sourceResultsCount ?? "-"} ·
+                                candidatos {diagnostic.candidatesCount} ·
+                                matches {diagnostic.matchesCount} · descartados{" "}
                                 {diagnostic.rejectedCount}
                               </div>
                               {diagnostic.topRejected.length > 0 ? (
@@ -945,6 +977,7 @@ function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
                               Aguiar query: "{diagnostic.query}"
                             </div>
                             <div className="mt-1 text-[#667789]">
+                              devueltos {diagnostic.sourceResultsCount ?? "-"} ·
                               candidatos {diagnostic.candidatesCount} · matches{" "}
                               {diagnostic.matchesCount} · descartados{" "}
                               {diagnostic.rejectedCount}
@@ -2821,6 +2854,7 @@ function downloadMatchingLogCsv(response: PriceListResponse) {
     "Marca esperada",
     "Origen diagnostico",
     "Query diagnostico",
+    "Devueltos fuente",
     "Candidatos",
     "Matches",
     "Descartados",
@@ -2880,6 +2914,7 @@ function buildMatchingLogRows(result: PriceListItemResult) {
             "",
             "",
             "",
+            "",
             [
               directSourceStatusLabel(directAguiar.status),
               directAguiar.errorMessage,
@@ -2895,7 +2930,7 @@ function buildMatchingLogRows(result: PriceListItemResult) {
     aguiarRows.length === 0 &&
     aguiarStatusRows.length === 0
   ) {
-    return [buildMatchingLogBaseRow(result, "", "", "", "", "", "", "", "")];
+    return [buildMatchingLogBaseRow(result, "", "", "", "", "", "", "", "", "")];
   }
 
   return [...catalogRows, ...aguiarRows, ...aguiarStatusRows];
@@ -2914,6 +2949,9 @@ function buildMatchingDiagnosticRows(
         result,
         diagnosticOrigin,
         diagnostic.query,
+        diagnostic.sourceResultsCount === undefined
+          ? ""
+          : String(diagnostic.sourceResultsCount),
         String(diagnostic.candidatesCount),
         String(diagnostic.matchesCount),
         String(diagnostic.rejectedCount),
@@ -2929,6 +2967,9 @@ function buildMatchingDiagnosticRows(
       result,
       diagnosticOrigin,
       diagnostic.query,
+      diagnostic.sourceResultsCount === undefined
+        ? ""
+        : String(diagnostic.sourceResultsCount),
       String(diagnostic.candidatesCount),
       String(diagnostic.matchesCount),
       String(diagnostic.rejectedCount),
@@ -2946,6 +2987,7 @@ function buildMatchingLogBaseRow(
   result: PriceListItemResult,
   diagnosticOrigin: string,
   diagnosticQuery: string,
+  sourceResultsCount: string,
   candidatesCount: string,
   matchesCount: string,
   rejectedCount: string,
@@ -2970,6 +3012,7 @@ function buildMatchingLogBaseRow(
     result.diagnostics?.expectedBrand ?? "",
     diagnosticOrigin,
     diagnosticQuery,
+    sourceResultsCount,
     candidatesCount,
     matchesCount,
     rejectedCount,

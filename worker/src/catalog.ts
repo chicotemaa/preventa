@@ -20,7 +20,10 @@ import {
   normalizeProductName,
   normalizeQuery,
 } from "./normalizers.js";
-import { applyPresentationScore } from "./presentation.js";
+import {
+  applyPresentationScore,
+  extractProductPresentation,
+} from "./presentation.js";
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { scrapingSources } from "./sources/argentina.js";
@@ -488,7 +491,7 @@ async function findDirectAguiarSourcePrice(
   const diagnostics = createDirectSourceDiagnostics(source);
   let lastErrorMessage: string | undefined;
 
-  for (const query of buildAguiarDirectQueries(item)) {
+  for (const query of buildAguiarDirectQueries(item, expectedBrand)) {
     diagnostics.queriesTried.push(query);
     const result = await searchSource(source, query, undefined, {
       filterByConfidence: false,
@@ -509,6 +512,7 @@ async function findDirectAguiarSourcePrice(
       result.results,
       expectedBrand,
       item,
+      { sourceResultsCount: result.results.length },
     );
     diagnostics.queryDiagnostics.push(analysis.diagnostic);
     const sourcePrice = summarizeSourcePrices(analysis.matches).find(
@@ -568,28 +572,181 @@ function applyAguiarSourcePrice(
   };
 }
 
-function buildAguiarDirectQueries(item: PriceListInputItem) {
+function buildAguiarDirectQueries(
+  item: PriceListInputItem,
+  expectedBrand?: TargetBrand,
+) {
   const normalizedDescription = normalizeImportedProductDescription(item.description);
+  const descriptionWithoutPackageCount = normalizeImportedProductDescription(
+    item.description,
+    { stripPackageCount: true },
+  );
   const descriptionWithoutSizes = normalizeImportedProductDescription(
     item.description,
     { stripSizes: true },
   );
   const categoryQueries = buildPriceListCategoryQueries(item);
+  const searchFriendlyQueries = buildSearchFriendlyAguiarQueries(
+    item,
+    expectedBrand,
+    categoryQueries,
+  );
   const queries = [
     cleanIdentifier(item.ean13Di),
     cleanIdentifier(item.ean13Bu),
     cleanIdentifier(item.code),
+    ...searchFriendlyQueries,
     normalizedDescription,
+    descriptionWithoutPackageCount,
     descriptionWithoutSizes,
     ...categoryQueries.map((categoryQuery) =>
       combineQueryParts(categoryQuery, normalizedDescription),
+    ),
+    ...categoryQueries.map((categoryQuery) =>
+      combineQueryParts(categoryQuery, descriptionWithoutPackageCount),
     ),
     ...categoryQueries.map((categoryQuery) =>
       combineQueryParts(categoryQuery, descriptionWithoutSizes),
     ),
   ].filter((query): query is string => Boolean(query && query.length >= 2));
 
-  return Array.from(new Set(queries)).slice(0, 8);
+  return expandSearchAliasQueryVariants(Array.from(new Set(queries))).slice(0, 14);
+}
+
+function buildSearchFriendlyAguiarQueries(
+  item: PriceListInputItem,
+  expectedBrand: TargetBrand | undefined,
+  categoryQueries: string[],
+) {
+  const normalizedDescription = normalizeImportedProductDescription(item.description);
+  const descriptionWithoutPackageCount = normalizeImportedProductDescription(
+    item.description,
+    { stripPackageCount: true },
+  );
+  const descriptionWithoutSizes = normalizeImportedProductDescription(
+    item.description,
+    { stripSizes: true },
+  );
+  const brandQueries = buildExpectedBrandQueries(expectedBrand);
+  const presentationQueries = buildPresentationQueries(item.description);
+  const queries: string[] = [];
+
+  for (const brandQuery of brandQueries) {
+    for (const categoryQuery of categoryQueries) {
+      queries.push(combineQueryParts(categoryQuery, brandQuery));
+
+      for (const presentationQuery of presentationQueries) {
+        queries.push(
+          combineQueryParts(categoryQuery, brandQuery, presentationQuery),
+        );
+        queries.push(
+          combineQueryParts(brandQuery, categoryQuery, presentationQuery),
+        );
+      }
+    }
+  }
+
+  for (const categoryQuery of categoryQueries) {
+    for (const presentationQuery of presentationQueries) {
+      queries.push(combineQueryParts(categoryQuery, presentationQuery));
+    }
+  }
+
+  queries.push(
+    removeLowValueSearchTerms(descriptionWithoutPackageCount),
+    removeLowValueSearchTerms(descriptionWithoutSizes),
+    removeLowValueSearchTerms(normalizedDescription),
+  );
+
+  return queries.filter((query) => query.length >= 2);
+}
+
+function buildExpectedBrandQueries(expectedBrand: TargetBrand | undefined) {
+  if (!expectedBrand) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      [expectedBrand.name, ...expectedBrand.searchTerms, ...expectedBrand.aliases]
+        .map((value) => normalizeQuery(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function buildPresentationQueries(value: string | undefined) {
+  const presentation = extractProductPresentation(String(value ?? ""));
+
+  if (!presentation.amount || !presentation.unit) {
+    return [];
+  }
+
+  const amount = formatPresentationAmount(presentation.amount);
+
+  if (presentation.unit === "g") {
+    return [`${amount} gr`, `${amount} g`];
+  }
+
+  if (presentation.unit === "ml") {
+    return [`${amount} ml`, `${amount} cc`, `${amount} gr`, `${amount} g`];
+  }
+
+  return [`${amount} unid`, `${amount} unidades`];
+}
+
+function formatPresentationAmount(value: number) {
+  return Number.isInteger(value)
+    ? String(value)
+    : String(Math.round(value * 100) / 100).replace(".", ",");
+}
+
+function removeLowValueSearchTerms(value: string) {
+  return normalizeQuery(value)
+    .replace(
+      /\b(girasol|clasica|clasico|sabor|fco|frasco|doypack|familiar|seleccion|light)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expandSearchAliasQueryVariants(queries: string[]) {
+  const expandedQueries: string[] = [];
+
+  for (const query of queries) {
+    for (const variant of buildSearchAliasQueryVariants(query)) {
+      if (!expandedQueries.includes(variant)) {
+        expandedQueries.push(variant);
+      }
+    }
+  }
+
+  return expandedQueries;
+}
+
+function buildSearchAliasQueryVariants(query: string) {
+  const variants = new Set([normalizeQuery(query)]);
+  const replacements: Array<[RegExp, string]> = [
+    [/\byogur\b/g, "yoghurt"],
+    [/\bfrutilla\b/g, "fru"],
+    [/\bmultifruta\b/g, "mix frutal"],
+    [/\bjugo polvo\b/g, "jugo en polvo"],
+    [/\bbon o bon\b/g, "bonobon"],
+    [/\bmenthoplus\b/g, "mentho plus"],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    for (const variant of Array.from(variants)) {
+      const nextVariant = variant.replace(pattern, replacement);
+
+      if (nextVariant !== variant) {
+        variants.add(nextVariant);
+      }
+    }
+  }
+
+  return Array.from(variants).filter(Boolean);
 }
 
 function isAguiarTokinSourcePrice(sourcePrice: PriceListSourcePrice) {
@@ -692,6 +849,7 @@ function analyzeProductMatches(
   products: ProductSearchResult[],
   expectedBrand?: TargetBrand,
   item?: PriceListInputItem,
+  options: { sourceResultsCount?: number } = {},
 ) {
   const itemPresentationText = item
     ? [item.description, item.rubro].filter(Boolean).join(" ")
@@ -772,6 +930,7 @@ function analyzeProductMatches(
 
   const diagnostic: PriceListQueryDiagnostic = {
     query,
+    sourceResultsCount: options.sourceResultsCount,
     candidatesCount,
     matchesCount: matches.length,
     rejectedCount,
@@ -817,6 +976,7 @@ function createDirectSourceDiagnostics(source: {
 function createEmptyQueryDiagnostic(query: string): PriceListQueryDiagnostic {
   return {
     query,
+    sourceResultsCount: 0,
     candidatesCount: 0,
     matchesCount: 0,
     rejectedCount: 0,
@@ -979,6 +1139,8 @@ function summarizeSourcePrices(products: ProductSearchResult[]) {
       sourceScope: product.sourceScope,
       price: product.price,
       comparisonPrice: getComparisonPrice(product),
+      priceCondition: product.priceCondition ?? null,
+      alternatePrices: product.alternatePrices ?? [],
       packageQuantity: product.packageQuantity ?? null,
       packageLabel: product.packageLabel ?? null,
       category: product.category,
@@ -1053,11 +1215,20 @@ async function mapWithConcurrency<TInput, TOutput>(
 
 function normalizeImportedProductDescription(
   value: string | undefined,
-  options: { stripSizes?: boolean } = {},
+  options: { stripPackageCount?: boolean; stripSizes?: boolean } = {},
 ) {
-  let normalizedValue = expandCommonProductAbbreviations(
-    String(value ?? "").replace(/\*/g, " "),
-  ).replace(/\s+/g, " ");
+  let normalizedValue = normalizeQuery(
+    expandCommonProductAbbreviations(
+      String(value ?? "").replace(/\*/g, " x "),
+    ),
+  );
+
+  if (options.stripPackageCount) {
+    normalizedValue = normalizedValue.replace(
+      /\b\d{1,3}\s*x\s*(?=\d+(?:[,.]\d+)?\s*(?:grs?|g|kg|cc|ml|lts?|lt|l|unid\.?|unidad(?:es)?|uni|uds?|u)\b)/gi,
+      " ",
+    );
+  }
 
   if (options.stripSizes) {
     normalizedValue = normalizedValue
@@ -1068,7 +1239,7 @@ function normalizeImportedProductDescription(
       .replace(/\b\d+\b/g, " ");
   }
 
-  return normalizedValue.replace(/\s+/g, " ").trim();
+  return normalizedValue.replace(/\bx\b/g, " ").replace(/\s+/g, " ").trim();
 }
 
 async function persistCatalog(snapshot: CatalogSnapshot) {
