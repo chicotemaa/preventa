@@ -174,22 +174,6 @@ export const scrapingSources: ScrapingSource[] = [
       : "Fuente Maxiconsumo Chaco deshabilitada por MAXICONSUMO_ENABLED=false.",
   },
   {
-    id: "rednorte-nea",
-    storeName: "Red Norte Distribuidora",
-    storeType: "mayorista",
-    city: "Corrientes / Chaco",
-    sourceUrl: "https://www.rednorte.com.ar/",
-    dataOrigin:
-      "Catalogo publico online de Red Norte, mayorista y minorista para Chaco y Corrientes",
-    sourceScope: "NEA: Chaco y Corrientes",
-    sourceKind: "rednorte_api",
-    searchUrlTemplate:
-      "https://www.rednorte.com.ar/api/ecommerce/catalogo?page=1&limit=24&busqueda={query}",
-    requiresJavascript: false,
-    catalogSearchMode: "full_page",
-    maxCards: 180,
-  },
-  {
     id: "sabor-y-aroma-formosa",
     storeName: "Sabor y Aroma Mayorista",
     storeType: "mayorista",
@@ -208,36 +192,6 @@ export const scrapingSources: ScrapingSource[] = [
       price: ".product-card__price",
       image: ".product-card__image",
     },
-  },
-  {
-    id: "fresh-resistencia",
-    storeName: "Fresh Distribuidora",
-    storeType: "mayorista",
-    city: "Resistencia, Chaco",
-    sourceUrl: "https://distribuidorafresh.com.ar/",
-    dataOrigin:
-      "Catalogo publico WooCommerce de Fresh Distribuidora expuesto en datos de producto",
-    sourceScope: "NEA: Resistencia, Chaco",
-    sourceKind: "woocommerce_pmw_json",
-    searchUrlTemplate: "https://distribuidorafresh.com.ar/",
-    requiresJavascript: false,
-    catalogSearchMode: "full_page",
-    maxCards: 80,
-  },
-  {
-    id: "centenario-bebidas-corrientes",
-    storeName: "Distribuidora Centenario",
-    storeType: "mayorista",
-    city: "Corrientes",
-    sourceUrl: "https://www.centenariobebidas.com/",
-    dataOrigin:
-      "Catalogo publico renderizado de Distribuidora Centenario, bebidas al por mayor",
-    sourceScope: "NEA: Corrientes",
-    sourceKind: "text_lines",
-    searchUrlTemplate: "https://www.centenariobebidas.com/",
-    requiresJavascript: true,
-    catalogSearchMode: "full_page",
-    maxCards: 360,
   },
   {
     id: "vital-online",
@@ -275,43 +229,13 @@ export const scrapingSources: ScrapingSource[] = [
       : "Distribuidor oficial Arcor local; cargar TOKIN_EMAIL y TOKIN_PASSWORD para consultar el catalogo B2B en Tokin.",
   },
   {
-    id: "rj-aguiar-sa",
-    storeName: "Ricardo J. Aguiar S.A.",
-    storeType: "mayorista",
-    city: "Resistencia, Chaco",
-    sourceUrl: "https://rjaguiarsa.com.ar/",
-    dataOrigin: "Sitio institucional de Ricardo J. Aguiar S.A.",
-    sourceScope: "NEA: Chaco",
-    searchUrlTemplate: "https://rjaguiarsa.com.ar/",
-    requiresJavascript: false,
-    enabled: false,
-    disabledKind: "no_public_prices",
-    disabledReason:
-      "Mayorista local relevante para Arcor/Bagley, pero no expone catalogo publico con precios producto por producto.",
-  },
-  {
-    id: "sorpresas-golda-gpedidos",
-    storeName: "Sorpresas SAS / Distribuidora Golda",
-    storeType: "mayorista",
-    city: "Resistencia, Chaco",
-    sourceUrl: "https://sorpresas.com.ar/gpedidos/",
-    dataOrigin: "Catalogo GPedidos de Sorpresas / Distribuidora Golda",
-    sourceScope: "NEA: Chaco",
-    searchUrlTemplate: "https://sorpresas.com.ar/gpedidos/",
-    requiresJavascript: true,
-    enabled: false,
-    disabledKind: "no_public_prices",
-    disabledReason:
-      "Publica rubros y productos en GPedidos, pero los precios no quedan expuestos publicamente para comparar.",
-  },
-  {
     id: "yaguar-chaco-tienda-auth",
     storeName: "Yaguar Chaco",
     storeType: "mayorista",
     city: "Resistencia, Chaco",
     sourceUrl: "https://yaguar.com.ar/chaco/tienda/",
     dataOrigin:
-      "Tienda online WooCommerce de Yaguar Chaco; requiere login de comerciante y usa credenciales configuradas",
+      "Tienda online WooCommerce de Yaguar Chaco; requiere login de comerciante y usa YAGUAR_EMAIL/YAGUAR_PASSWORD o las mismas credenciales TOKIN_EMAIL/TOKIN_PASSWORD de Aguiar",
     sourceScope: "NEA: Chaco",
     sourceKind: "yaguar_auth",
     searchUrlTemplate:
@@ -322,22 +246,7 @@ export const scrapingSources: ScrapingSource[] = [
     disabledKind: "requires_login",
     disabledReason: hasYaguarCredentials
       ? "Fuente Yaguar Chaco deshabilitada por YAGUAR_ENABLED=false."
-      : "Yaguar Chaco requiere login; cargar YAGUAR_EMAIL/YAGUAR_PASSWORD o TOKIN_EMAIL/TOKIN_PASSWORD para usar las mismas credenciales de Aguiar.",
-  },
-  {
-    id: "mariano-santos-corrientes",
-    storeName: "Mariano Santos Mayorista",
-    storeType: "mayorista",
-    city: "Corrientes",
-    sourceUrl: "https://marianosantossrl.com.ar/catalogos/",
-    dataOrigin: "Catalogos mayoristas publicados por Mariano Santos SRL",
-    sourceScope: "NEA: Corrientes",
-    searchUrlTemplate: "https://marianosantossrl.com.ar/catalogos/",
-    requiresJavascript: false,
-    enabled: false,
-    disabledKind: "no_public_prices",
-    disabledReason:
-      "Publica catalogos en PDF; queda pendiente extractor PDF/OCR porque no hay HTML publico con precios.",
+      : "Yaguar Chaco requiere login; cargar TOKIN_EMAIL/TOKIN_PASSWORD para usar las mismas credenciales de Aguiar, o YAGUAR_EMAIL/YAGUAR_PASSWORD si fueran distintas.",
   },
   {
     id: "jotabe-nea",

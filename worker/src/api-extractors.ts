@@ -67,30 +67,6 @@ type VtexOfferSelection = {
 
 const VTEX_MIN_USEFUL_CONFIDENCE_SCORE = 60;
 
-type RedNorteCatalogResponse = {
-  productos?: RedNorteProduct[];
-  paginacion?: {
-    page?: number;
-    limit?: number;
-    total?: number;
-    pages?: number;
-  };
-};
-
-type RedNorteProduct = {
-  id?: number;
-  sku_externo?: string;
-  nombre?: string;
-  imagen_url?: string | null;
-  categoria_nombre?: string | null;
-  presentaciones?: Array<{
-    nombre?: string;
-    factor?: number;
-    es_default?: number | boolean;
-    precio_centavos?: number | null;
-  }>;
-};
-
 type WooCommercePmwProduct = {
   id?: string | number;
   sku?: string;
@@ -99,29 +75,6 @@ type WooCommercePmwProduct = {
   name?: string;
   category?: string[];
 };
-
-export async function extractProductsFromRedNorteApi(
-  url: string,
-  source: ScrapingSource,
-  query: string,
-): Promise<ProductSearchResult[]> {
-  const firstPage = await fetchRedNorteCatalogPage(url, source);
-  const pages = Math.min(firstPage.paginacion?.pages ?? 1, 10);
-  const pageUrls = Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
-    setQueryParam(url, "page", String(index + 2)),
-  );
-  const additionalPages = await Promise.all(
-    pageUrls.map((pageUrl) => fetchRedNorteCatalogPage(pageUrl, source)),
-  );
-  const products = [firstPage, ...additionalPages].flatMap(
-    (page) => page.productos ?? [],
-  );
-
-  return products
-    .slice(0, source.maxCards ?? products.length)
-    .map((product) => toRedNorteProductResult(source, query, product))
-    .filter((result): result is ProductSearchResult => result !== null);
-}
 
 export async function extractProductsFromVtexApi(
   url: string,
@@ -272,86 +225,6 @@ export async function extractProductsFromWooCommercePmwJson(
   return products
     .map((product) => toWooCommercePmwProductResult(source, query, product))
     .filter((result): result is ProductSearchResult => result !== null);
-}
-
-async function fetchRedNorteCatalogPage(
-  url: string,
-  source: ScrapingSource,
-): Promise<RedNorteCatalogResponse> {
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent":
-        "preventistas-mvp/0.1 (+https://preventa-web.vercel.app)",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `API Red Norte respondio ${response.status} para ${source.storeName}`,
-    );
-  }
-
-  return (await response.json()) as RedNorteCatalogResponse;
-}
-
-function toRedNorteProductResult(
-  source: ScrapingSource,
-  query: string,
-  product: RedNorteProduct,
-): ProductSearchResult | null {
-  const rawName = product.nombre?.replace(/\s+/g, " ").trim();
-  const presentation =
-    product.presentaciones?.find((item) => Boolean(item.es_default)) ??
-    product.presentaciones?.[0];
-  const price =
-    typeof presentation?.precio_centavos === "number"
-      ? presentation.precio_centavos / 100
-      : null;
-
-  if (!rawName || price === null || price <= 0) {
-    return null;
-  }
-
-  const category =
-    findCatalogCategory(rawName)?.name ??
-    cleanCategoryValue(product.categoria_nombre);
-  const matchText = [category, product.categoria_nombre, rawName]
-    .filter(Boolean)
-    .join(" ");
-  const pricingText = [
-    matchText,
-    presentation?.nombre,
-    typeof presentation?.factor === "number" && presentation.factor > 1
-      ? `pack x ${presentation.factor}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return withUnitPricing({
-    sourceId: source.id,
-    storeName: source.storeName,
-    storeType: source.storeType,
-    sourceUrl: getSourceUrl(source),
-    dataOrigin: getDataOrigin(source),
-    sourceScope: getSourceScope(source),
-    sku: product.sku_externo ?? (product.id ? String(product.id) : null),
-    barcodes: [],
-    category: category ?? undefined,
-    rawName,
-    normalizedName: normalizeProductName(rawName),
-    price,
-    currency: "ARS",
-    productUrl: product.id
-      ? resolveUrl(`/producto/${product.id}`, source.sourceUrl ?? source.searchUrlTemplate)
-      : null,
-    imageUrl: resolveUrl(
-      product.imagen_url ?? "",
-      source.sourceUrl ?? source.searchUrlTemplate,
-    ),
-    confidenceScore: calculateConfidenceScore(query, matchText),
-  }, pricingText);
 }
 
 function toVtexProductResult(
@@ -852,16 +725,6 @@ function addIdentifier(values: Set<string>, value: string | null | undefined) {
 
   if (normalizedValue) {
     values.add(normalizedValue);
-  }
-}
-
-function setQueryParam(url: string, name: string, value: string) {
-  try {
-    const parsedUrl = new URL(url);
-    parsedUrl.searchParams.set(name, value);
-    return parsedUrl.toString();
-  } catch {
-    return url;
   }
 }
 

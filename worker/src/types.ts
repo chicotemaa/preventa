@@ -194,7 +194,6 @@ export type ScrapingSource = {
     | "carrefour_vtex_auth"
     | "maxiconsumo_auth"
     | "laanonima_html"
-    | "rednorte_api"
     | "static_html"
     | "text_lines"
     | "tokin"
