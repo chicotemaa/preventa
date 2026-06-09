@@ -14,8 +14,10 @@ import {
 } from "./ai-matching.js";
 import {
   buildCatalogCategorySearchTerms,
+  catalogCategories,
   findCatalogCategory,
   getCategorySearchTermsForText,
+  type CatalogCategory,
 } from "./categories.js";
 import { loadImportedCatalogProducts } from "./imports.js";
 import { calculateConfidenceScore } from "./matching.js";
@@ -35,6 +37,9 @@ import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
+  CategoryBrandSummary,
+  CategorySearchGroup,
+  CategorySearchResponse,
   PriceListDirectSourceDiagnostics,
   PriceListInputItem,
   PriceListItemResult,
@@ -46,6 +51,7 @@ import type {
   PriceListSourcePrice,
   ProductSearchResult,
   ScrapingSource,
+  SearchSourceResult,
   SourceSearchStatus,
   StoreType,
 } from "./types.js";
@@ -166,6 +172,44 @@ export function searchCatalog(query: string) {
     results,
     sources: currentCatalog.sources,
     catalog: getCatalogMetadata(),
+  };
+}
+
+export async function searchCategory(
+  query: string,
+): Promise<CategorySearchResponse> {
+  const startedAt = Date.now();
+  const normalizedQuery = normalizeQuery(query);
+  const initialCategories = findCategoryCandidatesForQuery(query);
+  const searchQueries = buildCategorySearchQueries(query, initialCategories);
+  const activeSources = scrapingSources.filter((source) => source.enabled !== false);
+  const sourceResults = await runCategorySourceSearches(activeSources, searchQueries);
+  const sources = summarizeCategorySourceStatuses(
+    sourceResults.map((result) => result.status),
+  );
+  const products = dedupeProductResults(
+    [
+      ...sourceResults.flatMap((result) => result.results),
+      ...currentCatalog.products,
+    ],
+  );
+  const categoryCandidates =
+    initialCategories.length > 0
+      ? initialCategories
+      : findCategoryCandidatesFromProducts(query, products);
+  const groups = buildCategorySearchGroups(
+    query,
+    categoryCandidates,
+    products,
+  );
+
+  return {
+    query,
+    normalizedQuery,
+    searchedAt: new Date(startedAt).toISOString(),
+    durationMs: Date.now() - startedAt,
+    groups,
+    sources,
   };
 }
 
@@ -419,6 +463,369 @@ function getFallbackAguiarSourcePrice(
   referenceSource: PriceListSourcePrice | null,
 ) {
   return referenceSource && fallback ? fallback.sourcePrice : undefined;
+}
+
+async function runCategorySourceSearches(
+  sources: ScrapingSource[],
+  queries: string[],
+) {
+  const apiLikeSources = sources.filter((source) => !sourceNeedsBrowser(source));
+  const browserSources = sources.filter(sourceNeedsBrowser);
+  const apiLikeResults = await mapWithConcurrency(
+    apiLikeSources.flatMap((source) =>
+      queries.map((query) => ({ source, query })),
+    ),
+    8,
+    ({ source, query }) =>
+      searchSource(source, query, undefined, {
+        filterByConfidence: false,
+        limitResults: false,
+      }),
+  );
+  const browserResults: SearchSourceResult[] = [];
+
+  for (const source of browserSources) {
+    for (const query of queries) {
+      browserResults.push(
+        await searchSource(source, query, undefined, {
+          filterByConfidence: false,
+          limitResults: false,
+        }),
+      );
+    }
+  }
+
+  return [...apiLikeResults, ...browserResults];
+}
+
+function findCategoryCandidatesForQuery(query: string) {
+  const normalizedQuery = normalizeProductName(query);
+  const directCategories = catalogCategories.filter((category) =>
+    categoryMatchesText(category, normalizedQuery),
+  );
+
+  if (directCategories.length > 0) {
+    return directCategories;
+  }
+
+  if (normalizedQuery.split(/\s+/).includes("jugo")) {
+    return catalogCategories.filter((category) =>
+      ["Jugos en polvo", "Jugos listos"].includes(category.name),
+    );
+  }
+
+  return [];
+}
+
+function findCategoryCandidatesFromProducts(
+  query: string,
+  products: ProductSearchResult[],
+) {
+  const counts = new Map<string, { category: CatalogCategory; count: number }>();
+
+  for (const product of products) {
+    const score = calculateConfidenceScore(query, getProductMatchText(product));
+
+    if (score < 35) {
+      continue;
+    }
+
+    const category = getProductCategory(product);
+
+    if (!category) {
+      continue;
+    }
+
+    const current = counts.get(category.name);
+    counts.set(category.name, {
+      category,
+      count: (current?.count ?? 0) + 1,
+    });
+  }
+
+  return Array.from(counts.values())
+    .sort((first, second) => second.count - first.count)
+    .slice(0, 5)
+    .map((entry) => entry.category);
+}
+
+function buildCategorySearchQueries(
+  query: string,
+  categories: CatalogCategory[],
+) {
+  const queries = new Set<string>([normalizeQuery(query)]);
+
+  for (const category of categories) {
+    for (const term of [...category.searchTerms, ...category.aliases]) {
+      const normalizedTerm = normalizeQuery(term);
+
+      if (normalizedTerm.length >= 2) {
+        queries.add(normalizedTerm);
+      }
+    }
+  }
+
+  return Array.from(queries).filter(Boolean).slice(0, 5);
+}
+
+function buildCategorySearchGroups(
+  query: string,
+  categories: CatalogCategory[],
+  products: ProductSearchResult[],
+) {
+  const categoryList =
+    categories.length > 0
+      ? categories
+      : [
+          {
+            name: "Resultados generales",
+            searchTerms: [query],
+            aliases: [query],
+          },
+        ];
+
+  return categoryList
+    .map((category) => buildCategorySearchGroup(query, category, products))
+    .filter((group): group is CategorySearchGroup => group !== null)
+    .sort((first, second) => {
+      if (second.totalProducts !== first.totalProducts) {
+        return second.totalProducts - first.totalProducts;
+      }
+
+      return second.confidenceScore - first.confidenceScore;
+    });
+}
+
+function buildCategorySearchGroup(
+  query: string,
+  category: CatalogCategory,
+  products: ProductSearchResult[],
+): CategorySearchGroup | null {
+  const matchedProducts = products
+    .map((product) => ({
+      ...product,
+      confidenceScore: calculateCategoryProductScore(query, category, product),
+    }))
+    .filter((product) => product.confidenceScore >= 45)
+    .sort(compareProductSearchResults);
+  const uniqueProducts = dedupeProductResults(matchedProducts);
+
+  if (uniqueProducts.length === 0) {
+    return null;
+  }
+
+  const tokinProducts = uniqueProducts
+    .filter((product) => product.sourceId === AGUIAR_TOKIN_SOURCE_ID)
+    .slice(0, 40);
+  const competitorProducts = uniqueProducts
+    .filter((product) => product.sourceId !== AGUIAR_TOKIN_SOURCE_ID)
+    .slice(0, 80);
+
+  return {
+    id: slugifyCategoryName(category.name),
+    categoryName: category.name,
+    matchedTerms: Array.from(
+      new Set([...category.searchTerms, ...category.aliases].map(normalizeQuery)),
+    ).slice(0, 8),
+    confidenceScore: Math.max(
+      0,
+      ...uniqueProducts.map((product) => product.confidenceScore),
+    ),
+    totalProducts: uniqueProducts.length,
+    tokinProducts,
+    competitorProducts,
+    tokinBrands: summarizeCategoryBrands(tokinProducts),
+    competitorBrands: summarizeCategoryBrands(competitorProducts),
+    minTokinPrice: getMinProductPrice(tokinProducts),
+    minCompetitorPrice: getMinProductPrice(competitorProducts),
+  };
+}
+
+function calculateCategoryProductScore(
+  query: string,
+  category: CatalogCategory,
+  product: ProductSearchResult,
+) {
+  const matchText = getProductMatchText(product);
+  const queryScore = calculateConfidenceScore(query, matchText);
+  const categoryScore = categoryMatchesText(category, matchText) ? 88 : 0;
+
+  return Math.max(queryScore, categoryScore);
+}
+
+function compareProductSearchResults(
+  first: ProductSearchResult,
+  second: ProductSearchResult,
+) {
+  const firstIsTokin = first.sourceId === AGUIAR_TOKIN_SOURCE_ID;
+  const secondIsTokin = second.sourceId === AGUIAR_TOKIN_SOURCE_ID;
+
+  if (firstIsTokin !== secondIsTokin) {
+    return firstIsTokin ? -1 : 1;
+  }
+
+  if (second.confidenceScore !== first.confidenceScore) {
+    return second.confidenceScore - first.confidenceScore;
+  }
+
+  return getComparisonPrice(first) - getComparisonPrice(second);
+}
+
+function summarizeCategoryBrands(
+  products: ProductSearchResult[],
+): CategoryBrandSummary[] {
+  const byBrand = new Map<string, ProductSearchResult[]>();
+
+  for (const product of products) {
+    const brand = normalizeDisplayBrand(product.brand ?? inferProductBrand(product));
+    byBrand.set(brand, [...(byBrand.get(brand) ?? []), product]);
+  }
+
+  return Array.from(byBrand.entries())
+    .map(([brand, brandProducts]) => ({
+      brand,
+      productsCount: brandProducts.length,
+      minPrice: getMinProductPrice(brandProducts),
+      sourceNames: Array.from(
+        new Set(brandProducts.map((product) => product.storeName)),
+      ).slice(0, 5),
+    }))
+    .sort((first, second) => {
+      if (second.productsCount !== first.productsCount) {
+        return second.productsCount - first.productsCount;
+      }
+
+      return (first.minPrice ?? Infinity) - (second.minPrice ?? Infinity);
+    })
+    .slice(0, 8);
+}
+
+function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
+  const bySource = new Map<string, SourceSearchStatus>();
+
+  for (const source of sources) {
+    const current = bySource.get(source.sourceId);
+
+    if (!current) {
+      bySource.set(source.sourceId, source);
+      continue;
+    }
+
+    bySource.set(source.sourceId, {
+      ...current,
+      status: mergeSourceStatus(current.status, source.status),
+      resultsCount: current.resultsCount + source.resultsCount,
+      durationMs: current.durationMs + source.durationMs,
+      errorMessage: current.errorMessage ?? source.errorMessage,
+    });
+  }
+
+  return Array.from(bySource.values()).sort((first, second) =>
+    first.storeName.localeCompare(second.storeName, "es"),
+  );
+}
+
+function mergeSourceStatus(
+  first: SourceSearchStatus["status"],
+  second: SourceSearchStatus["status"],
+) {
+  if (first === "success" || second === "success") {
+    return "success";
+  }
+
+  if (first === "failed" || second === "failed") {
+    return "failed";
+  }
+
+  if (first === "timeout" || second === "timeout") {
+    return "timeout";
+  }
+
+  return "no_results";
+}
+
+function dedupeProductResults(products: ProductSearchResult[]) {
+  const byKey = new Map<string, ProductSearchResult>();
+
+  for (const product of products) {
+    const key = [
+      product.sourceId,
+      product.normalizedName,
+      getComparisonPrice(product),
+    ].join("|");
+    const current = byKey.get(key);
+
+    if (!current || product.confidenceScore > current.confidenceScore) {
+      byKey.set(key, product);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
+function getProductCategory(product: ProductSearchResult) {
+  return findCatalogCategory(getProductMatchText(product));
+}
+
+function categoryMatchesText(category: CatalogCategory, value: string) {
+  const normalizedValue = normalizeProductName(value);
+
+  if (!normalizedValue) {
+    return false;
+  }
+
+  return [...category.searchTerms, ...category.aliases].some((term) => {
+    const normalizedTerm = normalizeProductName(term);
+
+    if (!normalizedTerm) {
+      return false;
+    }
+
+    if (normalizedTerm.includes(" ")) {
+      return normalizedValue.includes(normalizedTerm);
+    }
+
+    return normalizedValue.split(/\s+/).includes(normalizedTerm);
+  });
+}
+
+function getMinProductPrice(products: ProductSearchResult[]) {
+  const prices = products.map(getComparisonPrice).filter((price) => price > 0);
+
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+function inferProductBrand(product: ProductSearchResult) {
+  const normalizedName = normalizeProductName(product.rawName);
+  const knownBrand = findAllowedBrand(normalizedName);
+
+  if (knownBrand) {
+    return knownBrand.name;
+  }
+
+  const tokens = product.rawName
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 2 && !/^\d/.test(token));
+
+  return tokens[0] ?? "Sin marca";
+}
+
+function normalizeDisplayBrand(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "Sin marca";
+  }
+
+  return trimmedValue
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function slugifyCategoryName(value: string) {
+  return normalizeProductName(value).replace(/\s+/g, "-") || "general";
 }
 
 function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {

@@ -12,6 +12,9 @@ import {
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import type {
+  CategoryBrandSummary,
+  CategorySearchGroup,
+  CategorySearchResponse,
   PriceListInputItem,
   PriceListItemResult,
   PriceListPersistenceResult,
@@ -207,10 +210,10 @@ export default function Home() {
 
 function LiveProductSearch() {
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState<SearchResponse | null>(null);
+  const [response, setResponse] = useState<CategorySearchResponse | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -226,7 +229,7 @@ function LiveProductSearch() {
     setIsLoading(true);
 
     try {
-      const result = await fetch("/api/live-search", {
+      const result = await fetch("/api/category-search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -239,9 +242,12 @@ function LiveProductSearch() {
         throw new Error(payload.error ?? "No se pudo completar la búsqueda.");
       }
 
-      setResponse(payload as SearchResponse);
+      const categoryResponse = payload as CategorySearchResponse;
+      setResponse(categoryResponse);
+      setSelectedGroupId(categoryResponse.groups[0]?.id ?? null);
     } catch (caughtError) {
       setResponse(null);
+      setSelectedGroupId(null);
       setError(
         caughtError instanceof Error
           ? caughtError.message
@@ -255,16 +261,19 @@ function LiveProductSearch() {
   function clearSearch() {
     setQuery("");
     setResponse(null);
+    setSelectedGroupId(null);
     setError(null);
   }
 
   return (
     <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-bold text-[#17202a]">Buscar producto</h2>
+        <h2 className="text-lg font-bold text-[#17202a]">
+          Explorar rubro
+        </h2>
         <p className="text-sm text-[#5d6b7a]">
-          Consultá por descripción, código interno o EAN antes de trabajar la
-          lista completa.
+          Buscá una familia como jugo en polvo, galletitas o mermelada para ver
+          primero Aguiar/Tokin y después la competencia.
         </p>
       </div>
 
@@ -273,7 +282,7 @@ function LiveProductSearch() {
         className="mt-4 flex flex-col gap-2 lg:flex-row"
       >
         <label className="relative flex-1">
-          <span className="sr-only">Buscar producto</span>
+          <span className="sr-only">Buscar rubro</span>
           <Search
             aria-hidden="true"
             className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8a96a3]"
@@ -281,7 +290,7 @@ function LiveProductSearch() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Ej: alfajor tatin, 7790040405608, cereal mix 26 gr"
+            placeholder="Ej: jugo en polvo, galletitas, mermelada, chocolates"
             className="h-12 w-full rounded-md border border-[#d9dee7] bg-[#fffdfa] pl-10 pr-11 text-base font-medium text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
           />
           {query.length > 0 ? (
@@ -317,10 +326,10 @@ function LiveProductSearch() {
       ) : null}
 
       {response ? (
-        <SearchResults
+        <CategorySearchResults
           response={response}
-          sourceFilter={sourceFilter}
-          onSourceFilterChange={setSourceFilter}
+          selectedGroupId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
         />
       ) : null}
     </section>
@@ -604,6 +613,207 @@ function PriceListImport() {
         />
       ) : null}
     </section>
+  );
+}
+
+function CategorySearchResults({
+  response,
+  selectedGroupId,
+  onSelectGroup,
+}: {
+  response: CategorySearchResponse;
+  selectedGroupId: string | null;
+  onSelectGroup: (groupId: string) => void;
+}) {
+  const selectedGroup =
+    response.groups.find((group) => group.id === selectedGroupId) ??
+    response.groups[0] ??
+    null;
+
+  return (
+    <div className="mt-5 flex flex-col gap-4">
+      <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
+        <div>
+          <h3 className="text-lg font-semibold text-[#17202a]">
+            Rubros para "{response.query}"
+          </h3>
+          <p className="text-sm text-[#5d6b7a]">
+            {response.groups.length} rubros detectados ·{" "}
+            {formatDurationMs(response.durationMs)}
+          </p>
+        </div>
+      </div>
+
+      {response.groups.length === 0 ? (
+        <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-5 py-8 text-center text-[#526170]">
+          No se encontraron rubros con productos para esta búsqueda.
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {response.groups.map((group) => {
+              const isSelected = selectedGroup?.id === group.id;
+
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => onSelectGroup(group.id)}
+                  className={`rounded-md border p-4 text-left transition ${
+                    isSelected
+                      ? "border-[#153d7b] bg-[#f5f8ff] shadow-sm"
+                      : "border-[#d9dee7] bg-white hover:border-[#153d7b]/40"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-base font-bold text-[#17202a]">
+                        {group.categoryName}
+                      </h4>
+                      <p className="mt-1 text-sm text-[#667789]">
+                        {group.totalProducts} productos ·{" "}
+                        {group.tokinBrands.length} marcas Tokin ·{" "}
+                        {group.competitorBrands.length} marcas competencia
+                      </p>
+                    </div>
+                    <span className="rounded bg-[#edf1f5] px-2 py-1 text-xs font-semibold text-[#526170]">
+                      {group.confidenceScore}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded bg-white px-3 py-2">
+                      <div className="text-xs font-semibold uppercase text-[#667789]">
+                        Tokin
+                      </div>
+                      <div className="mt-1 font-bold text-[#173d2f]">
+                        {group.tokinProducts.length}
+                      </div>
+                      <div className="text-xs text-[#667789]">
+                        {formatCurrencyValue(group.minTokinPrice)}
+                      </div>
+                    </div>
+                    <div className="rounded bg-white px-3 py-2">
+                      <div className="text-xs font-semibold uppercase text-[#667789]">
+                        Competencia
+                      </div>
+                      <div className="mt-1 font-bold text-[#173d2f]">
+                        {group.competitorProducts.length}
+                      </div>
+                      <div className="text-xs text-[#667789]">
+                        {formatCurrencyValue(group.minCompetitorPrice)}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedGroup ? <CategoryGroupDetail group={selectedGroup} /> : null}
+        </>
+      )}
+
+      <SourcesDetails sources={response.sources} />
+    </div>
+  );
+}
+
+function CategoryGroupDetail({ group }: { group: CategorySearchGroup }) {
+  return (
+    <div className="rounded-md border border-[#d9dee7] bg-[#fffdfa] p-3 sm:p-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-lg font-bold text-[#17202a]">
+          {group.categoryName}
+        </h3>
+        <p className="text-sm text-[#667789]">
+          Se compara surtido por rubro. No exige que la marca de Aguiar sea la
+          misma que la marca de la competencia.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <CategoryProductsSection
+          title="Aguiar / Tokin"
+          subtitle="Productos disponibles en el catálogo B2B"
+          products={group.tokinProducts}
+          brands={group.tokinBrands}
+          emptyMessage="No se encontraron productos Tokin para este rubro."
+        />
+        <CategoryProductsSection
+          title="Competencia"
+          subtitle="Mayoristas y minoristas consultados"
+          products={group.competitorProducts}
+          brands={group.competitorBrands}
+          emptyMessage="No se encontraron productos de competencia para este rubro."
+        />
+      </div>
+    </div>
+  );
+}
+
+function CategoryProductsSection({
+  title,
+  subtitle,
+  products,
+  brands,
+  emptyMessage,
+}: {
+  title: string;
+  subtitle: string;
+  products: ProductSearchResult[];
+  brands: CategoryBrandSummary[];
+  emptyMessage: string;
+}) {
+  return (
+    <section className="min-w-0 rounded-md border border-[#e5e9ef] bg-white p-3">
+      <div className="flex flex-col gap-1">
+        <h4 className="text-base font-bold text-[#17202a]">{title}</h4>
+        <p className="text-sm text-[#667789]">
+          {products.length} productos · {subtitle}
+        </p>
+      </div>
+
+      <BrandSummary brands={brands} />
+
+      {products.length === 0 ? (
+        <div className="mt-3 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-6 text-center text-sm text-[#526170]">
+          {emptyMessage}
+        </div>
+      ) : (
+        <div className="mt-3">
+          <ResultsTable results={products} />
+          <ResultsCards results={products} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BrandSummary({ brands }: { brands: CategoryBrandSummary[] }) {
+  if (brands.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      {brands.map((brand) => (
+        <div
+          key={brand.brand}
+          className="min-w-[150px] rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2"
+        >
+          <div className="truncate text-sm font-semibold text-[#17202a]">
+            {brand.brand}
+          </div>
+          <div className="mt-1 text-xs text-[#667789]">
+            {brand.productsCount} prod. · desde{" "}
+            {formatCurrencyValue(brand.minPrice)}
+          </div>
+          <div className="mt-1 truncate text-xs text-[#83909d]">
+            {brand.sourceNames.join(", ")}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

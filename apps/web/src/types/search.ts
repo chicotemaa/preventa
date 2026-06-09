@@ -75,6 +75,36 @@ export type SearchResponse = {
   catalog?: CatalogMetadata;
 };
 
+export type CategorySearchResponse = {
+  query: string;
+  normalizedQuery: string;
+  searchedAt: string;
+  durationMs: number;
+  groups: CategorySearchGroup[];
+  sources: SourceSearchStatus[];
+};
+
+export type CategorySearchGroup = {
+  id: string;
+  categoryName: string;
+  matchedTerms: string[];
+  confidenceScore: number;
+  totalProducts: number;
+  tokinProducts: ProductSearchResult[];
+  competitorProducts: ProductSearchResult[];
+  tokinBrands: CategoryBrandSummary[];
+  competitorBrands: CategoryBrandSummary[];
+  minTokinPrice: number | null;
+  minCompetitorPrice: number | null;
+};
+
+export type CategoryBrandSummary = {
+  brand: string;
+  productsCount: number;
+  minPrice: number | null;
+  sourceNames: string[];
+};
+
 export type PriceListInputItem = {
   rowNumber: number;
   rubro?: string;

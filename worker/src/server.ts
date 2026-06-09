@@ -5,6 +5,7 @@ import {
   getCatalogSnapshot,
   loadCatalogFromDisk,
   matchPriceListItems,
+  searchCategory,
   searchCatalog,
   syncCatalog,
   syncCatalogInBackground,
@@ -55,6 +56,7 @@ const server = http.createServer(async (request, response) => {
         health: "GET /health",
         catalog: "GET /catalog",
         catalogSearch: "POST /catalog/search",
+        categorySearch: "POST /catalog/category-search",
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         liveSearch: "POST /search",
@@ -85,6 +87,11 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/catalog/category-search") {
+    await handleCatalogCategorySearch(request, response);
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/catalog/price-list") {
     await handleCatalogPriceList(request, response);
     return;
@@ -98,6 +105,7 @@ const server = http.createServer(async (request, response) => {
         "GET /health",
         "GET /catalog",
         "POST /catalog/search",
+        "POST /catalog/category-search",
         "POST /catalog/price-list",
         "POST /catalog/sync",
         "POST /search",
@@ -162,6 +170,32 @@ async function handleCatalogSearch(
         error instanceof Error
           ? error.message
           : "Error interno buscando en catalogo.",
+    });
+  }
+}
+
+async function handleCatalogCategorySearch(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    const body = await readJsonBody(request);
+    const parsed = searchRequestSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error: "Query invalida. Debe tener entre 2 y 120 caracteres.",
+      });
+      return;
+    }
+
+    sendJson(response, 200, await searchCategory(parsed.data.query));
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno buscando rubros.",
     });
   }
 }
