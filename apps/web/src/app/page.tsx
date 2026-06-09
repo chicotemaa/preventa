@@ -38,6 +38,16 @@ const percentFormatter = new Intl.NumberFormat("es-AR", {
 const HIGH_PRICE_GAP_PERCENT = 12;
 const OPPORTUNITY_GAP_PERCENT = -8;
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
+const quickCategoryQueries = [
+  { name: "Alfajores", helper: "Triples, simples y mini tortas" },
+  { name: "Jugos en polvo", helper: "Sobres y packs por caja" },
+  { name: "Galletitas", helper: "Dulces, crackers y surtidos" },
+  { name: "Mermeladas", helper: "Frascos y presentaciones light" },
+  { name: "Chocolates", helper: "Tabletas, baños y rellenos" },
+  { name: "Salsas y aderezos", helper: "Salsas, mayonesas y ketchup" },
+  { name: "Cereales y barritas", helper: "Cereal Mix y barras" },
+  { name: "Golosinas", helper: "Caramelos, gomitas y chupetines" },
+];
 
 type ComparablePrice = {
   price: number;
@@ -191,18 +201,17 @@ export default function Home() {
         />
         <div className="relative mx-auto flex w-full max-w-[1800px] flex-col gap-2 px-4 py-6 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-extrabold leading-tight text-white sm:text-3xl lg:text-4xl">
-            Búsqueda y carga semanal de precios
+            Explorador de categorías
           </h1>
           <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
-            Buscá productos puntuales o importá la lista para revisar precios de
-            Aguiar contra fuentes y descargar el archivo operativo.
+            Elegí una familia para ver primero el surtido de Aguiar/Tokin y
+            después productos equivalentes de la competencia.
           </p>
         </div>
       </section>
 
       <section className="flex w-full flex-col gap-4 px-3 py-4 sm:px-4 md:py-5 lg:px-6">
         <LiveProductSearch />
-        <PriceListImport />
       </section>
     </main>
   );
@@ -215,16 +224,15 @@ function LiveProductSearch() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const trimmedQuery = query.trim();
+  async function runCategorySearch(rawQuery: string) {
+    const trimmedQuery = rawQuery.trim();
 
     if (trimmedQuery.length < 2) {
       setError("Ingresá al menos 2 caracteres para buscar.");
       return;
     }
 
+    setQuery(trimmedQuery);
     setError(null);
     setIsLoading(true);
 
@@ -244,7 +252,11 @@ function LiveProductSearch() {
 
       const categoryResponse = payload as CategorySearchResponse;
       setResponse(categoryResponse);
-      setSelectedGroupId(categoryResponse.groups[0]?.id ?? null);
+      setSelectedGroupId(
+        categoryResponse.groups.length === 1
+          ? categoryResponse.groups[0]?.id ?? null
+          : null,
+      );
     } catch (caughtError) {
       setResponse(null);
       setSelectedGroupId(null);
@@ -258,6 +270,11 @@ function LiveProductSearch() {
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runCategorySearch(query);
+  }
+
   function clearSearch() {
     setQuery("");
     setResponse(null);
@@ -269,11 +286,11 @@ function LiveProductSearch() {
     <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-bold text-[#17202a]">
-          Explorar rubro
+          Buscar individual
         </h2>
         <p className="text-sm text-[#5d6b7a]">
-          Buscá una familia como jugo en polvo, galletitas o mermelada para ver
-          primero Aguiar/Tokin y después la competencia.
+          Escribí o elegí una familia para ver productos de Tokin/Aguiar y
+          compararlos contra la competencia.
         </p>
       </div>
 
@@ -290,7 +307,7 @@ function LiveProductSearch() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Ej: jugo en polvo, galletitas, mermelada, chocolates"
+            placeholder="Ej: alfajor, jugo en polvo, galletitas, mermelada"
             className="h-12 w-full rounded-md border border-[#d9dee7] bg-[#fffdfa] pl-10 pr-11 text-base font-medium text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
           />
           {query.length > 0 ? (
@@ -325,14 +342,66 @@ function LiveProductSearch() {
         </div>
       ) : null}
 
-      {response ? (
+      {isLoading ? (
+        <CategorySearchLoading query={query} />
+      ) : response ? (
         <CategorySearchResults
           response={response}
           selectedGroupId={selectedGroupId}
           onSelectGroup={setSelectedGroupId}
         />
-      ) : null}
+      ) : (
+        <SuggestedCategoryGrid
+          onSelectCategory={(categoryName) => void runCategorySearch(categoryName)}
+        />
+      )}
     </section>
+  );
+}
+
+function SuggestedCategoryGrid({
+  onSelectCategory,
+}: {
+  onSelectCategory: (categoryName: string) => void;
+}) {
+  return (
+    <div className="mt-5 border-t border-[#e5e9ef] pt-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-base font-bold text-[#17202a]">
+          Familias sugeridas
+        </h3>
+        <p className="text-sm text-[#667789]">
+          Accesos rápidos para abrir rubros completos sin escribir.
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {quickCategoryQueries.map((categoryQuery) => (
+          <button
+            key={categoryQuery.name}
+            type="button"
+            onClick={() => onSelectCategory(categoryQuery.name)}
+            className="min-h-[76px] rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 py-3 text-left transition hover:border-[#153d7b] hover:bg-[#f5f8ff]"
+          >
+            <span className="block text-sm font-bold text-[#17202a]">
+              {categoryQuery.name}
+            </span>
+            <span className="mt-1 block text-xs leading-4 text-[#667789]">
+              {categoryQuery.helper}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CategorySearchLoading({ query }: { query: string }) {
+  return (
+    <div className="mt-5 flex items-center gap-3 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-4 text-sm font-semibold text-[#526170]">
+      <Loader2 className="h-5 w-5 animate-spin text-[#153d7b]" />
+      <span>Buscando productos de {query}...</span>
+    </div>
   );
 }
 
@@ -625,92 +694,71 @@ function CategorySearchResults({
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string) => void;
 }) {
-  const selectedGroup =
-    response.groups.find((group) => group.id === selectedGroupId) ??
-    response.groups[0] ??
-    null;
+  const selectedGroup = selectedGroupId
+    ? response.groups.find((group) => group.id === selectedGroupId) ?? null
+    : null;
 
   return (
     <div className="mt-5 flex flex-col gap-4">
-      <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
-        <div>
-          <h3 className="text-lg font-semibold text-[#17202a]">
-            Rubros para "{response.query}"
-          </h3>
-          <p className="text-sm text-[#5d6b7a]">
-            {response.groups.length} rubros detectados ·{" "}
-            {formatDurationMs(response.durationMs)}
-          </p>
-        </div>
-      </div>
-
       {response.groups.length === 0 ? (
         <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-5 py-8 text-center text-[#526170]">
           No se encontraron rubros con productos para esta búsqueda.
         </div>
+      ) : selectedGroup ? (
+        <CategoryGroupDetail group={selectedGroup} />
       ) : (
-        <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {response.groups.map((group) => {
-              const isSelected = selectedGroup?.id === group.id;
-
-              return (
-                <button
-                  key={group.id}
-                  type="button"
-                  onClick={() => onSelectGroup(group.id)}
-                  className={`rounded-md border p-4 text-left transition ${
-                    isSelected
-                      ? "border-[#153d7b] bg-[#f5f8ff] shadow-sm"
-                      : "border-[#d9dee7] bg-white hover:border-[#153d7b]/40"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-base font-bold text-[#17202a]">
-                        {group.categoryName}
-                      </h4>
-                      <p className="mt-1 text-sm text-[#667789]">
-                        {group.totalProducts} productos ·{" "}
-                        {group.tokinBrands.length} marcas Tokin ·{" "}
-                        {group.competitorBrands.length} marcas competencia
-                      </p>
-                    </div>
-                    <span className="rounded bg-[#edf1f5] px-2 py-1 text-xs font-semibold text-[#526170]">
-                      {group.confidenceScore}
-                    </span>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {response.groups.map((group) => {
+            return (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => onSelectGroup(group.id)}
+                className="rounded-md border border-[#d9dee7] bg-white p-4 text-left transition hover:border-[#153d7b]/40"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-bold text-[#17202a]">
+                      {group.categoryName}
+                    </h4>
+                    <p className="mt-1 text-sm text-[#667789]">
+                      {group.totalProducts} productos en el rubro ·{" "}
+                      {group.tokinBrands.length} marcas Tokin ·{" "}
+                      {group.competitorBrands.length} marcas competencia
+                    </p>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded bg-white px-3 py-2">
-                      <div className="text-xs font-semibold uppercase text-[#667789]">
-                        Tokin
-                      </div>
-                      <div className="mt-1 font-bold text-[#173d2f]">
-                        {group.tokinProducts.length}
-                      </div>
-                      <div className="text-xs text-[#667789]">
-                        {formatCurrencyValue(group.minTokinPrice)}
-                      </div>
+                  <span className="rounded bg-[#edf1f5] px-2 py-1 text-xs font-semibold text-[#526170]">
+                    Abrir
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded bg-white px-3 py-2">
+                    <div className="text-xs font-semibold uppercase text-[#667789]">
+                      Tokin / Aguiar
                     </div>
-                    <div className="rounded bg-white px-3 py-2">
-                      <div className="text-xs font-semibold uppercase text-[#667789]">
-                        Competencia
-                      </div>
-                      <div className="mt-1 font-bold text-[#173d2f]">
-                        {group.competitorProducts.length}
-                      </div>
-                      <div className="text-xs text-[#667789]">
-                        {formatCurrencyValue(group.minCompetitorPrice)}
-                      </div>
+                    <div className="mt-1 font-bold text-[#173d2f]">
+                      {group.tokinProducts.length}
+                    </div>
+                    <div className="text-xs text-[#667789]">
+                      {formatCurrencyValue(group.minTokinPrice)}
                     </div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {selectedGroup ? <CategoryGroupDetail group={selectedGroup} /> : null}
-        </>
+                  <div className="rounded bg-white px-3 py-2">
+                    <div className="text-xs font-semibold uppercase text-[#667789]">
+                      Competencia
+                    </div>
+                    <div className="mt-1 font-bold text-[#173d2f]">
+                      {group.competitorProducts.length}
+                    </div>
+                    <div className="text-xs text-[#667789]">
+                      {formatCurrencyValue(group.minCompetitorPrice)}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       <SourcesDetails sources={response.sources} />
@@ -719,6 +767,8 @@ function CategorySearchResults({
 }
 
 function CategoryGroupDetail({ group }: { group: CategorySearchGroup }) {
+  const hasTokinProducts = group.tokinProducts.length > 0;
+
   return (
     <div className="rounded-md border border-[#d9dee7] bg-[#fffdfa] p-3 sm:p-4">
       <div className="flex flex-col gap-1">
@@ -726,18 +776,26 @@ function CategoryGroupDetail({ group }: { group: CategorySearchGroup }) {
           {group.categoryName}
         </h3>
         <p className="text-sm text-[#667789]">
-          Se compara surtido por rubro. No exige que la marca de Aguiar sea la
-          misma que la marca de la competencia.
+          Vista de surtido por categoría. Acá no se fuerza un match exacto: se
+          muestran los productos Tokin/Aguiar del rubro y después las
+          alternativas de mercado.
         </p>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      {!hasTokinProducts ? (
+        <div className="mt-4 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm font-semibold text-[#73510b]">
+          Tokin/Aguiar no devolvió productos para esta categoría en esta
+          consulta. La comparación de competencia se muestra igual.
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-col gap-4">
         <CategoryProductsSection
-          title="Aguiar / Tokin"
+          title="Tokin / Aguiar"
           subtitle="Productos disponibles en el catálogo B2B"
           products={group.tokinProducts}
           brands={group.tokinBrands}
-          emptyMessage="No se encontraron productos Tokin para este rubro."
+          emptyMessage="No se encontraron productos Tokin para este rubro. Si esperabas datos de Aguiar, revisá que el worker tenga credenciales Tokin y catálogo sincronizado."
         />
         <CategoryProductsSection
           title="Competencia"
@@ -773,19 +831,147 @@ function CategoryProductsSection({
         </p>
       </div>
 
-      <BrandSummary brands={brands} />
-
       {products.length === 0 ? (
         <div className="mt-3 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-6 text-center text-sm text-[#526170]">
           {emptyMessage}
         </div>
       ) : (
         <div className="mt-3">
-          <ResultsTable results={products} />
-          <ResultsCards results={products} />
+          <CategoryProductCards products={products} />
         </div>
       )}
+
+      <BrandSummary brands={brands} />
     </section>
+  );
+}
+
+function CategoryProductCards({ products }: { products: ProductSearchResult[] }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {products.map((product) => (
+        <CategoryProductCard key={resultKey(product)} product={product} />
+      ))}
+    </div>
+  );
+}
+
+function CategoryProductCard({ product }: { product: ProductSearchResult }) {
+  return (
+    <article className="flex min-h-[250px] flex-col justify-between rounded-md border border-[#d9dee7] bg-white p-3 shadow-sm">
+      <div>
+        <div className="flex gap-3">
+          {product.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={product.imageUrl}
+              alt={product.rawName}
+              className="h-20 w-20 shrink-0 rounded-md border border-[#d9dee7] object-contain"
+            />
+          ) : (
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-md border border-[#d9dee7] bg-[#f8fafc] text-xs font-semibold text-[#8a96a3]">
+              Sin foto
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-[0.04em] text-[#667789]">
+              {product.storeName}
+            </div>
+            <h5 className="mt-1 line-clamp-3 text-sm font-bold leading-5 text-[#17202a]">
+              {product.rawName}
+            </h5>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <span className="rounded bg-[#edf1f5] px-2 py-0.5 text-[11px] font-semibold text-[#526170]">
+                {product.storeType}
+              </span>
+              {product.brand ? (
+                <span className="rounded bg-[#fff8f2] px-2 py-0.5 text-[11px] font-semibold text-[#7a4a16]">
+                  {product.brand}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <CategoryPriceBreakdown product={product} />
+      </div>
+
+      {product.productUrl ? (
+        <a
+          href={product.productUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex h-9 items-center justify-center rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 text-sm font-semibold text-[#153d7b] transition hover:border-[#153d7b] hover:bg-[#f5f8ff]"
+        >
+          Ver producto
+        </a>
+      ) : null}
+    </article>
+  );
+}
+
+function CategoryPriceBreakdown({ product }: { product: ProductSearchResult }) {
+  const packageDescriptor =
+    product.packageQuantity && product.packageQuantity > 1
+      ? product.packageLabel ?? `pack x ${product.packageQuantity}`
+      : null;
+  const alternatePrices = getAlternatePriceLabels(product);
+  const hasBultoCondition = Boolean(
+    product.priceCondition && /bulto|caja|pack/i.test(product.priceCondition),
+  );
+
+  return (
+    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+          Unidad
+        </div>
+        <div className="mt-1 text-base font-extrabold text-[#173d2f]">
+          {formatComparableCurrency(product)}
+        </div>
+        <div className="mt-1 text-xs leading-4 text-[#667789]">
+          precio unitario o equivalente
+        </div>
+      </div>
+
+      <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+          Bulto / pack
+        </div>
+        {packageDescriptor || hasBultoCondition ? (
+          <>
+            <div className="mt-1 text-base font-extrabold text-[#7a4a16]">
+              {currencyFormatter.format(product.price)}
+            </div>
+            <div className="mt-1 text-xs leading-4 text-[#667789]">
+              {product.priceCondition ?? packageDescriptor}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-1 text-base font-extrabold text-[#83909d]">
+              -
+            </div>
+            <div className="mt-1 text-xs leading-4 text-[#667789]">
+              no informado por la fuente
+            </div>
+          </>
+        )}
+      </div>
+
+      {alternatePrices.length > 0 ? (
+        <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2 sm:col-span-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+            Otros precios
+          </div>
+          <div className="mt-1 space-y-1 text-xs leading-4 text-[#667789]">
+            {alternatePrices.map((label) => (
+              <div key={label}>{label}</div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -795,11 +981,11 @@ function BrandSummary({ brands }: { brands: CategoryBrandSummary[] }) {
   }
 
   return (
-    <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+    <div className="mt-3 grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
       {brands.map((brand) => (
         <div
           key={brand.brand}
-          className="min-w-[150px] rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2"
+          className="min-w-0 rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2"
         >
           <div className="truncate text-sm font-semibold text-[#17202a]">
             {brand.brand}

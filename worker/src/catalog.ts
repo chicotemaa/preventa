@@ -185,7 +185,10 @@ export async function searchCategory(
   const activeSources = scrapingSources.filter((source) => source.enabled !== false);
   const sourceResults = await runCategorySourceSearches(activeSources, searchQueries);
   const sources = summarizeCategorySourceStatuses(
-    sourceResults.map((result) => result.status),
+    [
+      ...sourceResults.map((result) => result.status),
+      ...buildDisabledSourceSearchStatuses(),
+    ],
   );
   const products = dedupeProductResults(
     [
@@ -723,6 +726,23 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
   return Array.from(bySource.values()).sort((first, second) =>
     first.storeName.localeCompare(second.storeName, "es"),
   );
+}
+
+function buildDisabledSourceSearchStatuses(): SourceSearchStatus[] {
+  return scrapingSources
+    .filter((source) => source.enabled === false)
+    .map((source) => ({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status: "failed",
+      resultsCount: 0,
+      errorMessage: source.disabledReason ?? "Fuente deshabilitada.",
+      durationMs: 0,
+    }));
 }
 
 function mergeSourceStatus(

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { href: "/", label: "Carga de precios" },
+  { href: "/", label: "Categorías" },
+  { href: "/busqueda-general", label: "Búsqueda general" },
+  { href: "/importacion", label: "Importación" },
   { href: "/evolucion", label: "Evolución" },
   { href: "/historial", label: "Historial" },
 ];
@@ -33,7 +35,7 @@ export function AppHeader() {
           </div>
         </Link>
 
-        <nav className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 pb-1 md:pb-0">
+        <nav className="-mx-1 flex max-w-full flex-wrap items-center gap-1 px-1 md:justify-end">
           {navItems.map((item) => {
             const isActive =
               item.href === "/"
