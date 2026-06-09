@@ -18,6 +18,14 @@ export const config = {
   minConfidenceScore: getNumberEnv("MIN_CONFIDENCE_SCORE", 60),
   maxResultsPerSource: 10,
   autoSyncOnStartup: process.env.AUTO_SYNC_ON_STARTUP !== "false",
+  aiMatching: {
+    enabled: process.env.AI_MATCHING_ENABLED === "true",
+    apiKey: getOptionalStringEnv("OPENAI_API_KEY"),
+    model: getOptionalStringEnv("AI_MATCHING_MODEL") ?? "gpt-4.1-nano",
+    minConfidence: getNumberEnv("AI_MATCHING_MIN_CONFIDENCE", 82),
+    maxCandidates: getNumberEnv("AI_MATCHING_MAX_CANDIDATES", 5),
+    timeoutMs: getNumberEnv("AI_MATCHING_TIMEOUT_MS", 6_000),
+  },
   maxiconsumo: {
     enabled: process.env.MAXICONSUMO_ENABLED !== "false",
     email: getOptionalStringEnv("MAXICONSUMO_EMAIL"),

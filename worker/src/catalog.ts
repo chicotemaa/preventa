@@ -9,6 +9,10 @@ import {
   type TargetBrand,
 } from "./brands.js";
 import {
+  findAiAssistedProductMatch,
+  type AiMatchCandidate,
+} from "./ai-matching.js";
+import {
   buildCatalogCategorySearchTerms,
   findCatalogCategory,
   getCategorySearchTermsForText,
@@ -490,6 +494,7 @@ async function findDirectAguiarSourcePrice(
 
   const diagnostics = createDirectSourceDiagnostics(source);
   let lastErrorMessage: string | undefined;
+  const aiCandidates: AiMatchCandidate[] = [];
 
   for (const query of buildAguiarDirectQueries(item, expectedBrand)) {
     diagnostics.queriesTried.push(query);
@@ -506,6 +511,13 @@ async function findDirectAguiarSourcePrice(
       diagnostics.queryDiagnostics.push(createEmptyQueryDiagnostic(query));
       continue;
     }
+
+    aiCandidates.push(
+      ...result.results.map((product) => ({
+        query,
+        product,
+      })),
+    );
 
     const analysis = analyzeProductMatches(
       query,
@@ -532,12 +544,38 @@ async function findDirectAguiarSourcePrice(
     }
   }
 
+  const aiMatch = await findAiAssistedProductMatch({
+    item,
+    expectedBrand,
+    candidates: aiCandidates,
+  });
+
+  if (aiMatch.product) {
+    const sourcePrice = summarizeSourcePrices([aiMatch.product]).find(
+      isAguiarTokinSourcePrice,
+    );
+
+    if (sourcePrice) {
+      return {
+        query: aiMatch.query,
+        sourcePrice,
+        diagnostics: {
+          ...diagnostics,
+          status: "matched" as const,
+          matchedQuery: aiMatch.query,
+          aiMatch: aiMatch.diagnostic,
+        },
+      };
+    }
+  }
+
   return {
     query: null,
     sourcePrice: null,
     diagnostics: {
       ...diagnostics,
       status: lastErrorMessage ? ("failed" as const) : ("no_results" as const),
+      aiMatch: aiMatch.diagnostic,
       errorMessage: lastErrorMessage,
     },
   };

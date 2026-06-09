@@ -929,6 +929,31 @@ function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
                             Consultas:{" "}
                             {directAguiar.queriesTried.join(" | ") || "-"}
                           </div>
+                          {directAguiar.aiMatch ? (
+                            <div className="mt-2 rounded border border-[#dbeafe] bg-white px-2 py-2 text-[#526170]">
+                              <span className="font-semibold text-[#1d5f8f]">
+                                IA:
+                              </span>{" "}
+                              {aiMatchStatusLabel(directAguiar.aiMatch.status)}
+                              {directAguiar.aiMatch.confidenceScore !==
+                              undefined
+                                ? ` · score ${directAguiar.aiMatch.confidenceScore}`
+                                : ""}
+                              {directAguiar.aiMatch.selectedProductName
+                                ? ` · ${directAguiar.aiMatch.selectedProductName}`
+                                : ""}
+                              {directAguiar.aiMatch.reason ? (
+                                <div className="mt-1">
+                                  {directAguiar.aiMatch.reason}
+                                </div>
+                              ) : null}
+                              {directAguiar.aiMatch.errorMessage ? (
+                                <div className="mt-1 text-[#8f2d20]">
+                                  {directAguiar.aiMatch.errorMessage}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
 
@@ -2115,6 +2140,24 @@ function directSourceStatusLabel(
   }
 
   return "sin resultado";
+}
+
+function aiMatchStatusLabel(
+  status: NonNullable<
+    NonNullable<
+      NonNullable<PriceListItemResult["diagnostics"]>["directAguiar"]
+    >["aiMatch"]
+  >["status"],
+) {
+  const labels = {
+    disabled: "desactivada",
+    skipped: "omitida",
+    matched: "match aceptado",
+    rejected: "sin match confiable",
+    failed: "fallo",
+  } satisfies Record<typeof status, string>;
+
+  return labels[status];
 }
 
 function rejectReasonLabel(reason: PriceListRejectedCandidate["reason"]) {

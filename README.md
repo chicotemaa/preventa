@@ -47,6 +47,12 @@ TOKIN_EMAIL=
 TOKIN_PASSWORD=
 TOKIN_API_BASE_URL=https://tokintienda.com.ar/store/tokin/
 TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
+AI_MATCHING_ENABLED=false
+OPENAI_API_KEY=
+AI_MATCHING_MODEL=gpt-4.1-nano
+AI_MATCHING_MIN_CONFIDENCE=82
+AI_MATCHING_MAX_CANDIDATES=5
+AI_MATCHING_TIMEOUT_MS=6000
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=
 MAXICONSUMO_PASSWORD=
@@ -121,6 +127,12 @@ TOKIN_EMAIL=<EMAIL_TOKIN>
 TOKIN_PASSWORD=<PASSWORD_TOKIN>
 TOKIN_API_BASE_URL=https://tokintienda.com.ar/store/tokin/
 TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
+AI_MATCHING_ENABLED=false
+OPENAI_API_KEY=<OPENAI_API_KEY_OPCIONAL>
+AI_MATCHING_MODEL=gpt-4.1-nano
+AI_MATCHING_MIN_CONFIDENCE=82
+AI_MATCHING_MAX_CANDIDATES=5
+AI_MATCHING_TIMEOUT_MS=6000
 MAXICONSUMO_ENABLED=true
 MAXICONSUMO_EMAIL=<EMAIL_MAXICONSUMO>
 MAXICONSUMO_PASSWORD=<PASSWORD_MAXICONSUMO>
@@ -210,6 +222,23 @@ Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA
 Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
 
 El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
+
+## Matching asistido por IA
+
+El worker puede usar OpenAI para resolver matches dudosos de Aguiar/Tokin. La IA no busca precios ni reemplaza las reglas: solo se ejecuta cuando Tokin devuelve candidatos pero el matching normal no logra setear `Precio Aguiar`.
+
+Para cuidar un credito bajo, dejarlo apagado por defecto y activarlo solo en Railway cuando se quiera probar:
+
+```bash
+AI_MATCHING_ENABLED=true
+OPENAI_API_KEY=<tu_api_key>
+AI_MATCHING_MODEL=gpt-4.1-nano
+AI_MATCHING_MIN_CONFIDENCE=82
+AI_MATCHING_MAX_CANDIDATES=5
+AI_MATCHING_TIMEOUT_MS=6000
+```
+
+Con esta configuracion se hace como maximo una llamada por articulo dudoso de Aguiar, enviando hasta 5 candidatos y una respuesta JSON corta. El log de depuracion muestra si la IA fue desactivada, omitida, acepto un match, lo rechazo o fallo.
 
 ## Listas locales importadas
 

@@ -144,6 +144,17 @@ export type PriceListDirectSourceDiagnostics = {
   queriesTried: string[];
   matchedQuery: string | null;
   queryDiagnostics: PriceListQueryDiagnostic[];
+  aiMatch?: PriceListAiMatchDiagnostic;
+  errorMessage?: string;
+};
+
+export type PriceListAiMatchDiagnostic = {
+  status: "disabled" | "skipped" | "matched" | "rejected" | "failed";
+  model?: string;
+  candidatesCount: number;
+  selectedProductName?: string | null;
+  confidenceScore?: number | null;
+  reason?: string;
   errorMessage?: string;
 };
 
