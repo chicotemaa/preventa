@@ -144,8 +144,19 @@ export type PriceListDirectSourceDiagnostics = {
   queriesTried: string[];
   matchedQuery: string | null;
   queryDiagnostics: PriceListQueryDiagnostic[];
+  priceNormalization?: PriceListPriceNormalizationDiagnostic;
   aiMatch?: PriceListAiMatchDiagnostic;
   errorMessage?: string;
+};
+
+export type PriceListPriceNormalizationDiagnostic = {
+  status: "normalized" | "rejected";
+  originalPrice: number;
+  normalizedPrice?: number | null;
+  referencePrice?: number | null;
+  packageQuantity?: number | null;
+  productName: string;
+  reason: string;
 };
 
 export type PriceListAiMatchDiagnostic = {
@@ -163,6 +174,7 @@ export type PriceListMatchDiagnostics = {
   queriesTried: string[];
   matchedQuery: string | null;
   queryDiagnostics: PriceListQueryDiagnostic[];
+  aguiarPriceNormalization?: PriceListPriceNormalizationDiagnostic;
   directAguiar?: PriceListDirectSourceDiagnostics;
 };
 

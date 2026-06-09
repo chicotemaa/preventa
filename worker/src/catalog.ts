@@ -39,6 +39,7 @@ import type {
   PriceListInputItem,
   PriceListItemResult,
   PriceListMatchDiagnostics,
+  PriceListPriceNormalizationDiagnostic,
   PriceListQueryDiagnostic,
   PriceListRejectedCandidate,
   PriceListResponse,
@@ -55,6 +56,18 @@ const catalogPath = path.resolve(workerRoot, "data/catalog.json");
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 const MIN_PRICE_LIST_CONFIDENCE_SCORE = 60;
 const DIAGNOSTIC_REJECT_LIMIT = 5;
+const AGUIAR_REFERENCE_NORMALIZE_TRIGGER_MULTIPLIER = 3;
+const AGUIAR_REFERENCE_REJECT_HIGH_MULTIPLIER = 4;
+const AGUIAR_REFERENCE_REJECT_LOW_MULTIPLIER = 0.08;
+const AGUIAR_NORMALIZED_MIN_REFERENCE_MULTIPLIER = 0.15;
+const AGUIAR_NORMALIZED_MAX_REFERENCE_MULTIPLIER = 3.5;
+const AGUIAR_DIRECT_QUERY_LIMIT = 32;
+
+type AguiarOnlyFallback = {
+  query: string;
+  sourcePrice: PriceListSourcePrice;
+  diagnostic?: PriceListPriceNormalizationDiagnostic;
+};
 
 let currentCatalog: CatalogSnapshot = {
   status: "empty",
@@ -401,9 +414,17 @@ function decorateCatalogProduct(
   };
 }
 
+function getFallbackAguiarSourcePrice(
+  fallback: AguiarOnlyFallback | null,
+  referenceSource: PriceListSourcePrice | null,
+) {
+  return referenceSource && fallback ? fallback.sourcePrice : undefined;
+}
+
 function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   const expectedBrand = getExpectedBrandForPriceListItem(item);
   const diagnostics = createPriceListDiagnostics(expectedBrand);
+  let aguiarOnlyFallback: AguiarOnlyFallback | null = null;
 
   for (const query of buildPriceListQueries(item)) {
     const analysis = analyzeProductMatches(
@@ -417,10 +438,32 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
 
     const matches = analysis.matches;
     const sourcePrices = summarizeSourcePrices(matches);
-    const aguiarSourcePrice = sourcePrices.find(isAguiarTokinSourcePrice);
     const comparableSourcePrices = filterComparableSourcePrices(
       sourcePrices.filter((sourcePrice) => !isAguiarTokinSourcePrice(sourcePrice)),
     );
+    const bestSource = [...comparableSourcePrices].sort(
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
+    )[0] ?? null;
+    const fallbackAguiarSourcePrice = getFallbackAguiarSourcePrice(
+      aguiarOnlyFallback,
+      bestSource,
+    );
+    const rawAguiarSourcePrice: PriceListSourcePrice | undefined =
+      sourcePrices.find(isAguiarTokinSourcePrice) ?? fallbackAguiarSourcePrice;
+    const aguiarValidation: {
+      sourcePrice: PriceListSourcePrice | null;
+      diagnostic?: PriceListPriceNormalizationDiagnostic;
+    } | null = rawAguiarSourcePrice
+      ? validateAguiarSourcePriceForItem(item, rawAguiarSourcePrice, bestSource)
+      : null;
+    const aguiarSourcePrice: PriceListSourcePrice | null =
+      aguiarValidation?.sourcePrice ?? null;
+    const resultDiagnostics = aguiarValidation?.diagnostic
+      ? {
+          ...diagnostics,
+          aguiarPriceNormalization: aguiarValidation.diagnostic,
+        }
+      : diagnostics;
     const input = {
       ...item,
       currentPrice: aguiarSourcePrice
@@ -429,14 +472,23 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
       currentCost: undefined,
     };
 
-    if (!input.currentPrice && comparableSourcePrices.length === 0) {
+    if (aguiarSourcePrice && comparableSourcePrices.length === 0) {
+      aguiarOnlyFallback ??= {
+        query,
+        sourcePrice: aguiarSourcePrice,
+        diagnostic: aguiarValidation?.diagnostic,
+      };
       continue;
     }
 
-    const bestSource = [...comparableSourcePrices].sort(
-      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
-    )[0] ?? null;
+    if (!input.currentPrice && comparableSourcePrices.length === 0) {
+      continue;
+    }
     const hasAguiarPrice = Boolean(normalizeOptionalPrice(input.currentPrice));
+
+    if (aguiarValidation?.diagnostic) {
+      logAguiarPriceDiagnostic(item, aguiarValidation.diagnostic);
+    }
 
     return {
       input,
@@ -447,8 +499,35 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
       sourcePrices: comparableSourcePrices,
       matchedCount: comparableSourcePrices.length + (aguiarSourcePrice ? 1 : 0),
       diagnostics: {
-        ...diagnostics,
+        ...resultDiagnostics,
         matchedQuery: query,
+      },
+    };
+  }
+
+  if (aguiarOnlyFallback) {
+    const input = {
+      ...item,
+      currentPrice: getComparisonPrice(aguiarOnlyFallback.sourcePrice),
+      currentCost: undefined,
+    };
+
+    if (aguiarOnlyFallback.diagnostic) {
+      logAguiarPriceDiagnostic(item, aguiarOnlyFallback.diagnostic);
+    }
+
+    return {
+      input,
+      queryUsed: aguiarOnlyFallback.query,
+      status: "matched",
+      bestPrice: null,
+      bestSource: null,
+      sourcePrices: [],
+      matchedCount: 1,
+      diagnostics: {
+        ...diagnostics,
+        aguiarPriceNormalization: aguiarOnlyFallback.diagnostic,
+        matchedQuery: aguiarOnlyFallback.query,
       },
     };
   }
@@ -480,14 +559,22 @@ async function findDirectAguiarSourcePrice(
         storeName: "Aguiar Resistencia",
       },
     );
+    const errorMessage =
+      source?.disabledReason ?? "Fuente Aguiar/Tokin no configurada.";
+    console.warn("[Aguiar/Tokin] Fuente no disponible", {
+      fila: item.rowNumber,
+      codigo: item.code,
+      ean: item.ean13Di,
+      descripcion: item.description,
+      motivo: errorMessage,
+    });
 
     return {
       query: null,
       sourcePrice: null,
       diagnostics: {
         ...diagnostics,
-        errorMessage:
-          source?.disabledReason ?? "Fuente Aguiar/Tokin no configurada.",
+        errorMessage,
       },
     };
   }
@@ -504,6 +591,7 @@ async function findDirectAguiarSourcePrice(
     }).catch((error) => {
       lastErrorMessage =
         error instanceof Error ? error.message : "Error consultando Aguiar.";
+      logAguiarDirectSearchError(item, query, lastErrorMessage);
       return null;
     });
 
@@ -569,6 +657,8 @@ async function findDirectAguiarSourcePrice(
     }
   }
 
+  logAguiarDirectNoMatch(item, diagnostics, aiMatch.diagnostic, lastErrorMessage);
+
   return {
     query: null,
     sourcePrice: null,
@@ -589,9 +679,38 @@ function applyAguiarSourcePrice(
     diagnostics: PriceListDirectSourceDiagnostics;
   },
 ): PriceListItemResult {
+  const aguiarValidation = validateAguiarSourcePriceForItem(
+    result.input,
+    aguiarMatch.sourcePrice,
+    result.bestSource,
+  );
+  const diagnosticsWithAguiar = result.diagnostics
+    ? {
+        ...result.diagnostics,
+        aguiarPriceNormalization:
+          aguiarValidation.diagnostic ??
+          result.diagnostics.aguiarPriceNormalization,
+        directAguiar: {
+          ...aguiarMatch.diagnostics,
+          priceNormalization: aguiarValidation.diagnostic,
+        },
+      }
+    : result.diagnostics;
+
+  if (!aguiarValidation.sourcePrice) {
+    if (aguiarValidation.diagnostic) {
+      logAguiarPriceDiagnostic(result.input, aguiarValidation.diagnostic);
+    }
+
+    return {
+      ...result,
+      diagnostics: diagnosticsWithAguiar,
+    };
+  }
+
   const input = {
     ...result.input,
-    currentPrice: getComparisonPrice(aguiarMatch.sourcePrice),
+    currentPrice: getComparisonPrice(aguiarValidation.sourcePrice),
   };
   const hasAnyPrice = result.bestSource !== null || Boolean(input.currentPrice);
 
@@ -601,13 +720,172 @@ function applyAguiarSourcePrice(
     queryUsed: result.queryUsed ?? aguiarMatch.query,
     status: hasAnyPrice ? "matched" : "not_found",
     matchedCount: result.matchedCount + 1,
-    diagnostics: result.diagnostics
-      ? {
-          ...result.diagnostics,
-          directAguiar: aguiarMatch.diagnostics,
-        }
-      : result.diagnostics,
+    diagnostics: diagnosticsWithAguiar,
   };
+}
+
+function validateAguiarSourcePriceForItem(
+  item: PriceListInputItem,
+  sourcePrice: PriceListSourcePrice,
+  referenceSource: PriceListSourcePrice | null,
+): {
+  sourcePrice: PriceListSourcePrice | null;
+  diagnostic?: PriceListPriceNormalizationDiagnostic;
+} {
+  const originalPrice = getComparisonPrice(sourcePrice);
+  const referencePrice = referenceSource ? getComparisonPrice(referenceSource) : null;
+
+  if (!referencePrice) {
+    return { sourcePrice };
+  }
+
+  const bulkNormalization = buildAguiarBulkNormalization(
+    item,
+    sourcePrice,
+    originalPrice,
+    referencePrice,
+  );
+
+  if (bulkNormalization) {
+    return bulkNormalization;
+  }
+
+  if (originalPrice > referencePrice * AGUIAR_REFERENCE_REJECT_HIGH_MULTIPLIER) {
+    return {
+      sourcePrice: null,
+      diagnostic: {
+        status: "rejected",
+        originalPrice,
+        referencePrice,
+        packageQuantity: sourcePrice.packageQuantity ?? null,
+        productName: sourcePrice.productName,
+        reason:
+          "Precio Aguiar descartado: supera demasiado al mejor precio comparable y no se pudo inferir un bulto confiable.",
+      },
+    };
+  }
+
+  if (originalPrice < referencePrice * AGUIAR_REFERENCE_REJECT_LOW_MULTIPLIER) {
+    return {
+      sourcePrice: null,
+      diagnostic: {
+        status: "rejected",
+        originalPrice,
+        referencePrice,
+        packageQuantity: sourcePrice.packageQuantity ?? null,
+        productName: sourcePrice.productName,
+        reason:
+          "Precio Aguiar descartado: queda demasiado por debajo de la referencia y probablemente corresponde a otra unidad o variante.",
+      },
+    };
+  }
+
+  return { sourcePrice };
+}
+
+function logAguiarPriceDiagnostic(
+  item: PriceListInputItem,
+  diagnostic: PriceListPriceNormalizationDiagnostic,
+) {
+  const payload = {
+    fila: item.rowNumber,
+    codigo: item.code,
+    ean: item.ean13Di,
+    descripcion: item.description,
+    productoTokin: diagnostic.productName,
+    estado: diagnostic.status,
+    precioOriginal: diagnostic.originalPrice,
+    precioNormalizado: diagnostic.normalizedPrice ?? null,
+    precioReferencia: diagnostic.referencePrice ?? null,
+    motivo: diagnostic.reason,
+  };
+
+  if (diagnostic.status === "rejected") {
+    console.warn("[Aguiar/Tokin] Precio descartado", payload);
+    return;
+  }
+
+  console.info("[Aguiar/Tokin] Precio normalizado", payload);
+}
+
+function buildAguiarBulkNormalization(
+  item: PriceListInputItem,
+  sourcePrice: PriceListSourcePrice,
+  originalPrice: number,
+  referencePrice: number,
+) {
+  if (
+    sourcePrice.packageQuantity ||
+    originalPrice <= referencePrice * AGUIAR_REFERENCE_NORMALIZE_TRIGGER_MULTIPLIER
+  ) {
+    return null;
+  }
+
+  const itemPresentation = extractProductPresentation(
+    [item.description, item.rubro].filter(Boolean).join(" "),
+  );
+  const productPresentation = extractProductPresentation(sourcePrice.productName);
+  const packageQuantity = itemPresentation.packageCount;
+
+  if (
+    !packageQuantity ||
+    packageQuantity <= 1 ||
+    !presentationsHaveSameUnitAmount(itemPresentation, productPresentation)
+  ) {
+    return null;
+  }
+
+  const normalizedPrice = roundMoney(originalPrice / packageQuantity);
+
+  if (
+    normalizedPrice < referencePrice * AGUIAR_NORMALIZED_MIN_REFERENCE_MULTIPLIER ||
+    normalizedPrice > referencePrice * AGUIAR_NORMALIZED_MAX_REFERENCE_MULTIPLIER
+  ) {
+    return null;
+  }
+
+  const packageLabel = `bulto x ${packageQuantity}`;
+  const normalizedSourcePrice: PriceListSourcePrice = {
+    ...sourcePrice,
+    comparisonPrice: normalizedPrice,
+    packageQuantity,
+    packageLabel,
+    priceCondition: sourcePrice.priceCondition
+      ? `${sourcePrice.priceCondition}. Normalizado por ${packageLabel}`
+      : `Normalizado por ${packageLabel}`,
+  };
+
+  return {
+    sourcePrice: normalizedSourcePrice,
+    diagnostic: {
+      status: "normalized" as const,
+      originalPrice,
+      normalizedPrice,
+      referencePrice,
+      packageQuantity,
+      productName: sourcePrice.productName,
+      reason:
+        "Precio Aguiar interpretado como total de bulto porque la lista trae un pack y el unitario queda en rango contra el mercado.",
+    },
+  };
+}
+
+function presentationsHaveSameUnitAmount(
+  itemPresentation: ReturnType<typeof extractProductPresentation>,
+  productPresentation: ReturnType<typeof extractProductPresentation>,
+) {
+  if (
+    !itemPresentation.amount ||
+    !productPresentation.amount ||
+    itemPresentation.unit !== productPresentation.unit
+  ) {
+    return false;
+  }
+
+  return (
+    Math.abs(itemPresentation.amount - productPresentation.amount) <=
+    Math.max(itemPresentation.amount, productPresentation.amount) * 0.1
+  );
 }
 
 function buildAguiarDirectQueries(
@@ -648,7 +926,10 @@ function buildAguiarDirectQueries(
     ),
   ].filter((query): query is string => Boolean(query && query.length >= 2));
 
-  return expandSearchAliasQueryVariants(Array.from(new Set(queries))).slice(0, 14);
+  return expandSearchAliasQueryVariants(Array.from(new Set(queries))).slice(
+    0,
+    AGUIAR_DIRECT_QUERY_LIMIT,
+  );
 }
 
 function buildSearchFriendlyAguiarQueries(
@@ -668,6 +949,11 @@ function buildSearchFriendlyAguiarQueries(
   const brandQueries = buildExpectedBrandQueries(expectedBrand);
   const presentationQueries = buildPresentationQueries(item.description);
   const queries: string[] = [];
+  const compactProductQueries = buildCompactProductQueries(
+    normalizedDescription,
+    descriptionWithoutPackageCount,
+    descriptionWithoutSizes,
+  );
 
   for (const brandQuery of brandQueries) {
     for (const categoryQuery of categoryQueries) {
@@ -691,12 +977,50 @@ function buildSearchFriendlyAguiarQueries(
   }
 
   queries.push(
+    ...compactProductQueries,
+    ...compactProductQueries.flatMap((compactQuery) =>
+      presentationQueries.map((presentationQuery) =>
+        combineQueryParts(compactQuery, presentationQuery),
+      ),
+    ),
     removeLowValueSearchTerms(descriptionWithoutPackageCount),
     removeLowValueSearchTerms(descriptionWithoutSizes),
     removeLowValueSearchTerms(normalizedDescription),
   );
 
   return queries.filter((query) => query.length >= 2);
+}
+
+function buildCompactProductQueries(...values: string[]) {
+  const queries = new Set<string>();
+
+  for (const value of values) {
+    const cleanedValue = removeLowValueSearchTerms(value);
+    const withoutBrandNoise = removeBrandNoiseFromQuery(cleanedValue);
+    const withoutPresentation = stripPresentationFromQuery(withoutBrandNoise);
+    const significantTokens = withoutPresentation
+      .split(/\s+/)
+      .filter(isSignificantSearchToken);
+
+    if (withoutBrandNoise.length >= 2) {
+      queries.add(withoutBrandNoise);
+    }
+
+    if (withoutPresentation.length >= 2) {
+      queries.add(withoutPresentation);
+    }
+
+    if (significantTokens.length >= 2) {
+      queries.add(significantTokens.slice(0, 4).join(" "));
+      queries.add(significantTokens.slice(0, 3).join(" "));
+    }
+
+    if (significantTokens.length >= 1) {
+      queries.add(significantTokens[0]);
+    }
+  }
+
+  return Array.from(queries).filter((query) => query.length >= 2);
 }
 
 function buildExpectedBrandQueries(expectedBrand: TargetBrand | undefined) {
@@ -742,11 +1066,58 @@ function formatPresentationAmount(value: number) {
 function removeLowValueSearchTerms(value: string) {
   return normalizeQuery(value)
     .replace(
-      /\b(girasol|clasica|clasico|sabor|fco|frasco|doypack|familiar|seleccion|light)\b/g,
+      /\b(girasol|clasica|clasico|sabor|fco|frasco|doypack|familiar|seleccion|light|estuche|cajon)\b/g,
       " ",
     )
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function removeBrandNoiseFromQuery(value: string) {
+  return normalizeQuery(value)
+    .replace(
+      /\b(arcor|bagley|la campagnola|campagnola|chocolates|comestibles|div|alimentos|harinas|golosinas)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripPresentationFromQuery(value: string) {
+  return normalizeQuery(value)
+    .replace(
+      /\b\d+(?:[,.]\d+)?\s*(?:grs?|g|kg|ml|cc|lts?|lt|l|unid(?:ad)?(?:es)?|uni|uds?|u)\b/g,
+      " ",
+    )
+    .replace(/\b\d+\s*(?:x|\*)\s*\d+\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSignificantSearchToken(token: string) {
+  if (["bc", "lc", "rex", "bob"].includes(token)) {
+    return true;
+  }
+
+  return (
+    token.length >= 3 &&
+    !/^\d+$/.test(token) &&
+    ![
+      "galletitas",
+      "chocolate",
+      "alfajor",
+      "mermelada",
+      "caramelo",
+      "bombon",
+      "polvo",
+      "jugo",
+      "relleno",
+      "frasco",
+      "doypack",
+      "unidad",
+      "unidades",
+    ].includes(token)
+  );
 }
 
 function expandSearchAliasQueryVariants(queries: string[]) {
@@ -767,11 +1138,26 @@ function buildSearchAliasQueryVariants(query: string) {
   const variants = new Set([normalizeQuery(query)]);
   const replacements: Array<[RegExp, string]> = [
     [/\byogur\b/g, "yoghurt"],
+    [/\byoghurt\b/g, "yogur"],
     [/\bfrutilla\b/g, "fru"],
+    [/\bfru\b/g, "frutilla"],
     [/\bmultifruta\b/g, "mix frutal"],
+    [/\bmix frutal\b/g, "multifruta"],
     [/\bjugo polvo\b/g, "jugo en polvo"],
+    [/\bjugo en polvo\b/g, "jugo polvo"],
     [/\bbon o bon\b/g, "bonobon"],
+    [/\bbonobon\b/g, "bon o bon"],
     [/\bmenthoplus\b/g, "mentho plus"],
+    [/\bbloc\b/g, "block"],
+    [/\bblock\b/g, "bloc"],
+    [/\bmini torta\b/g, "minitorta"],
+    [/\bminitorta\b/g, "mini torta"],
+    [/\bgalletitas\b/g, "gall"],
+    [/\bchocolate\b/g, "choc"],
+    [/\bmermelada\b/g, "merm"],
+    [/\balfajor\b/g, "alf"],
+    [/\brelleno\b/g, "rell"],
+    [/\bfrutales\b/g, "frutal"],
   ];
 
   for (const [pattern, replacement] of replacements) {
@@ -1022,6 +1408,56 @@ function createEmptyQueryDiagnostic(query: string): PriceListQueryDiagnostic {
   };
 }
 
+function logAguiarDirectSearchError(
+  item: PriceListInputItem,
+  query: string,
+  errorMessage: string,
+) {
+  console.error("[Aguiar/Tokin] Error consultando Tokin", {
+    fila: item.rowNumber,
+    codigo: item.code,
+    ean: item.ean13Di,
+    descripcion: item.description,
+    query,
+    errorMessage,
+  });
+}
+
+function logAguiarDirectNoMatch(
+  item: PriceListInputItem,
+  diagnostics: PriceListDirectSourceDiagnostics,
+  aiMatch: PriceListDirectSourceDiagnostics["aiMatch"],
+  errorMessage?: string,
+) {
+  const queryRows = diagnostics.queryDiagnostics.map((diagnostic) => ({
+    query: diagnostic.query,
+    devueltos: diagnostic.sourceResultsCount ?? 0,
+    candidatos: diagnostic.candidatesCount,
+    matches: diagnostic.matchesCount,
+    descartados: diagnostic.rejectedCount,
+    topDescartados: diagnostic.topRejected.map((candidate) => ({
+      producto: candidate.productName,
+      fuente: candidate.storeName,
+      motivo: candidate.reason,
+      scoreBase: candidate.baseScore,
+      scoreFinal: candidate.finalScore,
+    })),
+  }));
+
+  console.warn("[Aguiar/Tokin] Sin precio directo para articulo", {
+    fila: item.rowNumber,
+    codigo: item.code,
+    ean: item.ean13Di,
+    descripcion: item.description,
+    rubro: item.rubro,
+    estado: errorMessage ? "failed" : "no_results",
+    errorMessage,
+    consultasProbadas: diagnostics.queriesTried,
+    resumenConsultas: queryRows,
+    ia: aiMatch,
+  });
+}
+
 function pushRejectedCandidate(
   candidates: PriceListRejectedCandidate[],
   product: ProductSearchResult,
@@ -1227,6 +1663,10 @@ function normalizeOptionalPrice(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : null;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 async function mapWithConcurrency<TInput, TOutput>(

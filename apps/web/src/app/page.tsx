@@ -371,7 +371,9 @@ function PriceListImport() {
         throw new Error(payload.error ?? "No se pudo evaluar la lista.");
       }
 
-      setResponse(payload as PriceListResponse);
+      const priceListResponse = payload as PriceListResponse;
+      setResponse(priceListResponse);
+      logPriceListDebugToConsole(priceListResponse);
     } catch (caughtError) {
       setItemsCount(0);
       setError(
@@ -954,6 +956,48 @@ function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
                               ) : null}
                             </div>
                           ) : null}
+                        </div>
+                      ) : null}
+
+                      {result.diagnostics?.aguiarPriceNormalization ? (
+                        <div className="rounded border border-[#f2d7c8] bg-[#fff8f3] px-2 py-2 text-[#7a4a16]">
+                          <span className="font-semibold">
+                            Control precio Aguiar:
+                          </span>{" "}
+                          {priceNormalizationStatusLabel(
+                            result.diagnostics.aguiarPriceNormalization.status,
+                          )}
+                          <div className="mt-1">
+                            {result.diagnostics.aguiarPriceNormalization.reason}
+                          </div>
+                          <div className="mt-1 text-[#667789]">
+                            Original{" "}
+                            {formatCurrencyValue(
+                              result.diagnostics.aguiarPriceNormalization
+                                .originalPrice,
+                            )}
+                            {result.diagnostics.aguiarPriceNormalization
+                              .normalizedPrice
+                              ? ` · normalizado ${formatCurrencyValue(
+                                  result.diagnostics.aguiarPriceNormalization
+                                    .normalizedPrice,
+                                )}`
+                              : ""}
+                            {result.diagnostics.aguiarPriceNormalization
+                              .referencePrice
+                              ? ` · referencia ${formatCurrencyValue(
+                                  result.diagnostics.aguiarPriceNormalization
+                                    .referencePrice,
+                                )}`
+                              : ""}
+                          </div>
+                          <div className="mt-1 text-[#667789]">
+                            Producto:{" "}
+                            {
+                              result.diagnostics.aguiarPriceNormalization
+                                .productName
+                            }
+                          </div>
                         </div>
                       ) : null}
 
@@ -2142,6 +2186,20 @@ function directSourceStatusLabel(
   return "sin resultado";
 }
 
+function priceNormalizationStatusLabel(
+  status: NonNullable<
+    NonNullable<
+      PriceListItemResult["diagnostics"]
+    >["aguiarPriceNormalization"]
+  >["status"],
+) {
+  if (status === "normalized") {
+    return "normalizado";
+  }
+
+  return "rechazado";
+}
+
 function aiMatchStatusLabel(
   status: NonNullable<
     NonNullable<
@@ -2394,6 +2452,85 @@ function buildDebugSummary(
       0,
     ),
   };
+}
+
+function logPriceListDebugToConsole(response: PriceListResponse) {
+  const aguiarRows = response.results
+    .map((result) => {
+      const directAguiar = result.diagnostics?.directAguiar;
+      const priceNormalization = result.diagnostics?.aguiarPriceNormalization;
+      const hasIssue =
+        normalizeOptionalNumber(result.input.currentPrice) === null ||
+        result.status === "not_found" ||
+        Boolean(priceNormalization) ||
+        directAguiar?.status === "failed" ||
+        directAguiar?.status === "no_results";
+
+      if (!hasIssue) {
+        return null;
+      }
+
+      const directDiagnostics = directAguiar?.queryDiagnostics ?? [];
+      const maxReturned = Math.max(
+        0,
+        ...directDiagnostics.map(
+          (diagnostic) => diagnostic.sourceResultsCount ?? 0,
+        ),
+      );
+      const maxMatches = Math.max(
+        0,
+        ...directDiagnostics.map((diagnostic) => diagnostic.matchesCount),
+      );
+      const rejectedCount = directDiagnostics.reduce(
+        (total, diagnostic) => total + diagnostic.rejectedCount,
+        0,
+      );
+      const topRejected = directDiagnostics
+        .flatMap((diagnostic) => diagnostic.topRejected)
+        .slice(0, 3)
+        .map(
+          (candidate) =>
+            `${candidate.productName} (${rejectReasonLabel(candidate.reason)}, ${candidate.finalScore})`,
+        )
+        .join(" | ");
+
+      return {
+        fila: result.input.rowNumber,
+        codigo: result.input.code ?? "",
+        ean: result.input.ean13Di ?? "",
+        descripcion: result.input.description ?? "",
+        precioAguiar:
+          normalizeOptionalNumber(result.input.currentPrice) ?? "sin precio",
+        estadoAguiar: directAguiar?.status ?? "catalogo",
+        consultasTokin: directAguiar?.queriesTried.join(" | ") ?? "",
+        maxDevueltosTokin: maxReturned,
+        maxMatchesTokin: maxMatches,
+        descartadosTokin: rejectedCount,
+        topDescartados: topRejected,
+        controlPrecio: priceNormalization?.status ?? "",
+        motivo:
+          priceNormalization?.reason ??
+          directAguiar?.errorMessage ??
+          (normalizeOptionalNumber(result.input.currentPrice) === null
+            ? "Sin precio Aguiar"
+            : ""),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  if (aguiarRows.length === 0) {
+    console.info("[Aguiar/Tokin] La lista no dejó incidencias de matching.");
+    return;
+  }
+
+  console.groupCollapsed(
+    `[Aguiar/Tokin] ${aguiarRows.length} articulos con incidencia de matching/precio`,
+  );
+  console.table(aguiarRows);
+  console.warn(
+    "[Aguiar/Tokin] Si un producto existe en Tokin pero aparece sin precio, copiame esta tabla y el log-matching CSV para ajustar aliases o reglas.",
+  );
+  console.groupEnd();
 }
 
 function countRejectedDiagnostics(result: PriceListItemResult) {
@@ -2907,6 +3044,11 @@ function downloadMatchingLogCsv(response: PriceListResponse) {
     "Score base",
     "Score final",
     "Link candidato",
+    "Control precio Aguiar",
+    "Precio Aguiar original",
+    "Precio Aguiar normalizado",
+    "Precio referencia",
+    "Motivo control Aguiar",
   ];
   const rows = response.results.flatMap((result) =>
     buildMatchingLogRows(result),
@@ -3041,6 +3183,8 @@ function buildMatchingLogBaseRow(
   finalScore = "",
   candidateUrl = "",
 ) {
+  const priceNormalization = result.diagnostics?.aguiarPriceNormalization;
+
   return [
     String(result.input.rowNumber),
     result.input.rubro ?? "",
@@ -3065,6 +3209,19 @@ function buildMatchingLogBaseRow(
     baseScore,
     finalScore,
     candidateUrl,
+    priceNormalization
+      ? priceNormalizationStatusLabel(priceNormalization.status)
+      : "",
+    priceNormalization
+      ? formatCsvAmount(priceNormalization.originalPrice)
+      : "",
+    priceNormalization?.normalizedPrice
+      ? formatCsvAmount(priceNormalization.normalizedPrice)
+      : "",
+    priceNormalization?.referencePrice
+      ? formatCsvAmount(priceNormalization.referencePrice)
+      : "",
+    priceNormalization?.reason ?? "",
   ];
 }
 
