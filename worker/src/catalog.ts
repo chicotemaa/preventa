@@ -33,6 +33,7 @@ import {
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { scrapingSources } from "./sources/argentina.js";
+import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import type {
   CatalogMetadata,
@@ -768,6 +769,10 @@ function dedupeProductResults(products: ProductSearchResult[]) {
   const byKey = new Map<string, ProductSearchResult>();
 
   for (const product of products) {
+    if (!productIsInStock(product)) {
+      continue;
+    }
+
     const key = [
       product.sourceId,
       product.normalizedName,
@@ -2177,6 +2182,10 @@ function dedupeCatalogProducts(products: ProductSearchResult[]) {
   const deduped: ProductSearchResult[] = [];
 
   for (const product of products) {
+    if (!productIsInStock(product)) {
+      continue;
+    }
+
     const key = [
       product.sourceId,
       product.brand ?? "",

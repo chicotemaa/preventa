@@ -250,6 +250,7 @@ function toTokinProductResult(
 
   const brand = findTokinBrand(product);
   const category = findTokinCategory(product, rawName);
+  const stockQuantity = findTokinVariantStockQuantity(variant);
   const matchText = findAllowedBrand(rawName)
     ? [category, rawName].filter(Boolean).join(" ")
     : [brand, category, rawName]
@@ -271,6 +272,8 @@ function toTokinProductResult(
     rawName,
     normalizedName: normalizeProductName(rawName),
     price,
+    availability: stockQuantity === 0 ? "out_of_stock" : "in_stock",
+    stockQuantity,
     currency: "ARS",
     productUrl: null,
     imageUrl: findTokinImageUrl(product),
@@ -327,7 +330,45 @@ function findPricedTokinVariants(product: TokinSearchHit) {
   const variants =
     product.additional_content?.raw?.variants ?? product.variants ?? [];
 
-  return variants.filter((variant) => findTokinVariantPrice(variant) !== null);
+  return variants.filter(
+    (variant) =>
+      findTokinVariantPrice(variant) !== null && !tokinVariantIsOutOfStock(variant),
+  );
+}
+
+function tokinVariantIsOutOfStock(variant: TokinVariant) {
+  const stockQuantity = findTokinVariantStockQuantity(variant);
+  return typeof stockQuantity === "number" && stockQuantity <= 0;
+}
+
+function findTokinVariantStockQuantity(variant: TokinVariant | undefined) {
+  if (!variant) {
+    return null;
+  }
+
+  const candidates = [
+    variant.stock,
+    variant.stockQuantity,
+    variant.stock_quantity,
+    variant.availableStock,
+    variant.available_stock,
+    variant.quantity,
+  ];
+
+  for (const candidate of candidates) {
+    const value =
+      typeof candidate === "number"
+        ? candidate
+        : typeof candidate === "string"
+          ? Number(candidate.replace(",", "."))
+          : NaN;
+
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function findTokinVariantPrice(variant: TokinVariant | undefined) {

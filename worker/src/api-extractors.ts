@@ -18,6 +18,7 @@ import type {
   ScrapingSource,
 } from "./types.js";
 import { createProductResult } from "./extractors.js";
+import { textLooksOutOfStock } from "./stock.js";
 import { withUnitPricing } from "./unit-pricing.js";
 
 type VtexProduct = {
@@ -78,6 +79,12 @@ type WooCommercePmwProduct = {
   brand?: string;
   name?: string;
   category?: string[];
+  stock?: number | string | null;
+  stock_status?: string;
+  stockStatus?: string;
+  availability?: string;
+  in_stock?: boolean;
+  is_in_stock?: boolean;
 };
 
 type MaxiconsumoUnitPricing = {
@@ -311,7 +318,7 @@ function toStaticHtmlProductResult(
   const maxiconsumoPricing = findMaxiconsumoUnitPricing(cardHtml, source);
   const price = maxiconsumoPricing?.price ?? normalizePrice(rawPrice);
 
-  if (!rawName || price === null) {
+  if (!rawName || price === null || textLooksOutOfStock(cardHtml)) {
     return null;
   }
 
@@ -444,6 +451,27 @@ function pricesAreEqual(first: number, second: number) {
   return Math.abs(first - second) < 0.01;
 }
 
+function productLooksOutOfStock(product: WooCommercePmwProduct) {
+  if (product.in_stock === false || product.is_in_stock === false) {
+    return true;
+  }
+
+  if (
+    typeof product.stock === "number" &&
+    Number.isFinite(product.stock) &&
+    product.stock <= 0
+  ) {
+    return true;
+  }
+
+  return textLooksOutOfStock(
+    product.stock_status,
+    product.stockStatus,
+    product.availability,
+    typeof product.stock === "string" ? product.stock : null,
+  );
+}
+
 function toWooCommercePmwProductResult(
   source: ScrapingSource,
   query: string,
@@ -455,7 +483,13 @@ function toWooCommercePmwProductResult(
       ? product.price
       : normalizePrice(String(product.price ?? ""));
 
-  if (!rawName || price === null || !Number.isFinite(price) || price <= 0) {
+  if (
+    !rawName ||
+    price === null ||
+    !Number.isFinite(price) ||
+    price <= 0 ||
+    productLooksOutOfStock(product)
+  ) {
     return null;
   }
 
@@ -500,7 +534,7 @@ function toLaAnonimaProductResult(
     readHtmlAttribute(cardHtml, "data-precio");
   const price = normalizePrice(rawPrice);
 
-  if (!rawName || price === null) {
+  if (!rawName || price === null || textLooksOutOfStock(cardHtml)) {
     return null;
   }
 

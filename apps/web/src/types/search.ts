@@ -21,6 +21,8 @@ export type ProductSearchResult = {
   alternatePrices?: AlternatePrice[];
   packageQuantity?: number | null;
   packageLabel?: string | null;
+  availability?: "in_stock" | "out_of_stock" | "unknown";
+  stockQuantity?: number | null;
   currency: "ARS";
   productUrl: string | null;
   imageUrl: string | null;

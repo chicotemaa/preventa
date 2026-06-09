@@ -21,6 +21,7 @@ import {
   getSourceUrl,
 } from "./source-metadata.js";
 import { scrapingSources } from "./sources/argentina.js";
+import { productIsInStock } from "./stock.js";
 import { extractProductsFromTokin } from "./tokin.js";
 import { extractProductsFromVeaAuth } from "./vea.js";
 import { extractProductsFromYaguarAuth } from "./yaguar.js";
@@ -742,6 +743,10 @@ function dedupeResults(results: ProductSearchResult[]) {
   const deduped: ProductSearchResult[] = [];
 
   for (const result of results) {
+    if (!productIsInStock(result)) {
+      continue;
+    }
+
     const key = [
       result.sourceId,
       result.normalizedName,
