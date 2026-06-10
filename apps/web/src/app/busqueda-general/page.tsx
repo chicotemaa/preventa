@@ -2,6 +2,7 @@
 
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { compareSourcePriority } from "@/lib/source-priority";
 import type {
   ProductSearchResult,
   SearchResponse,
@@ -263,6 +264,7 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
       ? product.packageLabel ?? `pack x ${product.packageQuantity}`
       : null;
   const alternatePrices = getAlternatePriceLabels(product);
+  const alternatePackagePrice = findPackageAlternatePrice(product);
   const hasBultoCondition = Boolean(
     product.priceCondition && /bulto|caja|pack/i.test(product.priceCondition),
   );
@@ -285,13 +287,13 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
         <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
           Bulto / pack
         </div>
-        {packageDescriptor || hasBultoCondition ? (
+        {packageDescriptor || hasBultoCondition || alternatePackagePrice ? (
           <>
             <div className="mt-1 text-base font-extrabold text-[#7a4a16]">
-              {currencyFormatter.format(product.price)}
+              {currencyFormatter.format(alternatePackagePrice?.price ?? product.price)}
             </div>
             <div className="mt-1 text-xs leading-4 text-[#667789]">
-              {product.priceCondition ?? packageDescriptor}
+              {alternatePackagePrice?.label ?? product.priceCondition ?? packageDescriptor}
             </div>
           </>
         ) : (
@@ -322,10 +324,21 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
   );
 }
 
+function findPackageAlternatePrice(product: ProductSearchResult) {
+  return (product.alternatePrices ?? []).find(
+    (price) =>
+      Number.isFinite(price.price) &&
+      price.price > 0 &&
+      /bulto|caja|pack|display/i.test(price.label),
+  );
+}
+
 function SourceStatusList({ sources }: { sources: SourceSearchStatus[] }) {
   if (sources.length === 0) {
     return null;
   }
+
+  const sortedSources = sortSourcesForDisplay(sources);
 
   return (
     <details className="mt-5 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-3">
@@ -333,7 +346,7 @@ function SourceStatusList({ sources }: { sources: SourceSearchStatus[] }) {
         Fuentes consultadas ({sources.length})
       </summary>
       <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {sources.map((source) => (
+        {sortedSources.map((source) => (
           <div
             key={source.sourceId}
             className="rounded-md border border-[#e5e9ef] bg-white px-3 py-2"
@@ -362,6 +375,29 @@ function SourceStatusList({ sources }: { sources: SourceSearchStatus[] }) {
       </div>
     </details>
   );
+}
+
+function sortSourcesForDisplay(sources: SourceSearchStatus[]) {
+  return [...sources].sort((first, second) => {
+    const firstHasData = first.status === "success" && first.resultsCount > 0;
+    const secondHasData = second.status === "success" && second.resultsCount > 0;
+
+    if (firstHasData !== secondHasData) {
+      return firstHasData ? -1 : 1;
+    }
+
+    const priority = compareSourcePriority(first, second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
+    if (first.storeType !== second.storeType) {
+      return first.storeType === "mayorista" ? -1 : 1;
+    }
+
+    return first.storeName.localeCompare(second.storeName, "es");
+  });
 }
 
 function getComparablePrice(price: ComparablePrice) {

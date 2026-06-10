@@ -20,6 +20,7 @@ import {
   getSourceScope,
   getSourceUrl,
 } from "./source-metadata.js";
+import { compareSourcePriority } from "./source-priority.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { productIsInStock } from "./stock.js";
 import { extractProductsFromTokin } from "./tokin.js";
@@ -39,6 +40,8 @@ type SearchSourceOptions = {
   filterByConfidence?: boolean;
   limitResults?: boolean;
 };
+
+const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 
 export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const startedAt = Date.now();
@@ -65,7 +68,7 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
       .filter(
         (result) => result.confidenceScore >= config.minConfidenceScore,
       ),
-  ).sort((first, second) => getComparisonPrice(first) - getComparisonPrice(second));
+  ).sort(compareLiveSearchResults);
 
   return {
     query,
@@ -93,6 +96,26 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
     "static_html",
     "woocommerce_pmw_json",
   ].includes(source.sourceKind ?? "playwright");
+}
+
+function compareLiveSearchResults(
+  first: ProductSearchResult,
+  second: ProductSearchResult,
+) {
+  const firstIsTokin = first.sourceId === AGUIAR_TOKIN_SOURCE_ID;
+  const secondIsTokin = second.sourceId === AGUIAR_TOKIN_SOURCE_ID;
+
+  if (firstIsTokin !== secondIsTokin) {
+    return firstIsTokin ? -1 : 1;
+  }
+
+  const sourcePriority = compareSourcePriority(first, second);
+
+  if (sourcePriority !== 0) {
+    return sourcePriority;
+  }
+
+  return getComparisonPrice(first) - getComparisonPrice(second);
 }
 
 function compareBrowserSourcePriority(first: ScrapingSource, second: ScrapingSource) {

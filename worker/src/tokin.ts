@@ -251,14 +251,20 @@ function toTokinProductResult(
   const brand = findTokinBrand(product);
   const category = findTokinCategory(product, rawName);
   const stockQuantity = findTokinVariantStockQuantity(variant);
+  const packageQuantity = findTokinPackageQuantity(product, variant);
   const matchText = findAllowedBrand(rawName)
     ? [category, rawName].filter(Boolean).join(" ")
     : [brand, category, rawName]
         .filter(Boolean)
         .join(" ");
-  const pricingContext = buildTokinPricingContext(product, variant, matchText);
+  const pricingContext = buildTokinPricingContext(
+    product,
+    variant,
+    matchText,
+    packageQuantity,
+  );
 
-  return withUnitPricing({
+  const result: ProductSearchResult = {
     sourceId: source.id,
     storeName: source.storeName,
     storeType: source.storeType,
@@ -278,7 +284,13 @@ function toTokinProductResult(
     productUrl: null,
     imageUrl: findTokinImageUrl(product),
     confidenceScore: calculateConfidenceScore(query, matchText),
-  }, pricingContext);
+  };
+
+  return applyTokinUnitAndPackagePricing(
+    result,
+    packageQuantity,
+    pricingContext,
+  );
 }
 
 function findTokinVariantName(variant: TokinVariant) {
@@ -399,8 +411,8 @@ function buildTokinPricingContext(
   product: TokinSearchHit,
   variant: TokinVariant,
   matchText: string,
+  packageQuantity: number | null,
 ) {
-  const packageQuantity = findTokinPackageQuantity(variant);
   const fragments = [
     matchText,
     getRawValue(product.parent_category),
@@ -418,6 +430,43 @@ function buildTokinPricingContext(
   ).join(" ");
 }
 
+function applyTokinUnitAndPackagePricing(
+  product: ProductSearchResult,
+  packageQuantity: number | null,
+  pricingContext: string,
+) {
+  if (!packageQuantity) {
+    return withUnitPricing(product, pricingContext);
+  }
+
+  const unitPrice = product.price;
+
+  return {
+    ...product,
+    price: roundMoney(unitPrice * packageQuantity),
+    comparisonPrice: roundMoney(unitPrice),
+    priceCondition: `Bulto: ${packageQuantity} unidades`,
+    alternatePrices: [
+      {
+        label: "Unidad",
+        price: roundMoney(unitPrice),
+        comparisonPrice: roundMoney(unitPrice),
+      },
+      {
+        label: `Bulto x ${packageQuantity}`,
+        price: roundMoney(unitPrice * packageQuantity),
+        comparisonPrice: roundMoney(unitPrice),
+      },
+    ],
+    packageQuantity,
+    packageLabel: `bulto x ${packageQuantity} unidades`,
+  };
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function getTokinVariantPackagingFragments(variant: TokinVariant) {
   const fragments: string[] = [];
 
@@ -430,7 +479,7 @@ function getTokinVariantPackagingFragments(variant: TokinVariant) {
       continue;
     }
 
-    const text = stringifyTokinVariantValue(value);
+    const text = stringifyTokinPackagingValue(value);
 
     if (text) {
       fragments.push(`${key} ${text}`);
@@ -440,20 +489,108 @@ function getTokinVariantPackagingFragments(variant: TokinVariant) {
   return fragments;
 }
 
-function findTokinPackageQuantity(variant: TokinVariant) {
-  for (const [key, value] of Object.entries(variant)) {
-    if (!isTokinPackageQuantityKey(key)) {
-      continue;
+function findTokinPackageQuantity(
+  product: TokinSearchHit,
+  variant: TokinVariant,
+) {
+  const contextQuantity = parseTokinBultoQuantityFromText(
+    collectTokinPrimitiveText(product, variant).join(" "),
+  );
+
+  if (contextQuantity !== null) {
+    return contextQuantity;
+  }
+
+  for (const source of [variant, product]) {
+    for (const [key, value] of Object.entries(source)) {
+      if (!isTokinPackageQuantityKey(key)) {
+        continue;
+      }
+
+      const quantity = parseTokinPackageQuantity(value);
+
+      if (quantity !== null) {
+        return quantity;
+      }
     }
+  }
 
-    const quantity = parseTokinPackageQuantity(value);
+  return null;
+}
 
-    if (quantity !== null) {
+function parseTokinBultoQuantityFromText(text: string) {
+  const normalizedText = text
+    .replace(/\s+/g, " ")
+    .replace(/Uds?\b/gi, "uds")
+    .trim();
+  const patterns = [
+    /\bdisplay\s*:?\s*\d{1,3}(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\s*[/|-]\s*bulto\s*:?\s*(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\b/i,
+    /\bbulto\s*:?\s*(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\b/i,
+    /\bbulto\b[^0-9]{0,30}(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\b/i,
+    /\b(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\s*(?:=|por)\s*\d{1,3}\s*disp\b/i,
+    /\b(?:unidades|uds?|cant(?:idad)?|qty)\s*(?:por|x|de)?\s*bulto\s*:?\s*(\d{1,3})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedText.match(pattern);
+    const quantity = match?.[1] ? Number(match[1]) : NaN;
+
+    if (isValidTokinPackageQuantity(quantity)) {
       return quantity;
     }
   }
 
   return null;
+}
+
+function collectTokinPrimitiveText(...values: unknown[]) {
+  const fragments: string[] = [];
+
+  for (const value of values) {
+    collectTokinPrimitiveTextInto(value, fragments);
+  }
+
+  return fragments;
+}
+
+function collectTokinPrimitiveTextInto(
+  value: unknown,
+  fragments: string[],
+  depth = 0,
+) {
+  if (value === null || value === undefined || depth > 5) {
+    return;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    fragments.push(String(value));
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectTokinPrimitiveTextInto(item, fragments, depth + 1);
+    }
+    return;
+  }
+
+  if (typeof value !== "object") {
+    return;
+  }
+
+  for (const [key, itemValue] of Object.entries(value)) {
+    const normalizedKey = normalizeTokinKey(key);
+
+    if (
+      ["price", "prices", "image"].includes(normalizedKey) ||
+      /(?:ean|barcode|barcod|gtin|upc|sku|id)$/.test(normalizedKey)
+    ) {
+      continue;
+    }
+
+    fragments.push(key);
+    collectTokinPrimitiveTextInto(itemValue, fragments, depth + 1);
+  }
 }
 
 function isTokinPackageQuantityKey(key: string) {
@@ -481,6 +618,16 @@ function isTokinPackageQuantityKey(key: string) {
       "unitsperpackage",
       "unitsperbox",
       "unitspercase",
+      "unitmultiplier",
+      "multiplier",
+      "conversionfactor",
+      "factorconversion",
+      "unitsperdisplay",
+      "unidadespordisplay",
+      "displayquantity",
+      "displayunits",
+      "cantidadpordisplay",
+      "cantpordisplay",
       "unidadesporbulto",
       "unidadesporcaja",
       "cantidadporbulto",
@@ -507,13 +654,31 @@ function parseTokinPackageQuantity(value: unknown) {
   }
 
   if (typeof value === "string") {
-    const match = value.replace(",", ".").match(/\b(\d{1,3})(?:\.0+)?\b/);
-    const parsedValue = match?.[1] ? Number(match[1]) : NaN;
-    return isValidTokinPackageQuantity(parsedValue) ? parsedValue : null;
+    const bultoQuantity = parseTokinBultoQuantityFromText(value);
+
+    if (bultoQuantity !== null) {
+      return bultoQuantity;
+    }
+
+    const matches = Array.from(value.replace(",", ".").matchAll(/\b(\d{1,3})(?:\.0+)?\b/g));
+
+    for (const match of matches) {
+      const parsedValue = match[1] ? Number(match[1]) : NaN;
+
+      if (isValidTokinPackageQuantity(parsedValue)) {
+        return parsedValue;
+      }
+    }
+
+    return null;
   }
 
   if (value && typeof value === "object" && "raw" in value) {
     return parseTokinPackageQuantity((value as TokinRawField).raw);
+  }
+
+  if (value && typeof value === "object") {
+    return parseTokinBultoQuantityFromText(collectTokinPrimitiveText(value).join(" "));
   }
 
   return null;
@@ -534,6 +699,20 @@ function stringifyTokinVariantValue(value: unknown) {
 
   if (value && typeof value === "object" && "raw" in value) {
     return getRawValue(value as TokinRawField);
+  }
+
+  return "";
+}
+
+function stringifyTokinPackagingValue(value: unknown) {
+  const directValue = stringifyTokinVariantValue(value);
+
+  if (directValue) {
+    return directValue;
+  }
+
+  if (value && typeof value === "object") {
+    return collectTokinPrimitiveText(value).join(" ").replace(/\s+/g, " ").trim();
   }
 
   return "";

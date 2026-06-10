@@ -32,6 +32,7 @@ import {
 } from "./presentation.js";
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
+import { compareSourcePriority } from "./source-priority.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
@@ -668,6 +669,12 @@ function compareProductSearchResults(
     return firstIsTokin ? -1 : 1;
   }
 
+  const sourcePriority = compareSourcePriority(first, second);
+
+  if (sourcePriority !== 0) {
+    return sourcePriority;
+  }
+
   if (second.confidenceScore !== first.confidenceScore) {
     return second.confidenceScore - first.confidenceScore;
   }
@@ -724,9 +731,46 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
     });
   }
 
-  return Array.from(bySource.values()).sort((first, second) =>
-    first.storeName.localeCompare(second.storeName, "es"),
-  );
+  return Array.from(bySource.values()).sort(compareSourceStatusesForDashboard);
+}
+
+function compareSourceStatusesForDashboard(
+  first: SourceSearchStatus,
+  second: SourceSearchStatus,
+) {
+  const firstChannelRank = getSourceStatusChannelRank(first);
+  const secondChannelRank = getSourceStatusChannelRank(second);
+
+  if (firstChannelRank !== secondChannelRank) {
+    return firstChannelRank - secondChannelRank;
+  }
+
+  const firstHasData = sourceStatusHasData(first);
+  const secondHasData = sourceStatusHasData(second);
+
+  if (firstHasData !== secondHasData) {
+    return firstHasData ? -1 : 1;
+  }
+
+  const sourcePriority = compareSourcePriority(first, second);
+
+  if (sourcePriority !== 0) {
+    return sourcePriority;
+  }
+
+  return first.storeName.localeCompare(second.storeName, "es");
+}
+
+function sourceStatusHasData(source: SourceSearchStatus) {
+  return source.status === "success" && source.resultsCount > 0;
+}
+
+function getSourceStatusChannelRank(source: SourceSearchStatus) {
+  if (source.sourceId === AGUIAR_TOKIN_SOURCE_ID) {
+    return 0;
+  }
+
+  return source.storeType === "mayorista" ? 1 : 2;
 }
 
 function buildDisabledSourceSearchStatuses(): SourceSearchStatus[] {
