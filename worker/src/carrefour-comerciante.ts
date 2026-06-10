@@ -14,7 +14,6 @@ const BASE_URL = "https://comerciante.carrefour.com.ar/";
 const LOGIN_URL = "https://comerciante.carrefour.com.ar/login";
 const ORIGIN = "https://comerciante.carrefour.com.ar";
 const RECAPTCHA_SITE_KEY = "6LdiZHIqAAAAAJO8Gn9RbfC6bMckPmMXgoBrqfmJ";
-const LOGIN_TIMEOUT_MS = 30_000;
 
 type CarrefourComercianteCard = {
   html: string;
@@ -54,6 +53,7 @@ export async function extractProductsFromCarrefourComerciante(
         referer: `${BASE_URL}search/${encodeURIComponent(query.trim())}`,
         "x-requested-with": "XMLHttpRequest",
       },
+      timeout: config.carrefourComerciante.productTimeoutMs,
     });
 
     if (!response.ok()) {
@@ -101,43 +101,73 @@ export function extractCarrefourComercianteProductsFromHtml(
 
 async function establishCarrefourComercianteSession(context: BrowserContext) {
   const page = await context.newPage();
-  page.setDefaultTimeout(LOGIN_TIMEOUT_MS);
+  page.setDefaultTimeout(config.carrefourComerciante.loginTimeoutMs);
 
   try {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+    await page.goto(BASE_URL, {
+      waitUntil: "domcontentloaded",
+      timeout: config.carrefourComerciante.loginTimeoutMs,
+    });
 
-    const token = await page.evaluate(
-      async (siteKey) => {
-        const recaptcha = (
-          window as unknown as {
-            grecaptcha?: {
-              enterprise?: {
-                ready?: (callback: () => void) => void;
-                execute?: (
-                  key: string,
-                  options: { action: string },
-                ) => Promise<string>;
+    try {
+      await page.waitForFunction(
+        () =>
+          Boolean(
+            (
+              window as unknown as {
+                grecaptcha?: {
+                  enterprise?: {
+                    execute?: unknown;
+                  };
+                };
+              }
+            ).grecaptcha?.enterprise?.execute,
+          ),
+        null,
+        { timeout: config.carrefourComerciante.recaptchaTimeoutMs },
+      );
+    } catch {
+      throw new Error(
+        `Carrefour Comerciante no cargo reCAPTCHA Enterprise en ${config.carrefourComerciante.recaptchaTimeoutMs}ms; la fuente queda sin datos para no bloquear el tablero.`,
+      );
+    }
+
+    const token = await withOperationTimeout(
+      page.evaluate(
+        async (siteKey) => {
+          const recaptcha = (
+            window as unknown as {
+              grecaptcha?: {
+                enterprise?: {
+                  ready?: (callback: () => void) => void;
+                  execute?: (
+                    key: string,
+                    options: { action: string },
+                  ) => Promise<string>;
+                };
               };
-            };
-          }
-        ).grecaptcha?.enterprise;
+            }
+          ).grecaptcha?.enterprise;
 
-        if (!recaptcha?.execute) {
-          return "";
-        }
-
-        await new Promise<void>((resolve) => {
-          if (typeof recaptcha.ready === "function") {
-            recaptcha.ready(resolve);
-            return;
+          if (!recaptcha?.execute) {
+            return "";
           }
 
-          resolve();
-        });
+          await new Promise<void>((resolve) => {
+            if (typeof recaptcha.ready === "function") {
+              recaptcha.ready(resolve);
+              return;
+            }
 
-        return recaptcha.execute(siteKey, { action: "signup" });
-      },
-      RECAPTCHA_SITE_KEY,
+            resolve();
+          });
+
+          return recaptcha.execute(siteKey, { action: "signup" });
+        },
+        RECAPTCHA_SITE_KEY,
+      ),
+      config.carrefourComerciante.recaptchaTimeoutMs,
+      `Carrefour Comerciante no entrego token reCAPTCHA en ${config.carrefourComerciante.recaptchaTimeoutMs}ms.`,
     );
 
     if (!token) {
@@ -154,6 +184,7 @@ async function establishCarrefourComercianteSession(context: BrowserContext) {
         origin: ORIGIN,
         referer: BASE_URL,
       },
+      timeout: config.carrefourComerciante.loginTimeoutMs,
     });
 
     if (response.status() >= 400) {
@@ -164,6 +195,22 @@ async function establishCarrefourComercianteSession(context: BrowserContext) {
   } finally {
     await page.close().catch(() => undefined);
   }
+}
+
+function withOperationTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+) {
+  let timeout: NodeJS.Timeout;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() =>
+    clearTimeout(timeout),
+  );
 }
 
 function buildCarrefourComercianteLoginForm(token: string) {

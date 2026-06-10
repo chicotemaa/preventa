@@ -90,7 +90,6 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
   return ![
     "carrefour_vtex_auth",
     "maxiconsumo_auth",
-    "carrefour_comerciante",
     "laanonima_html",
     "tokin",
     "vea_vtex_auth",
@@ -206,7 +205,7 @@ export async function searchSource(
   if (source.sourceKind === "carrefour_comerciante") {
     return withTimeout(
       runCarrefourComercianteSourceSearch(source, query, startedAt, options),
-      config.sourceTimeoutMs,
+      config.carrefourComerciante.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
         error instanceof Error &&

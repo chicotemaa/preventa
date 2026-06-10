@@ -188,9 +188,11 @@ CARREFOUR_COMERCIANTE_EMAIL=
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=retiro
+CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS=12000
+CARREFOUR_COMERCIANTE_RECAPTCHA_TIMEOUT_MS=5000
 ```
 
-Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios.
+Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si reCAPTCHA no carga en el tiempo configurado o Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios ni bloquea el tablero.
 
 ## Publicacion
 

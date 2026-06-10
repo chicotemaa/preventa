@@ -478,7 +478,10 @@ async function runCategorySourceSearches(
   const browserSources = sources.filter(sourceNeedsBrowser);
   const apiLikeResults = await mapWithConcurrency(
     apiLikeSources.flatMap((source) =>
-      queries.map((query) => ({ source, query })),
+      getCategoryQueriesForSource(source, queries).map((query) => ({
+        source,
+        query,
+      })),
     ),
     8,
     ({ source, query }) =>
@@ -490,7 +493,7 @@ async function runCategorySourceSearches(
   const browserResults: SearchSourceResult[] = [];
 
   for (const source of browserSources) {
-    for (const query of queries) {
+    for (const query of getCategoryQueriesForSource(source, queries)) {
       browserResults.push(
         await searchSource(source, query, undefined, {
           filterByConfidence: false,
@@ -501,6 +504,17 @@ async function runCategorySourceSearches(
   }
 
   return [...apiLikeResults, ...browserResults];
+}
+
+function getCategoryQueriesForSource(
+  source: ScrapingSource,
+  queries: string[],
+) {
+  if (source.sourceKind === "carrefour_comerciante") {
+    return queries.slice(0, 1);
+  }
+
+  return queries;
 }
 
 function findCategoryCandidatesForQuery(query: string) {

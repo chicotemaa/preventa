@@ -92,6 +92,16 @@ export const config = {
     sellerId: getOptionalStringEnv("CARREFOUR_COMERCIANTE_SELLER_ID") ?? "506",
     deliveryType:
       getOptionalStringEnv("CARREFOUR_COMERCIANTE_DELIVERY_TYPE") ?? "retiro",
+    sourceTimeoutMs: getNumberEnv("CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS", 12_000),
+    recaptchaTimeoutMs: getNumberEnv(
+      "CARREFOUR_COMERCIANTE_RECAPTCHA_TIMEOUT_MS",
+      5_000,
+    ),
+    loginTimeoutMs: getNumberEnv("CARREFOUR_COMERCIANTE_LOGIN_TIMEOUT_MS", 10_000),
+    productTimeoutMs: getNumberEnv(
+      "CARREFOUR_COMERCIANTE_PRODUCT_TIMEOUT_MS",
+      8_000,
+    ),
   },
   tokin: {
     enabled: process.env.TOKIN_ENABLED !== "false",
