@@ -1,5 +1,6 @@
 import type { Browser } from "playwright";
 import {
+  extractProductsFromCucherSupabase,
   extractProductsFromLaAnonimaHtml,
   extractProductsFromStaticHtml,
   extractProductsFromVtexApi,
@@ -95,6 +96,7 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
     "yaguar_auth",
     "static_html",
     "woocommerce_pmw_json",
+    "cucher_supabase",
   ].includes(source.sourceKind ?? "playwright");
 }
 
@@ -268,6 +270,28 @@ export async function searchSource(
   if (source.sourceKind === "woocommerce_pmw_json") {
     return withTimeout(
       runWooCommercePmwJsonSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
+  if (source.sourceKind === "cucher_supabase") {
+    return withTimeout(
+      runCucherSupabaseSourceSearch(source, query, startedAt, options),
       config.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
@@ -552,6 +576,38 @@ async function runWooCommercePmwJsonSourceSearch(
 ): Promise<SearchSourceResult> {
   const url = buildSearchUrl(source.searchUrlTemplate, query);
   const rawResults = await extractProductsFromWooCommercePmwJson(url, source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runCucherSupabaseSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const url = buildSearchUrl(source.searchUrlTemplate, query);
+  const rawResults = await extractProductsFromCucherSupabase(url, source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(

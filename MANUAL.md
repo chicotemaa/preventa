@@ -138,12 +138,13 @@ Colores y señales:
 Regla de orden visual de fuentes:
 
 1. Vital
-2. Maxi / Maxiconsumo / Maxi Carrefour
-3. Carrefour
-4. Cheek
-5. Yaguar / Jaguar
-6. Cucher
-7. Revista
+2. Carrefour Comerciante / Maxi Pedido
+3. Maxi / Maxiconsumo
+4. Carrefour
+5. Cheek
+6. Yaguar / Jaguar
+7. Cucher Mercados
+8. Revista
 
 Si una fuente no existe todavia en el sistema, queda preparada para ordenarse correctamente cuando se agregue.
 

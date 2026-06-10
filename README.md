@@ -134,6 +134,7 @@ Fuentes activas o preparadas:
 - Maxiconsumo Chaco
 - Maxiconsumo Web
 - Supermayorista Vital Online
+- Carrefour Comerciante / Maxi Pedido
 - Carrefour Argentina
 - Yaguar Chaco
 - Vea Argentina
@@ -156,14 +157,40 @@ Fuentes identificadas pero no activas por falta de catalogo/precios publicos con
 Cuando hay comparaciones por fuente, se prioriza este orden visual:
 
 1. Vital
-2. Maxi / Maxiconsumo / Maxi Carrefour
-3. Carrefour
-4. Cheek
-5. Yaguar / Jaguar
-6. Cucher
-7. Revista
+2. Carrefour Comerciante / Maxi Pedido
+3. Maxi / Maxiconsumo
+4. Carrefour
+5. Cheek
+6. Yaguar / Jaguar
+7. Cucher Mercados
+8. Revista
 
 Aguiar/Tokin se mantiene separado como referencia propia cuando corresponde.
+
+### Carrefour Comerciante / Maxi Pedido
+
+Fuente mayorista prioritaria: https://comerciante.carrefour.com.ar/
+
+El sitio permite ver productos publicos, pero oculta precios como `private` hasta completar el formulario de comercio. Para Chaco se detecto:
+
+- Provincia: `CHACO`
+- Sucursal: `506` - CARREFOUR MAXI RESISTENCIA CHACO
+- Tipo de entrega: `retiro` o `envio`
+
+Datos a completar en el worker:
+
+```bash
+CARREFOUR_COMERCIANTE_ENABLED=false
+CARREFOUR_COMERCIANTE_NAME=
+CARREFOUR_COMERCIANTE_DOCUMENT=
+CARREFOUR_COMERCIANTE_PHONE=
+CARREFOUR_COMERCIANTE_EMAIL=
+CARREFOUR_COMERCIANTE_REGION=CHACO
+CARREFOUR_COMERCIANTE_SELLER_ID=506
+CARREFOUR_COMERCIANTE_DELIVERY_TYPE=retiro
+```
+
+Nota tecnica: el login usa reCAPTCHA Enterprise, por eso queda como fuente esperada/requiere login hasta resolver una sesion autorizada sin inventar precios.
 
 ## Publicacion
 

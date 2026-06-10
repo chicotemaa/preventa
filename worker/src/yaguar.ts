@@ -14,7 +14,15 @@ type YaguarLoginResponse = {
   };
 };
 
+type YaguarNonceResponse = {
+  success?: boolean;
+  data?: string;
+};
+
 const YAGUAR_AUTH_TIMEOUT_MS = 10_000;
+const YAGUAR_MAX_REDIRECTS = 5;
+const YAGUAR_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 export async function extractProductsFromYaguarAuth(
   source: ScrapingSource,
@@ -43,12 +51,13 @@ async function fetchAuthenticatedYaguarProducts(
 ) {
   const cookies: CookieJar = new Map();
   const loginHtml = await fetchYaguarHtml(config.yaguar.loginUrl, cookies);
-  const nonce = findYaguarLoginNonce(loginHtml);
+  const pageNonce = findYaguarLoginNonce(loginHtml);
 
-  if (!nonce) {
+  if (!pageNonce) {
     throw new Error("Yaguar no expuso nonce de login.");
   }
 
+  const nonce = await refreshYaguarLoginNonce(cookies, pageNonce);
   await loginYaguar(cookies, email, password, nonce);
 
   const url = buildSearchUrl(source.searchUrlTemplate, query);
@@ -59,6 +68,32 @@ async function fetchAuthenticatedYaguarProducts(
   }
 
   return extractProductsFromStaticHtmlText(html, url, source, query);
+}
+
+async function refreshYaguarLoginNonce(cookies: CookieJar, fallbackNonce: string) {
+  const response = await fetch(config.yaguar.ajaxUrl, {
+    method: "POST",
+    headers: buildYaguarHeaders(cookies, {
+      accept: "application/json, text/javascript, */*; q=0.01",
+      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+      referer: config.yaguar.loginUrl,
+      "x-requested-with": "XMLHttpRequest",
+    }),
+    body: new URLSearchParams({
+      action: "user_registration_get_recent_nonce",
+      nonce_for: "login",
+    }),
+    redirect: "manual",
+  });
+
+  storeResponseCookies(cookies, response);
+
+  if (!response.ok) {
+    return fallbackNonce;
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as YaguarNonceResponse;
+  return payload.success && payload.data ? payload.data : fallbackNonce;
 }
 
 async function loginYaguar(
@@ -73,22 +108,20 @@ async function loginYaguar(
 
   const response = await fetch(url, {
     method: "POST",
-    headers: {
+    headers: buildYaguarHeaders(cookies, {
       accept: "application/json, text/javascript, */*; q=0.01",
       "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-      cookie: serializeCookies(cookies),
       origin: "https://yaguar.com.ar",
       referer: config.yaguar.loginUrl,
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
       "x-requested-with": "XMLHttpRequest",
-    },
+    }),
     body: new URLSearchParams({
       username: email,
       password,
       CaptchaResponse: "",
       redirect: config.yaguar.homeUrl,
     }),
+    redirect: "manual",
   });
 
   storeResponseCookies(cookies, response);
@@ -104,25 +137,51 @@ async function loginYaguar(
       stripHtml(payload.data?.message ?? "Yaguar no autorizo el login."),
     );
   }
+
+  const redirectUrl = resolveYaguarPostLoginUrl(payload);
+  await fetchYaguarHtml(redirectUrl, cookies, config.yaguar.loginUrl);
 }
 
-async function fetchYaguarHtml(url: string, cookies: CookieJar) {
-  const response = await fetch(url, {
-    headers: {
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      cookie: serializeCookies(cookies),
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    },
-  });
+async function fetchYaguarHtml(
+  url: string,
+  cookies: CookieJar,
+  referer = config.yaguar.homeUrl,
+) {
+  let currentUrl = url;
+  let currentReferer = referer;
 
-  storeResponseCookies(cookies, response);
+  for (let redirectCount = 0; redirectCount <= YAGUAR_MAX_REDIRECTS; redirectCount += 1) {
+    const response = await fetch(currentUrl, {
+      headers: buildYaguarHeaders(cookies, {
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        referer: currentReferer,
+      }),
+      redirect: "manual",
+    });
 
-  if (!response.ok) {
-    throw new Error(`Yaguar respondio ${response.status} para ${url}`);
+    storeResponseCookies(cookies, response);
+
+    if (isRedirectResponse(response)) {
+      const location = response.headers.get("location");
+
+      if (!location) {
+        throw new Error(`Yaguar redirigio sin location desde ${currentUrl}`);
+      }
+
+      currentReferer = currentUrl;
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Yaguar respondio ${response.status} para ${currentUrl}`);
+    }
+
+    return response.text();
   }
 
-  return response.text();
+  throw new Error(`Yaguar excedio ${YAGUAR_MAX_REDIRECTS} redirecciones para ${url}`);
 }
 
 function findYaguarLoginNonce(html: string) {
@@ -137,8 +196,40 @@ function findYaguarLoginNonce(html: string) {
 function isYaguarLoginPage(html: string) {
   return (
     /user_registration_ajax_login_submit/i.test(html) ||
+    /user-registration-login-nonce/i.test(html) ||
     /Ingres[aá] tu usuario o correo electr[oó]nico/i.test(html)
   );
+}
+
+function resolveYaguarPostLoginUrl(payload: YaguarLoginResponse) {
+  const redirectCandidate =
+    payload.data?.redirect ??
+    (looksLikeUrl(payload.data?.message) ? payload.data?.message : undefined) ??
+    config.yaguar.homeUrl;
+
+  return new URL(redirectCandidate, config.yaguar.homeUrl).toString();
+}
+
+function looksLikeUrl(value: string | undefined) {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
+
+function buildYaguarHeaders(
+  cookies: CookieJar,
+  headers: Record<string, string>,
+) {
+  const cookieHeader = serializeCookies(cookies);
+
+  return {
+    "accept-language": "es-AR,es;q=0.9,en;q=0.8",
+    "user-agent": YAGUAR_USER_AGENT,
+    ...headers,
+    ...(cookieHeader ? { cookie: cookieHeader } : {}),
+  };
+}
+
+function isRedirectResponse(response: Response) {
+  return response.status >= 300 && response.status < 400;
 }
 
 function storeResponseCookies(cookies: CookieJar, response: Response) {
@@ -163,12 +254,16 @@ function getSetCookieHeaders(response: Response) {
   };
   const cookieHeaders = headersWithSetCookie.getSetCookie?.();
 
-  if (cookieHeaders) {
+  if (cookieHeaders?.length) {
     return cookieHeaders;
   }
 
   const combinedCookie = response.headers.get("set-cookie");
-  return combinedCookie ? [combinedCookie] : [];
+  return combinedCookie ? splitCombinedSetCookie(combinedCookie) : [];
+}
+
+function splitCombinedSetCookie(value: string) {
+  return value.split(/,\s*(?=[^=;,]+=)/);
 }
 
 function serializeCookies(cookies: CookieJar) {

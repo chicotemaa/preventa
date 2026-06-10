@@ -268,7 +268,8 @@ export type ScrapingSource = {
     | "vea_vtex_auth"
     | "vtex_api"
     | "yaguar_auth"
-    | "woocommerce_pmw_json";
+    | "woocommerce_pmw_json"
+    | "cucher_supabase";
   searchUrlTemplate: string;
   requiresJavascript: boolean;
   catalogSearchMode?: "query" | "full_page";

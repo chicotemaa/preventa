@@ -1,6 +1,7 @@
 import { findAllowedBrand } from "./brands.js";
 import { findCatalogCategory } from "./categories.js";
 import { calculateConfidenceScore } from "./matching.js";
+import { config } from "./config.js";
 import {
   detectQueryType,
   normalizeQuery,
@@ -91,6 +92,19 @@ type MaxiconsumoUnitPricing = {
   price: number;
   priceCondition: string | null;
   alternatePrices: AlternatePrice[];
+};
+
+type CucherOffer = {
+  id?: string | number;
+  titulo?: string | null;
+  descripcion?: string | null;
+  precio_oferta?: number | string | null;
+  precio_original?: number | string | null;
+  imagen_url?: string | null;
+  descuento_porcentaje?: number | string | null;
+  categoria?: string | null;
+  idarticulo?: string | number | null;
+  fecha_fin?: string | null;
 };
 
 export async function extractProductsFromVtexApi(
@@ -244,6 +258,39 @@ export async function extractProductsFromWooCommercePmwJson(
     .filter((result): result is ProductSearchResult => result !== null);
 }
 
+export async function extractProductsFromCucherSupabase(
+  url: string,
+  source: ScrapingSource,
+  query: string,
+): Promise<ProductSearchResult[]> {
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      apikey: config.cucher.supabaseAnonKey,
+      authorization: `Bearer ${config.cucher.supabaseAnonKey}`,
+      "user-agent":
+        "preventistas-mvp/0.1 (+https://preventa-web.vercel.app)",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API Cucher Mercados respondio ${response.status}`);
+  }
+
+  const payload = (await response.json()) as unknown;
+
+  if (!Array.isArray(payload)) {
+    throw new Error("Respuesta Cucher Mercados inesperada");
+  }
+
+  const results = (payload as CucherOffer[])
+    .slice(0, source.maxCards ?? 80)
+    .map((offer) => toCucherOfferResult(source, query, offer))
+    .filter((result): result is ProductSearchResult => result !== null);
+
+  return filterCucherResultsForQuery(results, query);
+}
+
 function toVtexProductResult(
   source: ScrapingSource,
   query: string,
@@ -305,6 +352,89 @@ function toVtexProductResult(
       ...barcodes,
     ]),
   }, pricingText);
+}
+
+function toCucherOfferResult(
+  source: ScrapingSource,
+  query: string,
+  offer: CucherOffer,
+): ProductSearchResult | null {
+  const rawName = String(offer.titulo ?? offer.descripcion ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const price = parseCucherPrice(offer.precio_oferta);
+
+  if (!rawName || price === null) {
+    return null;
+  }
+
+  const sku = normalizeIdentifier(offer.idarticulo?.toString());
+  const originalPrice = parseCucherPrice(offer.precio_original);
+  const catalogCategory = findCatalogCategory(
+    [rawName, offer.categoria ?? ""].join(" "),
+  )?.name;
+  const category = catalogCategory ?? offer.categoria ?? undefined;
+  const brand = findAllowedBrand(rawName)?.name;
+  const matchText = [brand, category, offer.categoria, rawName, offer.idarticulo]
+    .filter(Boolean)
+    .join(" ");
+  const priceCondition = [
+    "Oferta Cucher Mercados",
+    offer.fecha_fin ? `valida hasta ${formatCucherDate(offer.fecha_fin)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+
+  return withUnitPricing({
+    sourceId: source.id,
+    storeName: source.storeName,
+    storeType: source.storeType,
+    sourceUrl: getSourceUrl(source),
+    dataOrigin: getDataOrigin(source),
+    sourceScope: getSourceScope(source),
+    sku: sku || null,
+    barcodes: sku && /^\d{8,14}$/.test(sku) ? [sku] : [],
+    brand: brand ?? undefined,
+    category,
+    rawName,
+    normalizedName: normalizeProductName(rawName),
+    price,
+    priceCondition,
+    alternatePrices:
+      originalPrice !== null && originalPrice > price
+        ? [
+            {
+              label: "Precio original",
+              price: originalPrice,
+              comparisonPrice: originalPrice,
+            },
+          ]
+        : [],
+    availability: "in_stock",
+    currency: "ARS",
+    productUrl: getSourceUrl(source),
+    imageUrl: offer.imagen_url ?? null,
+    confidenceScore: calculateVtexConfidenceScore(query, matchText, [sku]),
+  });
+}
+
+function filterCucherResultsForQuery(
+  results: ProductSearchResult[],
+  query: string,
+) {
+  const normalizedQuery = normalizeQuery(query);
+
+  if (!normalizedQuery) {
+    return results;
+  }
+
+  const queryType = detectQueryType(query);
+
+  if (queryType === "barcode" || queryType === "sku") {
+    return results.filter((result) => result.confidenceScore === 100);
+  }
+
+  return results.filter((result) => result.confidenceScore >= 60);
 }
 
 function toStaticHtmlProductResult(
@@ -847,6 +977,39 @@ function normalizeIdentifier(value: string | null | undefined) {
   return String(value ?? "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+}
+
+function parseCucherPrice(value: number | string | null | undefined) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return normalizePrice(value);
+  }
+
+  return null;
+}
+
+function formatCucherDate(value: string) {
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return `${day}/${month}/${year}`;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
 }
 
 function findVtexSku(product: VtexProduct, preferredItem?: VtexItem) {

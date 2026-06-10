@@ -76,6 +76,23 @@ export const config = {
       getOptionalStringEnv("CARREFOUR_AUTH_BASE_URL") ??
       "https://www.carrefour.com.ar/api/vtexid/pub/authentication",
   },
+  cucher: {
+    enabled: process.env.CUCHER_ENABLED !== "false",
+    supabaseAnonKey:
+      getOptionalStringEnv("CUCHER_SUPABASE_ANON_KEY") ??
+      "sb_publishable_oE88zB98aPc_-SKjOCJtQA_JNVn2lWT",
+  },
+  carrefourComerciante: {
+    enabled: process.env.CARREFOUR_COMERCIANTE_ENABLED === "true",
+    name: getOptionalStringEnv("CARREFOUR_COMERCIANTE_NAME"),
+    document: getOptionalStringEnv("CARREFOUR_COMERCIANTE_DOCUMENT"),
+    phone: getOptionalStringEnv("CARREFOUR_COMERCIANTE_PHONE"),
+    email: getOptionalStringEnv("CARREFOUR_COMERCIANTE_EMAIL"),
+    region: getOptionalStringEnv("CARREFOUR_COMERCIANTE_REGION") ?? "CHACO",
+    sellerId: getOptionalStringEnv("CARREFOUR_COMERCIANTE_SELLER_ID") ?? "506",
+    deliveryType:
+      getOptionalStringEnv("CARREFOUR_COMERCIANTE_DELIVERY_TYPE") ?? "retiro",
+  },
   tokin: {
     enabled: process.env.TOKIN_ENABLED !== "false",
     email: getOptionalStringEnv("TOKIN_EMAIL"),

@@ -8,6 +8,12 @@ const yaguarEmail = config.yaguar.email ?? config.tokin.email;
 const yaguarPassword = config.yaguar.password ?? config.tokin.password;
 const hasYaguarCredentials = Boolean(yaguarEmail && yaguarPassword);
 const isYaguarEnabled = config.yaguar.enabled && hasYaguarCredentials;
+const carrefourComercianteMissingFields = [
+  ["nombre", config.carrefourComerciante.name],
+  ["CUIT/DNI", config.carrefourComerciante.document],
+  ["telefono", config.carrefourComerciante.phone],
+  ["email", config.carrefourComerciante.email],
+].flatMap(([label, value]) => (value ? [] : [label]));
 
 export const scrapingSources: ScrapingSource[] = [
   {
@@ -194,18 +200,43 @@ export const scrapingSources: ScrapingSource[] = [
     },
   },
   {
-    id: "kucher-mayorista",
-    storeName: "Kucher",
+    id: "cucher-mercados-ofertas",
+    storeName: "Cucher Mercados",
     storeType: "mayorista",
     city: "NEA",
-    dataOrigin: "Fuente mayorista esperada para tablero competitivo",
-    sourceScope: "NEA",
-    searchUrlTemplate: "not-configured:kucher",
+    sourceUrl: "https://www.cuchermercados.com.ar/ofertas/#alimentos",
+    dataOrigin:
+      "API publica Supabase usada por la pagina de ofertas de Cucher Mercados; precios finales con IVA incluido",
+    sourceScope: "NEA: ofertas publicas semanales",
+    sourceKind: "cucher_supabase",
+    searchUrlTemplate:
+      "https://wmqjwpaljbfaywajidzw.supabase.co/rest/v1/ofertas?select=id%2Ctitulo%2Cdescripcion%2Cprecio_oferta%2Cprecio_original%2Cimagen_url%2Cdescuento_porcentaje%2Ccategoria%2Cidarticulo%2Cactiva%2Cfecha_inicio%2Cfecha_fin%2Ccreado_en%2Cactualizado_en%2Corden&activa=eq.true&order=categoria.asc%2Corden.asc.nullslast%2Cactualizado_en.desc%2Cid.desc",
     requiresJavascript: false,
+    maxCards: 80,
+    enabled: config.cucher.enabled,
+    disabledKind: "no_public_prices",
+    disabledReason: config.cucher.enabled
+      ? undefined
+      : "Fuente Cucher Mercados deshabilitada por CUCHER_ENABLED=false.",
+  },
+  {
+    id: "carrefour-comerciante-maxi",
+    storeName: "Carrefour Comerciante",
+    storeType: "mayorista",
+    city: "Argentina / Resistencia, Chaco",
+    sourceUrl: "https://comerciante.carrefour.com.ar/",
+    dataOrigin:
+      "Carrefour Maxi / Maxi Pedido; el catalogo publico muestra productos, pero los precios quedan privados hasta completar datos de comercio, sucursal y sesion autorizada con reCAPTCHA Enterprise",
+    sourceScope:
+      "Argentina; para Chaco la sucursal detectada es CARREFOUR MAXI RESISTENCIA CHACO seller 506",
+    sourceKind: "static_html",
+    searchUrlTemplate:
+      "https://comerciante.carrefour.com.ar/products?currentUrl=search/{query}&filters=&orderBy=&currentPage=1&itemsPerPage=24&method=productsList",
+    requiresJavascript: true,
+    maxCards: 80,
     enabled: false,
-    disabledKind: "not_configured",
-    disabledReason:
-      "Fuente esperada para decision de pricing mayorista; falta integrar catalogo, credenciales o lista confiable.",
+    disabledKind: "requires_login",
+    disabledReason: `Carrefour Comerciante requiere completar login con datos del comercio y reCAPTCHA Enterprise. Datos necesarios: nombre y apellido, CUIT/DNI, telefono, email, provincia ${config.carrefourComerciante.region}, sucursal ${config.carrefourComerciante.sellerId} CARREFOUR MAXI RESISTENCIA CHACO y tipo de entrega ${config.carrefourComerciante.deliveryType}. Campos pendientes: ${carrefourComercianteMissingFields.length > 0 ? carrefourComercianteMissingFields.join(", ") : "sesion autorizada / integracion de reCAPTCHA"}.`,
   },
   {
     id: "check-chek-mayorista",
