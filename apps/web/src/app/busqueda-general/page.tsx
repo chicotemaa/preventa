@@ -2,6 +2,7 @@
 
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { compareSourcePriority } from "@/lib/source-priority";
 import type {
   ProductSearchResult,
   SearchResponse,
@@ -327,13 +328,15 @@ function SourceStatusList({ sources }: { sources: SourceSearchStatus[] }) {
     return null;
   }
 
+  const sortedSources = sortSourcesForDisplay(sources);
+
   return (
     <details className="mt-5 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-3">
       <summary className="cursor-pointer text-sm font-semibold text-[#17202a]">
         Fuentes consultadas ({sources.length})
       </summary>
       <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {sources.map((source) => (
+        {sortedSources.map((source) => (
           <div
             key={source.sourceId}
             className="rounded-md border border-[#e5e9ef] bg-white px-3 py-2"
@@ -362,6 +365,29 @@ function SourceStatusList({ sources }: { sources: SourceSearchStatus[] }) {
       </div>
     </details>
   );
+}
+
+function sortSourcesForDisplay(sources: SourceSearchStatus[]) {
+  return [...sources].sort((first, second) => {
+    const firstHasData = first.status === "success" && first.resultsCount > 0;
+    const secondHasData = second.status === "success" && second.resultsCount > 0;
+
+    if (firstHasData !== secondHasData) {
+      return firstHasData ? -1 : 1;
+    }
+
+    const priority = compareSourcePriority(first, second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
+    if (first.storeType !== second.storeType) {
+      return first.storeType === "mayorista" ? -1 : 1;
+    }
+
+    return first.storeName.localeCompare(second.storeName, "es");
+  });
 }
 
 function getComparablePrice(price: ComparablePrice) {

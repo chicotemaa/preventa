@@ -32,6 +32,7 @@ import {
 } from "./presentation.js";
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
+import { compareSourcePriority } from "./source-priority.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
@@ -666,6 +667,12 @@ function compareProductSearchResults(
 
   if (firstIsTokin !== secondIsTokin) {
     return firstIsTokin ? -1 : 1;
+  }
+
+  const sourcePriority = compareSourcePriority(first, second);
+
+  if (sourcePriority !== 0) {
+    return sourcePriority;
   }
 
   if (second.confidenceScore !== first.confidenceScore) {

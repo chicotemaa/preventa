@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { compareSourcePriority } from "@/lib/source-priority";
 import type {
   CategoryBrandSummary,
   CategorySearchGroup,
@@ -2400,6 +2401,28 @@ function sortSourcesForDisplay(sources: SourceSearchStatus[]) {
       return firstHasData ? -1 : 1;
     }
 
+    const priority = compareSourcePriority(first, second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
+    if (first.storeType !== second.storeType) {
+      return first.storeType === "mayorista" ? -1 : 1;
+    }
+
+    return first.storeName.localeCompare(second.storeName, "es");
+  });
+}
+
+function sortSourcesForPriority(sources: SourceSearchStatus[]) {
+  return [...sources].sort((first, second) => {
+    const priority = compareSourcePriority(first, second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
     if (first.storeType !== second.storeType) {
       return first.storeType === "mayorista" ? -1 : 1;
     }
@@ -2638,11 +2661,12 @@ function filterSourcesByType(
   sources: SourceSearchStatus[],
   sourceFilter: SourceTypeFilter,
 ) {
-  if (sourceFilter === "all") {
-    return sources;
-  }
+  const filteredSources =
+    sourceFilter === "all"
+      ? sources
+      : sources.filter((source) => source.storeType === sourceFilter);
 
-  return sources.filter((source) => source.storeType === sourceFilter);
+  return sortSourcesForPriority(filteredSources);
 }
 
 function isAguiarTokinSource(sourceId: string) {
@@ -3010,6 +3034,12 @@ function compareSourceComparisons(
   },
 ) {
   if (first.sourcePrice && second.sourcePrice) {
+    const priority = compareSourcePriority(first.sourcePrice, second.sourcePrice);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
     return (
       getComparablePrice(first.sourcePrice) -
       getComparablePrice(second.sourcePrice)
@@ -3022,6 +3052,12 @@ function compareSourceComparisons(
 
   if (second.sourcePrice) {
     return 1;
+  }
+
+  const priority = compareSourcePriority(first.source, second.source);
+
+  if (priority !== 0) {
+    return priority;
   }
 
   return first.source.storeName.localeCompare(second.source.storeName, "es");

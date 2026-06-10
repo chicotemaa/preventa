@@ -1,22 +1,25 @@
-# Preventistas Live Search MVP
+# Aguiar Gestion de Precios
 
-MVP web para informes de precios con alcance nacional en Argentina. Permite buscar productos en fuentes mayoristas y minoristas configuradas, con persistencia opcional en Supabase y sin scraping desde el navegador del usuario.
+Aplicacion web para el area de ventas de Aguiar. Permite consultar surtido por categoria, buscar productos puntuales, importar listas semanales, comparar precios contra mayoristas/minoristas y guardar corridas para analizar evolucion.
 
-Alcance del informe: Argentina.
+La busqueda no scrapea desde el navegador del usuario. El frontend Next.js llama endpoints server-side y esos endpoints consultan un worker Node.js que integra fuentes externas.
+
+Manual completo: [MANUAL.md](./MANUAL.md)
 
 ## Estructura
 
 ```text
-apps/web   Next.js App Router + Tailwind
-worker     Servidor HTTP Node.js + Playwright
+apps/web   Frontend Next.js App Router + TypeScript + Tailwind CSS
+worker     Servidor HTTP Node.js + TypeScript + Playwright/API extractors
 ```
 
 ## Requisitos
 
 - Node.js 18.20+
 - npm
+- Chromium de Playwright
 
-## Instalación
+## Instalacion
 
 ```bash
 npm install
@@ -42,30 +45,43 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
+
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
 TOKIN_PASSWORD=
 TOKIN_API_BASE_URL=https://tokintienda.com.ar/store/tokin/
 TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
+
+MAXICONSUMO_ENABLED=true
+MAXICONSUMO_EMAIL=
+MAXICONSUMO_PASSWORD=
+
+YAGUAR_ENABLED=true
+YAGUAR_EMAIL=
+YAGUAR_PASSWORD=
+
+VEA_ENABLED=true
+VEA_EMAIL=
+VEA_PASSWORD=
+
+CARREFOUR_ENABLED=true
+CARREFOUR_EMAIL=
+CARREFOUR_PASSWORD=
+
 AI_MATCHING_ENABLED=false
 OPENAI_API_KEY=
 AI_MATCHING_MODEL=gpt-4.1-nano
 AI_MATCHING_MIN_CONFIDENCE=82
 AI_MATCHING_MAX_CANDIDATES=5
 AI_MATCHING_TIMEOUT_MS=6000
-MAXICONSUMO_ENABLED=true
-MAXICONSUMO_EMAIL=
-MAXICONSUMO_PASSWORD=
-YAGUAR_ENABLED=true
-YAGUAR_EMAIL=
-YAGUAR_PASSWORD=
-VEA_ENABLED=true
-VEA_EMAIL=
-VEA_PASSWORD=
-CARREFOUR_ENABLED=true
-CARREFOUR_EMAIL=
-CARREFOUR_PASSWORD=
 ```
+
+Notas:
+
+- `TOKIN_EMAIL` y `TOKIN_PASSWORD` habilitan Aguiar/Tokin.
+- Yaguar puede usar `YAGUAR_EMAIL/YAGUAR_PASSWORD`; si no estan, toma las credenciales de Tokin.
+- Vea y Carrefour intentan sesion con sus credenciales propias; si no estan, usan las de Tokin como fallback.
+- Supabase es opcional para guardar historial/evolucion de corridas.
 
 ## Correr localmente
 
@@ -81,233 +97,107 @@ Terminal 2:
 npm run dev:web
 ```
 
-Abrir [http://localhost:3000](http://localhost:3000).
+Abrir [http://localhost:3000](http://localhost:3000). En este entorno puede estar corriendo en otro puerto, por ejemplo [http://localhost:3003](http://localhost:3003).
 
-## Publicar demo
-
-Para mostrar el MVP conviene desplegar dos servicios:
-
-1. Worker Node.js con Playwright en Render, Fly.io, Railway o cualquier host que soporte Docker.
-2. Frontend Next.js en Vercel.
-
-### 1. Subir el código a GitHub
-
-Crear un repositorio y subir este monorepo. No subir archivos `.env`.
+## Comandos utiles
 
 ```bash
-git init
-git add .
-git commit -m "MVP preventistas live catalog"
-git branch -M main
-git remote add origin <URL_DEL_REPO>
-git push -u origin main
+npm run typecheck
+npm run build
+npm run dev:web
+npm run dev:worker
 ```
 
-### 2. Publicar el worker en Render
+## Paginas principales
 
-Este repo incluye `worker/Dockerfile` y `render.yaml`.
+- `/`: explorador de categorias y familias.
+- `/busqueda-general`: busqueda individual por nombre, SKU, codigo interno o EAN.
+- `/importacion`: carga de Excel/lista semanal, comparacion y exportacion.
+- `/evolucion`: evolucion de precios con corridas guardadas.
+- `/historial`: historial y detalle de corridas guardadas.
 
-En Render:
+## Worker endpoints
 
-- Crear un Web Service o Blueprint desde el repo.
-- Usar Docker.
-- Dockerfile path: `./worker/Dockerfile`
-- Docker context: `.`
-- Health check path: `/health`
-- Variables:
+- `GET /health`: estado del worker.
+- `GET /catalog`: snapshot actual del catalogo.
+- `POST /catalog/sync`: sincroniza fuentes y reemplaza el snapshot.
+- `POST /catalog/search`: busca sobre el catalogo actual.
+- `POST /catalog/category-search`: agrupa resultados por familia/categoria.
+- `POST /catalog/price-list`: compara una lista importada.
+- `POST /search`: busqueda viva directa.
+
+## Fuentes configuradas
+
+Fuentes activas o preparadas:
+
+- Aguiar Resistencia / Tokin
+- Maxiconsumo Chaco
+- Maxiconsumo Web
+- Supermayorista Vital Online
+- Carrefour Argentina
+- Yaguar Chaco
+- Vea Argentina
+- Jumbo Argentina
+- Disco Argentina
+- DIA Argentina
+- La Anonima Supermercado
+- MasOnline / ChangoMas
+- Cordiez
+- Depot Express
+- Sabor y Aroma Mayorista
+
+Fuentes identificadas pero no activas por falta de catalogo/precios publicos confiables:
+
+- Distribuidora Jota Be
+- El Popular Mayorista
+
+## Prioridad visual de competidores
+
+Cuando hay comparaciones por fuente, se prioriza este orden visual:
+
+1. Vital
+2. Maxi / Maxiconsumo / Maxi Carrefour
+3. Carrefour
+4. Cheek
+5. Yaguar / Jaguar
+6. Cucher
+7. Revista
+
+Aguiar/Tokin se mantiene separado como referencia propia cuando corresponde.
+
+## Publicacion
+
+Frontend recomendado: Vercel.
+
+Worker recomendado: Railway, Render, Fly.io u otro host que soporte Node.js/Playwright. El worker necesita variables de entorno y acceso saliente a internet para consultar las fuentes.
+
+Para Vercel, configurar en `apps/web`:
 
 ```bash
-PORT=4000
-HEADLESS=true
-SOURCE_TIMEOUT_MS=20000
-MIN_CONFIDENCE_SCORE=60
-AUTO_SYNC_ON_STARTUP=true
-TOKIN_ENABLED=true
-TOKIN_EMAIL=<EMAIL_TOKIN>
-TOKIN_PASSWORD=<PASSWORD_TOKIN>
-TOKIN_API_BASE_URL=https://tokintienda.com.ar/store/tokin/
-TOKIN_SEARCH_API_URL=https://tokintienda.com.ar/store/api/search
-AI_MATCHING_ENABLED=false
-OPENAI_API_KEY=<OPENAI_API_KEY_OPCIONAL>
-AI_MATCHING_MODEL=gpt-4.1-nano
-AI_MATCHING_MIN_CONFIDENCE=82
-AI_MATCHING_MAX_CANDIDATES=5
-AI_MATCHING_TIMEOUT_MS=6000
-MAXICONSUMO_ENABLED=true
-MAXICONSUMO_EMAIL=<EMAIL_MAXICONSUMO>
-MAXICONSUMO_PASSWORD=<PASSWORD_MAXICONSUMO>
-YAGUAR_ENABLED=true
-YAGUAR_EMAIL=<EMAIL_YAGUAR_OPCIONAL>
-YAGUAR_PASSWORD=<PASSWORD_YAGUAR_OPCIONAL>
-VEA_ENABLED=true
-VEA_EMAIL=<EMAIL_VEA_OPCIONAL>
-VEA_PASSWORD=<PASSWORD_VEA_OPCIONAL>
-CARREFOUR_ENABLED=true
-CARREFOUR_EMAIL=<EMAIL_CARREFOUR_OPCIONAL>
-CARREFOUR_PASSWORD=<PASSWORD_CARREFOUR_OPCIONAL>
-```
-
-Cuando Render termine, probar:
-
-```bash
-curl https://TU-WORKER.onrender.com/health
-```
-
-Guardar esa URL para el frontend.
-
-### 3. Publicar el frontend en Vercel
-
-En Vercel:
-
-- Importar el mismo repo.
-- Root Directory: `apps/web`
-- Framework: Next.js
-- Environment Variable:
-
-```bash
-WORKER_URL=https://TU-WORKER.onrender.com
-SUPABASE_URL=https://TU-PROYECTO.supabase.co
-SUPABASE_SECRET_KEY=<SECRET_KEY_SERVER_SIDE>
+WORKER_URL=https://URL-DEL-WORKER
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
 SUPABASE_PERSIST_PRICE_LISTS=true
 ```
 
-Después de crear o cambiar `WORKER_URL`, redeployar el frontend.
+Despues de cambiar `WORKER_URL`, redeployar el frontend.
 
-### 4. Probar la demo publicada
+## Matching con IA
 
-Abrir la URL de Vercel y buscar:
-
-```text
-bon o bon
-cofler
-arcor
-la serenisima
-```
-
-Notas para demo:
-
-- Render puede tardar en responder si el servicio está frío.
-- La primera sincronización del worker puede demorar porque abre Playwright y recorre fuentes.
-- Para mostrar más datos reales de mayoristas locales, cargar CSV en `worker/data/imports/*.csv` y redeployar el worker.
-
-## Flujo
-
-1. El frontend llama `POST /api/live-search`.
-2. El endpoint server-side valida la query y llama al worker en `WORKER_URL/search`.
-3. El worker consulta fuentes configuradas server-side con APIs publicas o Playwright.
-4. Cada fuente falla o responde de manera independiente.
-5. Los resultados se normalizan, deduplican, filtran por score y ordenan por precio ascendente.
-
-## Fuentes activas
-
-Las fuentes activas del MVP combinan referencias nacionales y mayoristas del NEA. Cada resultado expone comercio, tipo, origen de datos, URL de fuente y link del producto cuando la fuente lo informa.
-
-- Carrefour Argentina: API VTEX con intento de sesion. Si `CARREFOUR_EMAIL` y `CARREFOUR_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`; si Carrefour no valida la sesion, mantiene la busqueda por API publica.
-- Jumbo Argentina: API publica VTEX del catalogo web.
-- Disco Argentina: API publica VTEX del catalogo web.
-- DIA Argentina: API publica VTEX del catalogo DIA Online.
-- La Anonima Supermercado: HTML publico del buscador, leyendo tarjetas con `data-precio` y `data-nombre`.
-- MasOnline / ChangoMas: API publica VTEX del catalogo web.
-- Cordiez: API publica VTEX del catalogo web.
-- Maxiconsumo Web: catalogo publico mayorista, sucursal web Moreno como referencia nacional.
-- Yaguar Chaco: tienda online WooCommerce para comerciantes. Si `YAGUAR_EMAIL` y `YAGUAR_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`.
-- Red Norte Distribuidora: catalogo publico online con alcance Chaco/Corrientes.
-- Sabor y Aroma Mayorista: HTML publico de tienda mayorista en Formosa.
-- Fresh Distribuidora: catalogo publico WooCommerce de Resistencia.
-- Distribuidora Centenario: catalogo publico de bebidas mayoristas en Corrientes.
-- Aguiar Resistencia: catalogo B2B en Tokin consultado por API HTTP, solo si `TOKIN_EMAIL` y `TOKIN_PASSWORD` estan configurados en el worker.
-- Maxiconsumo Chaco: catalogo de la sucursal Chaco por HTTP; intenta sesion con `MAXICONSUMO_PASSWORD` y usa HTML publico de Chaco como respaldo.
-- Vea Argentina: API VTEX con intento de sesion. Si `VEA_EMAIL` y `VEA_PASSWORD` no estan configurados, usa `TOKIN_EMAIL` y `TOKIN_PASSWORD`; si Vea no valida la sesion, mantiene la busqueda por API publica.
-
-Fuentes mayoristas NEA relevadas pero pendientes por no exponer precios scrapeables sin login o por requerir PDF/OCR: Ricardo J. Aguiar S.A., Sorpresas/Distribuidora Golda, Mariano Santos, Distribuidora Jota Be, El Popular Mayorista y Supermayorista Vital.
-
-El catálogo scrapeado se guarda como snapshot actual en `worker/data/catalog.json`. No se guarda histórico.
-
-## Matching asistido por IA
-
-El worker puede usar OpenAI para resolver matches dudosos de Aguiar/Tokin. La IA no busca precios ni reemplaza las reglas: solo se ejecuta cuando Tokin devuelve candidatos pero el matching normal no logra setear `Precio Aguiar`.
-
-Para cuidar un credito bajo, dejarlo apagado por defecto y activarlo solo en Railway cuando se quiera probar:
+La IA es opcional y debe quedar apagada por defecto para cuidar costo. Solo ayuda a resolver matches dudosos cuando ya existen candidatos devueltos por Tokin.
 
 ```bash
 AI_MATCHING_ENABLED=true
-OPENAI_API_KEY=<tu_api_key>
+OPENAI_API_KEY=<api_key>
 AI_MATCHING_MODEL=gpt-4.1-nano
 AI_MATCHING_MIN_CONFIDENCE=82
 AI_MATCHING_MAX_CANDIDATES=5
 AI_MATCHING_TIMEOUT_MS=6000
 ```
 
-Con esta configuracion se hace como maximo una llamada por articulo dudoso de Aguiar, enviando hasta 5 candidatos y una respuesta JSON corta. El log de depuracion muestra si la IA fue desactivada, omitida, acepto un match, lo rechazo o fallo.
+## Datos y persistencia
 
-## Listas locales importadas
-
-Para sumar mayoristas que no publican precios web, el worker también lee CSV reales en `worker/data/imports/*.csv`. Los archivos `.example.csv` no se cargan.
-
-Formato:
-
-```csv
-sourceId,storeName,storeType,brand,rawName,price,productUrl,imageUrl,sourceUrl,dataOrigin,sourceScope
-```
-
-Cada fila real debe completar esos campos. Esto permite convertir listas recibidas por Excel, WhatsApp o PDF a CSV y compararlas en el mismo frontend sin base de datos. No se incluyen productos falsos ocultos en la lógica.
-
-Endpoints del worker:
-
-- `POST /catalog/sync`: recorre automáticamente las marcas objetivo en las fuentes configuradas y reemplaza el snapshot actual.
-- `GET /catalog`: devuelve el snapshot actual.
-- `POST /catalog/search`: busca sobre el snapshot ya scrapeado.
-- `POST /catalog/price-list`: recibe una lista de articulos con `rubro`, `description`, `code`, `ean13Di`, `ean13Bu` y opcionalmente `currentPrice`, completa el precio Aguiar desde Tokin cuando hay match y devuelve el mejor precio de referencia por fuente.
-- `POST /search`: mantiene la búsqueda live puntual para depuración.
-
-Las fuentes están en `worker/src/sources/argentina.ts`.
-
-Cada fuente puede tener selectores explícitos o quedar sin selectores para usar extracción automática básica. Las URLs y selectores de comercios reales pueden cambiar; este MVP deja la configuración concentrada en un solo archivo para ajustar cada comercio sin tocar el pipeline.
-
-## Importar listas de articulos
-
-El frontend permite importar `.xlsx`, `.xls` o `.csv` con columnas como:
-
-```text
-Rubro | Descripcion Larga | Codigo | EAN 13 DI | EAN 13 BU | Precio Aguiar
-```
-
-La app conserva esos campos, consulta el catálogo server-side y usa el precio de Aguiar/Tokin como precio propio cuando lo encuentra. La tabla muestra mejor precio de referencia, fuente, producto detectado y precio por comercio. También permite descargar el resultado general o el archivo listo para cargar precios en Aguiar.
-
-La importación no guarda histórico por defecto. Para alimentar evolución de precios, activar la opción `Guardar esta carga para evolución` antes de importar la lista semanal.
-
-## Supabase
-
-La integración con Supabase es opcional. Si `SUPABASE_URL` y una clave server-side (`SUPABASE_SECRET_KEY` o `SUPABASE_SERVICE_ROLE_KEY`) están configuradas en `apps/web`, las listas se guardan solo cuando el usuario activa el guardado para evolución.
-
-Schema versionado:
-
-```text
-supabase/migrations/20260527172000_initial_pricing_schema.sql
-```
-
-Tablas principales:
-
-- `price_list_runs`: cada evaluación/importación semanal.
-- `price_list_run_sources`: estado de fuentes consultadas para esa corrida.
-- `price_list_run_items`: artículo, precio Aguiar, mejor referencia, brecha, precio sugerido y estado de decisión. Las columnas históricas de costo/margen pueden existir por compatibilidad, pero las cargas nuevas no las usan.
-
-Páginas disponibles:
-
-- `/`: carga de lista, comparación y exportación para Aguiar.
-- `/evolucion`: evolución de precios Aguiar, referencias y empresas por artículo.
-- `/historial`: detalle de corridas guardadas.
-
-Para aplicar el schema en un proyecto Supabase con CLI:
-
-```bash
-npx supabase login
-npx supabase link
-npx supabase db push
-```
-
-También se puede copiar el SQL de la migración y ejecutarlo en el SQL editor de Supabase.
-
-## Persistencia
-
-Sin variables de Supabase, la app sigue sin guardar histórico, productos ni precios. Con Supabase configurado, se guarda el histórico únicamente de las cargas marcadas para evolución; la búsqueda puntual y el catálogo actual siguen funcionando igual que antes.
+- El catalogo vivo del worker se guarda como snapshot actual en `worker/data/catalog.json`.
+- No se debe editar a mano `worker/data/catalog.json`; se regenera desde las fuentes.
+- Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
+- Los CSV reales de listas externas pueden cargarse en `worker/data/imports/*.csv`; los `.example.csv` no se cargan.
