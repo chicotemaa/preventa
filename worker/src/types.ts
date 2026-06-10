@@ -260,6 +260,7 @@ export type ScrapingSource = {
   sourceKind?:
     | "playwright"
     | "carrefour_vtex_auth"
+    | "carrefour_comerciante"
     | "maxiconsumo_auth"
     | "laanonima_html"
     | "static_html"

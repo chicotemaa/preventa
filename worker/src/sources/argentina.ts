@@ -14,6 +14,16 @@ const carrefourComercianteMissingFields = [
   ["telefono", config.carrefourComerciante.phone],
   ["email", config.carrefourComerciante.email],
 ].flatMap(([label, value]) => (value ? [] : [label]));
+const hasCarrefourComercianteFields =
+  carrefourComercianteMissingFields.length === 0;
+const isCarrefourComercianteEnabled =
+  config.carrefourComerciante.enabled && hasCarrefourComercianteFields;
+const carrefourComercianteDisabledReason =
+  carrefourComercianteMissingFields.length > 0
+    ? `Carrefour Comerciante requiere datos del comercio para intentar consultar precios: nombre y apellido, CUIT/DNI, telefono, email, provincia ${config.carrefourComerciante.region}, sucursal ${config.carrefourComerciante.sellerId} CARREFOUR MAXI RESISTENCIA CHACO y tipo de entrega ${config.carrefourComerciante.deliveryType}. Faltan variables: ${carrefourComercianteMissingFields.join(", ")}.`
+    : !config.carrefourComerciante.enabled
+    ? `Carrefour Comerciante tiene cargados los datos del comercio; activar CARREFOUR_COMERCIANTE_ENABLED=true para intentar sesion experimental con reCAPTCHA Enterprise. Provincia ${config.carrefourComerciante.region}, sucursal ${config.carrefourComerciante.sellerId} CARREFOUR MAXI RESISTENCIA CHACO y entrega ${config.carrefourComerciante.deliveryType}.`
+    : undefined;
 
 export const scrapingSources: ScrapingSource[] = [
   {
@@ -229,14 +239,14 @@ export const scrapingSources: ScrapingSource[] = [
       "Carrefour Maxi / Maxi Pedido; el catalogo publico muestra productos, pero los precios quedan privados hasta completar datos de comercio, sucursal y sesion autorizada con reCAPTCHA Enterprise",
     sourceScope:
       "Argentina; para Chaco la sucursal detectada es CARREFOUR MAXI RESISTENCIA CHACO seller 506",
-    sourceKind: "static_html",
+    sourceKind: "carrefour_comerciante",
     searchUrlTemplate:
       "https://comerciante.carrefour.com.ar/products?currentUrl=search/{query}&filters=&orderBy=&currentPage=1&itemsPerPage=24&method=productsList",
     requiresJavascript: true,
     maxCards: 80,
-    enabled: false,
+    enabled: isCarrefourComercianteEnabled,
     disabledKind: "requires_login",
-    disabledReason: `Carrefour Comerciante requiere completar login con datos del comercio y reCAPTCHA Enterprise. Datos necesarios: nombre y apellido, CUIT/DNI, telefono, email, provincia ${config.carrefourComerciante.region}, sucursal ${config.carrefourComerciante.sellerId} CARREFOUR MAXI RESISTENCIA CHACO y tipo de entrega ${config.carrefourComerciante.deliveryType}. Campos pendientes: ${carrefourComercianteMissingFields.length > 0 ? carrefourComercianteMissingFields.join(", ") : "sesion autorizada / integracion de reCAPTCHA"}.`,
+    disabledReason: carrefourComercianteDisabledReason,
   },
   {
     id: "check-chek-mayorista",

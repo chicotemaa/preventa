@@ -190,7 +190,7 @@ CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=retiro
 ```
 
-Nota tecnica: el login usa reCAPTCHA Enterprise, por eso queda como fuente esperada/requiere login hasta resolver una sesion autorizada sin inventar precios.
+Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios.
 
 ## Publicacion
 

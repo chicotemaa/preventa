@@ -7,6 +7,7 @@ import {
   extractProductsFromWooCommercePmwJson,
 } from "./api-extractors.js";
 import { launchBrowser } from "./browser.js";
+import { extractProductsFromCarrefourComerciante } from "./carrefour-comerciante.js";
 import { extractProductsFromCarrefourAuth } from "./carrefour.js";
 import { config } from "./config.js";
 import {
@@ -89,6 +90,7 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
   return ![
     "carrefour_vtex_auth",
     "maxiconsumo_auth",
+    "carrefour_comerciante",
     "laanonima_html",
     "tokin",
     "vea_vtex_auth",
@@ -182,6 +184,28 @@ export async function searchSource(
   if (source.sourceKind === "carrefour_vtex_auth") {
     return withTimeout(
       runCarrefourVtexAuthSourceSearch(source, query, startedAt, options),
+      config.sourceTimeoutMs,
+    ).catch((error) => {
+      const isTimeout =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("timeout");
+
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          isTimeout ? "timeout" : "failed",
+          0,
+          startedAt,
+          error instanceof Error ? error.message : "Error desconocido",
+        ),
+      };
+    });
+  }
+
+  if (source.sourceKind === "carrefour_comerciante") {
+    return withTimeout(
+      runCarrefourComercianteSourceSearch(source, query, startedAt, options),
       config.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
@@ -512,6 +536,37 @@ async function runCarrefourVtexAuthSourceSearch(
   options: SearchSourceOptions,
 ): Promise<SearchSourceResult> {
   const rawResults = await extractProductsFromCarrefourAuth(source, query);
+  const shouldFilterByConfidence = options.filterByConfidence ?? true;
+  const shouldLimitResults = options.limitResults ?? true;
+  const dedupedResults = dedupeResults(
+    rawResults.filter((result) =>
+      shouldFilterByConfidence
+        ? result.confidenceScore >= config.minConfidenceScore
+        : true,
+    ),
+  );
+  const results = shouldLimitResults
+    ? dedupedResults.slice(0, config.maxResultsPerSource)
+    : dedupedResults;
+
+  return {
+    results,
+    status: buildStatus(
+      source,
+      results.length > 0 ? "success" : "no_results",
+      results.length,
+      startedAt,
+    ),
+  };
+}
+
+async function runCarrefourComercianteSourceSearch(
+  source: ScrapingSource,
+  query: string,
+  startedAt: number,
+  options: SearchSourceOptions,
+): Promise<SearchSourceResult> {
+  const rawResults = await extractProductsFromCarrefourComerciante(source, query);
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(
