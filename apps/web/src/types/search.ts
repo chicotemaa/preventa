@@ -53,7 +53,9 @@ export type PendingSourceStatus = {
   storeName: string;
   storeType: "mayorista" | "minorista";
   status:
+    | "pending"
     | "requires_login"
+    | "not_configured"
     | "no_public_catalog"
     | "no_public_prices"
     | "out_of_scope";

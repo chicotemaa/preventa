@@ -11,9 +11,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { CategoryPricingDashboard } from "@/components/category-pricing/CategoryPricingDashboard";
 import { compareSourcePriority } from "@/lib/source-priority";
 import type {
-  CategoryBrandSummary,
   CategorySearchGroup,
   CategorySearchResponse,
   PriceListInputItem,
@@ -706,7 +706,11 @@ function CategorySearchResults({
           No se encontraron rubros con productos para esta búsqueda.
         </div>
       ) : selectedGroup ? (
-        <CategoryGroupDetail group={selectedGroup} />
+        <CategoryGroupDetail
+          group={selectedGroup}
+          sources={response.sources}
+          searchedAt={response.searchedAt}
+        />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {response.groups.map((group) => {
@@ -762,245 +766,26 @@ function CategorySearchResults({
         </div>
       )}
 
-      <SourcesDetails sources={response.sources} />
+      {!selectedGroup ? <SourcesDetails sources={response.sources} /> : null}
     </div>
   );
 }
 
-function CategoryGroupDetail({ group }: { group: CategorySearchGroup }) {
-  const hasTokinProducts = group.tokinProducts.length > 0;
-
-  return (
-    <div className="rounded-md border border-[#d9dee7] bg-[#fffdfa] p-3 sm:p-4">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-lg font-bold text-[#17202a]">
-          {group.categoryName}
-        </h3>
-        <p className="text-sm text-[#667789]">
-          Vista de surtido por categoría. Acá no se fuerza un match exacto: se
-          muestran los productos Tokin/Aguiar del rubro y después las
-          alternativas de mercado.
-        </p>
-      </div>
-
-      {!hasTokinProducts ? (
-        <div className="mt-4 rounded-md border border-[#f0d898] bg-[#fff8e6] px-4 py-3 text-sm font-semibold text-[#73510b]">
-          Tokin/Aguiar no devolvió productos para esta categoría en esta
-          consulta. La comparación de competencia se muestra igual.
-        </div>
-      ) : null}
-
-      <div className="mt-4 flex flex-col gap-4">
-        <CategoryProductsSection
-          title="Tokin / Aguiar"
-          subtitle="Productos disponibles en el catálogo B2B"
-          products={group.tokinProducts}
-          brands={group.tokinBrands}
-          emptyMessage="No se encontraron productos Tokin para este rubro. Si esperabas datos de Aguiar, revisá que el worker tenga credenciales Tokin y catálogo sincronizado."
-        />
-        <CategoryProductsSection
-          title="Competencia"
-          subtitle="Mayoristas y minoristas consultados"
-          products={group.competitorProducts}
-          brands={group.competitorBrands}
-          emptyMessage="No se encontraron productos de competencia para este rubro."
-        />
-      </div>
-    </div>
-  );
-}
-
-function CategoryProductsSection({
-  title,
-  subtitle,
-  products,
-  brands,
-  emptyMessage,
+function CategoryGroupDetail({
+  group,
+  sources,
+  searchedAt,
 }: {
-  title: string;
-  subtitle: string;
-  products: ProductSearchResult[];
-  brands: CategoryBrandSummary[];
-  emptyMessage: string;
+  group: CategorySearchGroup;
+  sources: SourceSearchStatus[];
+  searchedAt: string;
 }) {
   return (
-    <section className="min-w-0 rounded-md border border-[#e5e9ef] bg-white p-3">
-      <div className="flex flex-col gap-1">
-        <h4 className="text-base font-bold text-[#17202a]">{title}</h4>
-        <p className="text-sm text-[#667789]">
-          {products.length} productos · {subtitle}
-        </p>
-      </div>
-
-      {products.length === 0 ? (
-        <div className="mt-3 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-6 text-center text-sm text-[#526170]">
-          {emptyMessage}
-        </div>
-      ) : (
-        <div className="mt-3">
-          <CategoryProductCards products={products} />
-        </div>
-      )}
-
-      <BrandSummary brands={brands} />
-    </section>
-  );
-}
-
-function CategoryProductCards({ products }: { products: ProductSearchResult[] }) {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      {products.map((product) => (
-        <CategoryProductCard key={resultKey(product)} product={product} />
-      ))}
-    </div>
-  );
-}
-
-function CategoryProductCard({ product }: { product: ProductSearchResult }) {
-  return (
-    <article className="flex min-h-[250px] flex-col justify-between rounded-md border border-[#d9dee7] bg-white p-3 shadow-sm">
-      <div>
-        <div className="flex gap-3">
-          {product.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={product.imageUrl}
-              alt={product.rawName}
-              className="h-20 w-20 shrink-0 rounded-md border border-[#d9dee7] object-contain"
-            />
-          ) : (
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-md border border-[#d9dee7] bg-[#f8fafc] text-xs font-semibold text-[#8a96a3]">
-              Sin foto
-            </div>
-          )}
-          <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-[0.04em] text-[#667789]">
-              {product.storeName}
-            </div>
-            <h5 className="mt-1 line-clamp-3 text-sm font-bold leading-5 text-[#17202a]">
-              {product.rawName}
-            </h5>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              <span className="rounded bg-[#edf1f5] px-2 py-0.5 text-[11px] font-semibold text-[#526170]">
-                {product.storeType}
-              </span>
-              {product.brand ? (
-                <span className="rounded bg-[#fff8f2] px-2 py-0.5 text-[11px] font-semibold text-[#7a4a16]">
-                  {product.brand}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <CategoryPriceBreakdown product={product} />
-      </div>
-
-      {product.productUrl ? (
-        <a
-          href={product.productUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-3 inline-flex h-9 items-center justify-center rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 text-sm font-semibold text-[#153d7b] transition hover:border-[#153d7b] hover:bg-[#f5f8ff]"
-        >
-          Ver producto
-        </a>
-      ) : null}
-    </article>
-  );
-}
-
-function CategoryPriceBreakdown({ product }: { product: ProductSearchResult }) {
-  const packageDescriptor =
-    product.packageQuantity && product.packageQuantity > 1
-      ? product.packageLabel ?? `pack x ${product.packageQuantity}`
-      : null;
-  const alternatePrices = getAlternatePriceLabels(product);
-  const hasBultoCondition = Boolean(
-    product.priceCondition && /bulto|caja|pack/i.test(product.priceCondition),
-  );
-
-  return (
-    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-      <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-          Unidad
-        </div>
-        <div className="mt-1 text-base font-extrabold text-[#173d2f]">
-          {formatComparableCurrency(product)}
-        </div>
-        <div className="mt-1 text-xs leading-4 text-[#667789]">
-          precio unitario o equivalente
-        </div>
-      </div>
-
-      <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-          Bulto / pack
-        </div>
-        {packageDescriptor || hasBultoCondition ? (
-          <>
-            <div className="mt-1 text-base font-extrabold text-[#7a4a16]">
-              {currencyFormatter.format(product.price)}
-            </div>
-            <div className="mt-1 text-xs leading-4 text-[#667789]">
-              {product.priceCondition ?? packageDescriptor}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="mt-1 text-base font-extrabold text-[#83909d]">
-              -
-            </div>
-            <div className="mt-1 text-xs leading-4 text-[#667789]">
-              no informado por la fuente
-            </div>
-          </>
-        )}
-      </div>
-
-      {alternatePrices.length > 0 ? (
-        <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2 sm:col-span-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Otros precios
-          </div>
-          <div className="mt-1 space-y-1 text-xs leading-4 text-[#667789]">
-            {alternatePrices.map((label) => (
-              <div key={label}>{label}</div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function BrandSummary({ brands }: { brands: CategoryBrandSummary[] }) {
-  if (brands.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
-      {brands.map((brand) => (
-        <div
-          key={brand.brand}
-          className="min-w-0 rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2"
-        >
-          <div className="truncate text-sm font-semibold text-[#17202a]">
-            {brand.brand}
-          </div>
-          <div className="mt-1 text-xs text-[#667789]">
-            {brand.productsCount} prod. · desde{" "}
-            {formatCurrencyValue(brand.minPrice)}
-          </div>
-          <div className="mt-1 truncate text-xs text-[#83909d]">
-            {brand.sourceNames.join(", ")}
-          </div>
-        </div>
-      ))}
-    </div>
+    <CategoryPricingDashboard
+      group={group}
+      sources={sources}
+      searchedAt={searchedAt}
+    />
   );
 }
 
