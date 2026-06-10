@@ -192,6 +192,10 @@ CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS=20000
 CARREFOUR_COMERCIANTE_RECAPTCHA_TIMEOUT_MS=5000
 ```
 
+`CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS` tiene un minimo operativo de 20000ms
+en codigo para evitar que una variable vieja de produccion corte el login antes
+de que Carrefour termine de responder.
+
 Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si reCAPTCHA no carga en el tiempo configurado o Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios ni bloquea el tablero.
 
 ## Publicacion
