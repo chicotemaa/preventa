@@ -35,7 +35,7 @@ const filterOptions: Array<{ value: CategoryDecisionFilter; label: string }> = [
   { value: "mayoristas", label: "Solo mayoristas" },
   { value: "minoristas", label: "Solo minoristas" },
   { value: "alerts", label: "Con alertas" },
-  { value: "critical_gap", label: "Gap critico" },
+  { value: "critical_gap", label: "Diferencia critica" },
   { value: "opportunities", label: "Oportunidades" },
   { value: "missing_aguiar", label: "Sin precio Aguiar" },
   { value: "weak_match", label: "Match dudoso" },
@@ -43,7 +43,7 @@ const filterOptions: Array<{ value: CategoryDecisionFilter; label: string }> = [
 ];
 
 const sortOptions: Array<{ value: CategoryDecisionSort; label: string }> = [
-  { value: "gap_desc", label: "Mayor gap vs Aguiar" },
+  { value: "gap_desc", label: "Mayor diferencia vs Aguiar" },
   { value: "wholesale_price", label: "Menor precio mayorista" },
   { value: "retail_price", label: "Menor precio minorista" },
   { value: "confidence_desc", label: "Mayor confianza" },
@@ -88,7 +88,9 @@ export function CategoryPricingDashboard({
           <div>
             <h3 className="text-lg font-bold text-[#17202a]">Mesa de decision</h3>
             <p className="mt-1 text-sm text-[#667789]">
-              Clusters comparables con prioridad comercial: Aguiar, mayoristas y minoristas.
+              Clusters comparables con prioridad comercial: Aguiar, mayoristas y minoristas. La
+              diferencia vs mercado compara Aguiar contra la mejor referencia: positivo es mas
+              caro, negativo es por debajo.
             </p>
           </div>
           <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#cfd8e3] bg-white px-3 py-2 text-sm text-[#526170] lg:min-w-[300px]">
@@ -183,7 +185,7 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
         <SummaryMetric label="Mejor minorista" value={formatCellPrice(dashboard.bestRetailPrice)} />
         <SummaryMetric label="Mejor general" value={formatCellPrice(dashboard.bestOverallPrice)} />
         <SummaryMetric
-          label="Gap prom. vs Aguiar"
+          label="Dif. prom. Aguiar vs mercado"
           value={
             dashboard.averageGapVsAguiarPercent === null
               ? "-"

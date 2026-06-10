@@ -483,7 +483,7 @@ function buildAlerts(
   ) {
     alerts.push({
       severity: "critical",
-      label: "Gap critico",
+      label: "Diferencia critica",
       message: "Aguiar esta mas de 10% arriba del mejor mayorista.",
     });
   } else if (
@@ -694,7 +694,7 @@ function buildCategoryRecommendation(
     return {
       kind: "monitor",
       label: "Ajuste selectivo",
-      reason: "El gap promedio esta por encima del mercado.",
+      reason: "La diferencia promedio muestra a Aguiar por encima del mercado.",
       tone: "warning",
       targetPrice: null,
     };
@@ -737,7 +737,7 @@ function rowMatchesFilter(row: CategoryDecisionRow, filter: CategoryDecisionFilt
   }
 
   if (filter === "critical_gap") {
-    return row.alerts.some((alert) => alert.label === "Gap critico");
+    return row.alerts.some((alert) => alert.label === "Diferencia critica");
   }
 
   if (filter === "opportunities") {

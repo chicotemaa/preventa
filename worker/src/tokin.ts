@@ -446,6 +446,18 @@ function applyTokinUnitAndPackagePricing(
     price: roundMoney(unitPrice * packageQuantity),
     comparisonPrice: roundMoney(unitPrice),
     priceCondition: `Bulto: ${packageQuantity} unidades`,
+    alternatePrices: [
+      {
+        label: "Unidad",
+        price: roundMoney(unitPrice),
+        comparisonPrice: roundMoney(unitPrice),
+      },
+      {
+        label: `Bulto x ${packageQuantity}`,
+        price: roundMoney(unitPrice * packageQuantity),
+        comparisonPrice: roundMoney(unitPrice),
+      },
+    ],
     packageQuantity,
     packageLabel: `bulto x ${packageQuantity} unidades`,
   };
@@ -467,7 +479,7 @@ function getTokinVariantPackagingFragments(variant: TokinVariant) {
       continue;
     }
 
-    const text = stringifyTokinVariantValue(value);
+    const text = stringifyTokinPackagingValue(value);
 
     if (text) {
       fragments.push(`${key} ${text}`);
@@ -512,9 +524,11 @@ function parseTokinBultoQuantityFromText(text: string) {
     .replace(/Uds?\b/gi, "uds")
     .trim();
   const patterns = [
+    /\bdisplay\s*:?\s*\d{1,3}(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\s*[/|-]\s*bulto\s*:?\s*(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\b/i,
     /\bbulto\s*:?\s*(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\b/i,
     /\bbulto\b[^0-9]{0,30}(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\b/i,
     /\b(\d{1,3})(?:[,.]0+)?\s*(?:uds?|unid(?:ades)?|disp)\s*(?:=|por)\s*\d{1,3}\s*disp\b/i,
+    /\b(?:unidades|uds?|cant(?:idad)?|qty)\s*(?:por|x|de)?\s*bulto\s*:?\s*(\d{1,3})\b/i,
   ];
 
   for (const pattern of patterns) {
@@ -544,7 +558,7 @@ function collectTokinPrimitiveTextInto(
   fragments: string[],
   depth = 0,
 ) {
-  if (value === null || value === undefined || depth > 3) {
+  if (value === null || value === undefined || depth > 5) {
     return;
   }
 
@@ -604,6 +618,16 @@ function isTokinPackageQuantityKey(key: string) {
       "unitsperpackage",
       "unitsperbox",
       "unitspercase",
+      "unitmultiplier",
+      "multiplier",
+      "conversionfactor",
+      "factorconversion",
+      "unitsperdisplay",
+      "unidadespordisplay",
+      "displayquantity",
+      "displayunits",
+      "cantidadpordisplay",
+      "cantpordisplay",
       "unidadesporbulto",
       "unidadesporcaja",
       "cantidadporbulto",
@@ -630,13 +654,31 @@ function parseTokinPackageQuantity(value: unknown) {
   }
 
   if (typeof value === "string") {
-    const match = value.replace(",", ".").match(/\b(\d{1,3})(?:\.0+)?\b/);
-    const parsedValue = match?.[1] ? Number(match[1]) : NaN;
-    return isValidTokinPackageQuantity(parsedValue) ? parsedValue : null;
+    const bultoQuantity = parseTokinBultoQuantityFromText(value);
+
+    if (bultoQuantity !== null) {
+      return bultoQuantity;
+    }
+
+    const matches = Array.from(value.replace(",", ".").matchAll(/\b(\d{1,3})(?:\.0+)?\b/g));
+
+    for (const match of matches) {
+      const parsedValue = match[1] ? Number(match[1]) : NaN;
+
+      if (isValidTokinPackageQuantity(parsedValue)) {
+        return parsedValue;
+      }
+    }
+
+    return null;
   }
 
   if (value && typeof value === "object" && "raw" in value) {
     return parseTokinPackageQuantity((value as TokinRawField).raw);
+  }
+
+  if (value && typeof value === "object") {
+    return parseTokinBultoQuantityFromText(collectTokinPrimitiveText(value).join(" "));
   }
 
   return null;
@@ -657,6 +699,20 @@ function stringifyTokinVariantValue(value: unknown) {
 
   if (value && typeof value === "object" && "raw" in value) {
     return getRawValue(value as TokinRawField);
+  }
+
+  return "";
+}
+
+function stringifyTokinPackagingValue(value: unknown) {
+  const directValue = stringifyTokinVariantValue(value);
+
+  if (directValue) {
+    return directValue;
+  }
+
+  if (value && typeof value === "object") {
+    return collectTokinPrimitiveText(value).join(" ").replace(/\s+/g, " ").trim();
   }
 
   return "";

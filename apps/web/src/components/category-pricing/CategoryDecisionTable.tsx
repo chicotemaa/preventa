@@ -41,7 +41,7 @@ export function CategoryDecisionTable({
               <th className="w-[145px] px-3 py-3">Mejor mayorista</th>
               <th className="w-[145px] px-3 py-3">Mejor minorista</th>
               <th className="w-[145px] px-3 py-3">Mejor general</th>
-              <th className="w-[105px] px-3 py-3">Gap</th>
+              <th className="w-[135px] px-3 py-3">Dif. vs mercado</th>
               <th className="w-[105px] px-3 py-3">Canal</th>
               <th className="w-[130px] px-3 py-3">Ganador</th>
               <th className="w-[105px] px-3 py-3">Confianza</th>
@@ -150,7 +150,7 @@ export function CategoryDecisionTable({
               <MobileMetric label="Mayorista" value={formatCellPrice(row.bestWholesale)} />
               <MobileMetric label="Minorista" value={formatCellPrice(row.bestRetail)} />
               <MobileMetric
-                label="Gap"
+                label="Dif. vs mercado"
                 value={
                   row.gapVsAguiarPercent === null
                     ? "-"

@@ -88,6 +88,8 @@ function ProductGrid({
 }
 
 function ProductCard({ product }: { product: ProductSearchResult }) {
+  const packageDetails = getPackageDetails(product);
+
   return (
     <article className="rounded-md border border-[#d9dee7] bg-[#fffdfa] p-3">
       <div className="flex gap-3">
@@ -132,8 +134,8 @@ function ProductCard({ product }: { product: ProductSearchResult }) {
         />
         <PriceBox
           label="Bulto / pack"
-          value={getPackagePrice(product)}
-          helper={getPackageHelper(product)}
+          value={packageDetails.value}
+          helper={packageDetails.helper}
           tone="pack"
         />
       </div>
@@ -205,20 +207,27 @@ function AlternatePrices({ product }: { product: ProductSearchResult }) {
   );
 }
 
-function getPackagePrice(product: ProductSearchResult) {
+function getPackageDetails(product: ProductSearchResult) {
   if (hasPackagePrice(product)) {
-    return currencyFormatter.format(product.price);
+    return {
+      value: currencyFormatter.format(product.price),
+      helper: product.priceCondition ?? product.packageLabel ?? `bulto x ${product.packageQuantity}`,
+    };
   }
 
-  return "-";
-}
+  const alternatePackagePrice = findPackageAlternatePrice(product);
 
-function getPackageHelper(product: ProductSearchResult) {
-  if (hasPackagePrice(product)) {
-    return product.priceCondition ?? product.packageLabel ?? `bulto x ${product.packageQuantity}`;
+  if (alternatePackagePrice) {
+    return {
+      value: currencyFormatter.format(alternatePackagePrice.price),
+      helper: alternatePackagePrice.label,
+    };
   }
 
-  return "no informado por la fuente";
+  return {
+    value: "-",
+    helper: "no informado por la fuente",
+  };
 }
 
 function hasPackagePrice(product: ProductSearchResult) {
@@ -226,5 +235,14 @@ function hasPackagePrice(product: ProductSearchResult) {
     (product.packageQuantity && product.packageQuantity > 1) ||
       (product.packageLabel && /bulto|caja|pack|display/i.test(product.packageLabel)) ||
       (product.priceCondition && /bulto|caja|pack|display/i.test(product.priceCondition)),
+  );
+}
+
+function findPackageAlternatePrice(product: ProductSearchResult) {
+  return (product.alternatePrices ?? []).find(
+    (price) =>
+      Number.isFinite(price.price) &&
+      price.price > 0 &&
+      /bulto|caja|pack|display/i.test(price.label),
   );
 }

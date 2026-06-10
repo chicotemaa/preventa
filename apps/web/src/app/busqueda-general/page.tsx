@@ -264,6 +264,7 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
       ? product.packageLabel ?? `pack x ${product.packageQuantity}`
       : null;
   const alternatePrices = getAlternatePriceLabels(product);
+  const alternatePackagePrice = findPackageAlternatePrice(product);
   const hasBultoCondition = Boolean(
     product.priceCondition && /bulto|caja|pack/i.test(product.priceCondition),
   );
@@ -286,13 +287,13 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
         <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
           Bulto / pack
         </div>
-        {packageDescriptor || hasBultoCondition ? (
+        {packageDescriptor || hasBultoCondition || alternatePackagePrice ? (
           <>
             <div className="mt-1 text-base font-extrabold text-[#7a4a16]">
-              {currencyFormatter.format(product.price)}
+              {currencyFormatter.format(alternatePackagePrice?.price ?? product.price)}
             </div>
             <div className="mt-1 text-xs leading-4 text-[#667789]">
-              {product.priceCondition ?? packageDescriptor}
+              {alternatePackagePrice?.label ?? product.priceCondition ?? packageDescriptor}
             </div>
           </>
         ) : (
@@ -320,6 +321,15 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function findPackageAlternatePrice(product: ProductSearchResult) {
+  return (product.alternatePrices ?? []).find(
+    (price) =>
+      Number.isFinite(price.price) &&
+      price.price > 0 &&
+      /bulto|caja|pack|display/i.test(price.label),
   );
 }
 
