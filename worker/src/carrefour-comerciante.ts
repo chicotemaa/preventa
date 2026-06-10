@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { findAllowedBrand } from "./brands.js";
 import { launchBrowser } from "./browser.js";
 import { findCatalogCategory } from "./categories.js";
@@ -42,6 +42,20 @@ export async function extractProductsFromCarrefourComerciante(
   });
 
   try {
+    if (await seedCarrefourComercianteSessionCookies(context)) {
+      const page = await context.newPage();
+
+      try {
+        const url = buildCarrefourComercianteProductsUrl(source, query);
+        const html = await fetchCarrefourComercianteProductsHtml(page, url, query);
+        return extractCarrefourComercianteProductsFromHtml(html, source, query, url);
+      } catch (error) {
+        throw enrichCookieSessionError(error);
+      } finally {
+        await page.close().catch(() => undefined);
+      }
+    }
+
     let lastError: unknown;
 
     for (const deliveryType of getCarrefourComercianteDeliveryTypes()) {
@@ -95,7 +109,7 @@ export function extractCarrefourComercianteProductsFromHtml(
 
   if (hasProductsWithPrivatePrices) {
     throw new Error(
-      "Carrefour Comerciante devolvio productos pero precios privados; la sesion no quedo autorizada o reCAPTCHA fue rechazado.",
+      "Carrefour Comerciante devolvio productos pero precios privados; la sesion no quedo autorizada o reCAPTCHA Enterprise rechazo el login automatico. Para esta fuente conviene cargar CARREFOUR_COMERCIANTE_COOKIE con una sesion manual vigente.",
     );
   }
 
@@ -184,7 +198,6 @@ async function establishCarrefourComercianteSession(
         }
 
         select.value = value;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
       };
 
       document
@@ -239,6 +252,61 @@ async function establishCarrefourComercianteSession(
   if (!navigation && !page.url().startsWith(BASE_URL)) {
     throw new Error("Carrefour Comerciante no completo la navegacion de login.");
   }
+}
+
+async function seedCarrefourComercianteSessionCookies(context: BrowserContext) {
+  const cookieHeader = config.carrefourComerciante.cookie;
+
+  if (!cookieHeader) {
+    return false;
+  }
+
+  const cookies = parseCookieHeader(cookieHeader).map(({ name, value }) => ({
+    name,
+    value,
+    domain: "comerciante.carrefour.com.ar",
+    path: "/",
+    secure: true,
+    sameSite: "Lax" as const,
+  }));
+
+  if (cookies.length === 0) {
+    return false;
+  }
+
+  await context.addCookies(cookies);
+  return true;
+}
+
+function parseCookieHeader(cookieHeader: string) {
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .flatMap((part) => {
+      const separatorIndex = part.indexOf("=");
+
+      if (separatorIndex <= 0) {
+        return [];
+      }
+
+      const name = part.slice(0, separatorIndex).trim();
+      const value = part.slice(separatorIndex + 1).trim();
+
+      return name && value ? [{ name, value }] : [];
+    });
+}
+
+function enrichCookieSessionError(error: unknown) {
+  if (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("precios privados")
+  ) {
+    return new Error(
+      "Carrefour Comerciante recibio CARREFOUR_COMERCIANTE_COOKIE, pero la sesion sigue sin precios. Renovar la cookie desde una sesion manual que ya muestre precios.",
+    );
+  }
+
+  return error;
 }
 
 async function fetchCarrefourComercianteProductsHtml(

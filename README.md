@@ -185,6 +185,7 @@ CARREFOUR_COMERCIANTE_NAME=
 CARREFOUR_COMERCIANTE_DOCUMENT=
 CARREFOUR_COMERCIANTE_PHONE=
 CARREFOUR_COMERCIANTE_EMAIL=
+CARREFOUR_COMERCIANTE_COOKIE=
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
@@ -195,6 +196,11 @@ CARREFOUR_COMERCIANTE_RECAPTCHA_TIMEOUT_MS=5000
 `CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS` tiene un minimo operativo de 20000ms
 en codigo para evitar que una variable vieja de produccion corte el login antes
 de que Carrefour termine de responder.
+
+Si Carrefour rechaza el login automatico por reCAPTCHA Enterprise, cargar
+`CARREFOUR_COMERCIANTE_COOKIE` en el entorno del worker con una cookie vigente
+obtenida desde una sesion manual donde los precios ya sean visibles. No guardar
+esa cookie en el repositorio.
 
 Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si reCAPTCHA no carga en el tiempo configurado o Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios ni bloquea el tablero.
 

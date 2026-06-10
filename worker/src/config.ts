@@ -88,6 +88,7 @@ export const config = {
     document: getOptionalStringEnv("CARREFOUR_COMERCIANTE_DOCUMENT"),
     phone: getOptionalStringEnv("CARREFOUR_COMERCIANTE_PHONE"),
     email: getOptionalStringEnv("CARREFOUR_COMERCIANTE_EMAIL"),
+    cookie: getOptionalStringEnv("CARREFOUR_COMERCIANTE_COOKIE"),
     region: getOptionalStringEnv("CARREFOUR_COMERCIANTE_REGION") ?? "CHACO",
     sellerId: getOptionalStringEnv("CARREFOUR_COMERCIANTE_SELLER_ID") ?? "506",
     deliveryType:
