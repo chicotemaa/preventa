@@ -91,7 +91,7 @@ export const config = {
     region: getOptionalStringEnv("CARREFOUR_COMERCIANTE_REGION") ?? "CHACO",
     sellerId: getOptionalStringEnv("CARREFOUR_COMERCIANTE_SELLER_ID") ?? "506",
     deliveryType:
-      getOptionalStringEnv("CARREFOUR_COMERCIANTE_DELIVERY_TYPE") ?? "retiro",
+      getOptionalStringEnv("CARREFOUR_COMERCIANTE_DELIVERY_TYPE") ?? "envio",
     sourceTimeoutMs: getNumberEnv("CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS", 12_000),
     recaptchaTimeoutMs: getNumberEnv(
       "CARREFOUR_COMERCIANTE_RECAPTCHA_TIMEOUT_MS",

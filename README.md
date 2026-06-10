@@ -175,7 +175,7 @@ El sitio permite ver productos publicos, pero oculta precios como `private` hast
 
 - Provincia: `CHACO`
 - Sucursal: `506` - CARREFOUR MAXI RESISTENCIA CHACO
-- Tipo de entrega: `retiro` o `envio`
+- Tipo de entrega: `envio` o `retiro` (`envio` es el valor recomendado porque coincide con el flujo validado del formulario)
 
 Datos a completar en el worker:
 
@@ -187,7 +187,7 @@ CARREFOUR_COMERCIANTE_PHONE=
 CARREFOUR_COMERCIANTE_EMAIL=
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
-CARREFOUR_COMERCIANTE_DELIVERY_TYPE=retiro
+CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
 CARREFOUR_COMERCIANTE_SOURCE_TIMEOUT_MS=12000
 CARREFOUR_COMERCIANTE_RECAPTCHA_TIMEOUT_MS=5000
 ```
