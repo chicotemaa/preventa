@@ -37,8 +37,7 @@ export async function extractProductsFromCarrefourComerciante(
   const context = await browser.newContext({
     locale: "es-AR",
     timezoneId: "America/Argentina/Cordoba",
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    userAgent: config.carrefourComerciante.userAgent,
   });
 
   try {

@@ -89,6 +89,9 @@ export const config = {
     phone: getOptionalStringEnv("CARREFOUR_COMERCIANTE_PHONE"),
     email: getOptionalStringEnv("CARREFOUR_COMERCIANTE_EMAIL"),
     cookie: getOptionalStringEnv("CARREFOUR_COMERCIANTE_COOKIE"),
+    userAgent:
+      getOptionalStringEnv("CARREFOUR_COMERCIANTE_USER_AGENT") ??
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
     region: getOptionalStringEnv("CARREFOUR_COMERCIANTE_REGION") ?? "CHACO",
     sellerId: getOptionalStringEnv("CARREFOUR_COMERCIANTE_SELLER_ID") ?? "506",
     deliveryType:

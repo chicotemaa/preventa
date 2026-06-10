@@ -186,6 +186,7 @@ CARREFOUR_COMERCIANTE_DOCUMENT=
 CARREFOUR_COMERCIANTE_PHONE=
 CARREFOUR_COMERCIANTE_EMAIL=
 CARREFOUR_COMERCIANTE_COOKIE=
+CARREFOUR_COMERCIANTE_USER_AGENT=
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
@@ -201,6 +202,10 @@ Si Carrefour rechaza el login automatico por reCAPTCHA Enterprise, cargar
 `CARREFOUR_COMERCIANTE_COOKIE` en el entorno del worker con una cookie vigente
 obtenida desde una sesion manual donde los precios ya sean visibles. No guardar
 esa cookie en el repositorio.
+
+Si se carga `CARREFOUR_COMERCIANTE_COOKIE`, cargar tambien
+`CARREFOUR_COMERCIANTE_USER_AGENT` con el User-Agent exacto del navegador donde
+se obtuvo esa cookie. Cloudflare puede atar `cf_clearance` al User-Agent.
 
 Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si reCAPTCHA no carga en el tiempo configurado o Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios ni bloquea el tablero.
 
