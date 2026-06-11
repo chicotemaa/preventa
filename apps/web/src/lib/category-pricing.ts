@@ -398,7 +398,7 @@ function buildSourceHealthMessage(
 
   if (source && status === "sin_datos") {
     if (config?.sourceId === "yaguar-chaco-tienda-auth") {
-      return "Yaguar fue consultado con las credenciales configuradas, pero no devolvio productos para esta busqueda.";
+      return "Yaguar acepto las credenciales, pero la tienda no expuso productos para esta busqueda. Revisar que la cuenta tenga catalogo/precios habilitados para Chaco o que no requiera seleccion adicional de sucursal.";
     }
 
     return "Fuente consultada, sin productos utiles para esta busqueda.";

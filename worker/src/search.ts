@@ -776,7 +776,7 @@ async function runYaguarAuthSourceSearch(
       startedAt,
       results.length > 0
         ? undefined
-        : "Yaguar fue consultado con las credenciales configuradas, pero no devolvio productos para esta busqueda.",
+        : "Yaguar acepto las credenciales, pero la tienda no expuso productos para esta busqueda. Revisar que la cuenta tenga catalogo/precios habilitados para Chaco o que no requiera seleccion adicional de sucursal.",
     ),
   };
 }
