@@ -60,6 +60,7 @@ export type SourceHealthItem = {
   channel: SourceChannel;
   priority: number;
   criticalForDecision: boolean;
+  primaryReference: boolean;
   expected: boolean;
   status: ExpectedSourceStatus;
   statusLabel: string;
@@ -372,6 +373,7 @@ function buildSourceHealthItem(
     channel,
     priority: config?.priority ?? 999,
     criticalForDecision: config?.criticalForDecision ?? false,
+    primaryReference: config?.primaryReference ?? false,
     expected: Boolean(config?.expectedInDashboard),
     status,
     statusLabel: getSourceStatusLabel(status),

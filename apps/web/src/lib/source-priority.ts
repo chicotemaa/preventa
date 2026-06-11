@@ -18,6 +18,7 @@ export type SourcePriorityConfig = {
   channel: SourceChannel;
   priority: number;
   criticalForDecision: boolean;
+  primaryReference?: boolean;
   expectedInDashboard: boolean;
   region: string;
   fallbackStatus: ExpectedSourceStatus;
@@ -45,11 +46,37 @@ export const sourcePriorityConfig: SourcePriorityConfig[] = [
     fallbackMessage: "Requiere credenciales Tokin para consultar precios propios.",
   },
   {
+    sourceId: "maxiconsumo-chaco-auth",
+    aliases: ["maxiconsumo chaco", "maxi chaco"],
+    displayName: "Maxiconsumo Chaco",
+    channel: "mayorista",
+    priority: 1,
+    criticalForDecision: true,
+    primaryReference: true,
+    expectedInDashboard: true,
+    region: "NEA",
+    fallbackStatus: "requires_login",
+    fallbackMessage:
+      "Fuente mayorista principal del NEA; revisar disponibilidad o credenciales si no trae datos.",
+  },
+  {
+    sourceId: "maxiconsumo-web-moreno",
+    aliases: ["maxiconsumo web", "maxiconsumo", "maxi consumo"],
+    displayName: "Maxiconsumo Web",
+    channel: "mayorista",
+    priority: 2,
+    criticalForDecision: true,
+    expectedInDashboard: true,
+    region: "Argentina",
+    fallbackStatus: "sin_datos",
+    fallbackMessage: "Referencia mayorista nacional sin datos para esta busqueda.",
+  },
+  {
     sourceId: "vital-online",
     aliases: ["vital", "supermayorista vital", "vital online"],
     displayName: "Vital",
     channel: "mayorista",
-    priority: 1,
+    priority: 3,
     criticalForDecision: true,
     expectedInDashboard: true,
     region: "Argentina",
@@ -67,37 +94,13 @@ export const sourcePriorityConfig: SourcePriorityConfig[] = [
     ],
     displayName: "Carrefour Comerciante",
     channel: "mayorista",
-    priority: 2,
+    priority: 4,
     criticalForDecision: true,
     expectedInDashboard: true,
     region: "Argentina",
     fallbackStatus: "requires_login",
     fallbackMessage:
-      "Requiere datos de comercio, sucursal y sesion autorizada para ver precios.",
-  },
-  {
-    sourceId: "maxiconsumo-chaco-auth",
-    aliases: ["maxiconsumo chaco", "maxi chaco", "maxi carrefour"],
-    displayName: "Maxiconsumo Chaco",
-    channel: "mayorista",
-    priority: 3,
-    criticalForDecision: true,
-    expectedInDashboard: true,
-    region: "NEA",
-    fallbackStatus: "requires_login",
-    fallbackMessage: "Fuente mayorista prioritaria; revisar credenciales o disponibilidad.",
-  },
-  {
-    sourceId: "maxiconsumo-web-moreno",
-    aliases: ["maxiconsumo web", "maxiconsumo", "maxi consumo", "maxi"],
-    displayName: "Maxiconsumo Web",
-    channel: "mayorista",
-    priority: 4,
-    criticalForDecision: true,
-    expectedInDashboard: true,
-    region: "Argentina",
-    fallbackStatus: "sin_datos",
-    fallbackMessage: "Referencia mayorista nacional sin datos para esta busqueda.",
+      "Requiere cookie y User-Agent de una sesion manual autorizada para ver precios.",
   },
   {
     sourceId: "check-chek-mayorista",

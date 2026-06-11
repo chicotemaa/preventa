@@ -14,7 +14,8 @@ export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary
             Cobertura de fuentes
           </h3>
           <p className="mt-1 text-sm text-[#667789]">
-            Mayoristas priorizados primero. Las fuentes esperadas no se ocultan aunque no tengan datos.
+            Maxiconsumo Chaco queda como referencia mayorista principal del NEA.
+            Las fuentes esperadas no se ocultan aunque no tengan datos.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-bold">
@@ -41,6 +42,11 @@ function SourceHealthCard({ item }: { item: SourceHealthItem }) {
           <div className="truncate text-sm font-bold text-[#17202a]">{item.displayName}</div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <ChannelChip channel={item.channel} />
+            {item.primaryReference ? (
+              <span className="rounded bg-[#e8f3ff] px-2 py-0.5 text-[10px] font-bold text-[#16477f]">
+                Prioritaria NEA
+              </span>
+            ) : null}
             {item.criticalForDecision ? (
               <span className="rounded bg-[#fff0c2] px-2 py-0.5 text-[10px] font-bold text-[#73510b]">
                 Critica

@@ -394,18 +394,28 @@ function buildCarrefourComercianteLoginFormValues() {
 }
 
 function assertCarrefourComercianteConfig() {
+  if (!config.carrefourComerciante.enabled) {
+    throw new Error(
+      "Carrefour Comerciante esta deshabilitado. Activar CARREFOUR_COMERCIANTE_ENABLED=true y cargar una sesion manual vigente.",
+    );
+  }
+
+  if (config.carrefourComerciante.cookie) {
+    return;
+  }
+
+  if (!config.carrefourComerciante.autoLoginEnabled) {
+    throw new Error(
+      "Carrefour Comerciante requiere CARREFOUR_COMERCIANTE_COOKIE y CARREFOUR_COMERCIANTE_USER_AGENT de una sesion manual vigente. El login automatico esta desactivado por defecto porque reCAPTCHA Enterprise devuelve precios privados.",
+    );
+  }
+
   const missingFields = [
     ["CARREFOUR_COMERCIANTE_NAME", config.carrefourComerciante.name],
     ["CARREFOUR_COMERCIANTE_DOCUMENT", config.carrefourComerciante.document],
     ["CARREFOUR_COMERCIANTE_PHONE", config.carrefourComerciante.phone],
     ["CARREFOUR_COMERCIANTE_EMAIL", config.carrefourComerciante.email],
   ].flatMap(([label, value]) => (value ? [] : [label]));
-
-  if (!config.carrefourComerciante.enabled) {
-    throw new Error(
-      "Carrefour Comerciante esta deshabilitado. Activar CARREFOUR_COMERCIANTE_ENABLED=true para intentar login.",
-    );
-  }
 
   if (missingFields.length > 0) {
     throw new Error(

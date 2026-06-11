@@ -156,20 +156,36 @@ Fuentes identificadas pero no activas por falta de catalogo/precios publicos con
 
 Cuando hay comparaciones por fuente, se prioriza este orden visual:
 
-1. Vital
-2. Carrefour Comerciante / Maxi Pedido
-3. Maxi / Maxiconsumo
-4. Carrefour
-5. Cheek
-6. Yaguar / Jaguar
-7. Cucher Mercados
-8. Revista
+1. Maxiconsumo Chaco
+2. Maxiconsumo Web
+3. Vital
+4. Carrefour Comerciante / Maxi Pedido
+5. Carrefour
+6. Cheek
+7. Yaguar / Jaguar
+8. Cucher Mercados
+9. Revista
 
 Aguiar/Tokin se mantiene separado como referencia propia cuando corresponde.
 
+### Maxiconsumo Chaco
+
+Fuente mayorista principal para el NEA: https://maxiconsumo.com/sucursal_chaco/
+
+La app usa esta sucursal como referencia principal entre mayoristas. Si no trae
+datos, revisar primero:
+
+```bash
+MAXICONSUMO_ENABLED=true
+MAXICONSUMO_EMAIL=
+MAXICONSUMO_PASSWORD=
+MAXICONSUMO_HOME_URL=https://maxiconsumo.com/sucursal_chaco/
+MAXICONSUMO_LOGIN_URL=https://maxiconsumo.com/sucursal_chaco/customer/account/login/
+```
+
 ### Carrefour Comerciante / Maxi Pedido
 
-Fuente mayorista prioritaria: https://comerciante.carrefour.com.ar/
+Fuente mayorista esperada: https://comerciante.carrefour.com.ar/
 
 El sitio permite ver productos publicos, pero oculta precios como `private` hasta completar el formulario de comercio. Para Chaco se detecto:
 
@@ -187,6 +203,7 @@ CARREFOUR_COMERCIANTE_PHONE=
 CARREFOUR_COMERCIANTE_EMAIL=
 CARREFOUR_COMERCIANTE_COOKIE=
 CARREFOUR_COMERCIANTE_USER_AGENT=
+CARREFOUR_COMERCIANTE_AUTO_LOGIN=false
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
@@ -207,7 +224,14 @@ Si se carga `CARREFOUR_COMERCIANTE_COOKIE`, cargar tambien
 `CARREFOUR_COMERCIANTE_USER_AGENT` con el User-Agent exacto del navegador donde
 se obtuvo esa cookie. Cloudflare puede atar `cf_clearance` al User-Agent.
 
-Nota tecnica: el worker intenta generar el token de reCAPTCHA Enterprise en runtime usando la propia pagina y luego postea `/login` con estos datos. No cargar tokens manuales en `.env`: vencen y no sirven como credencial estable. Si reCAPTCHA no carga en el tiempo configurado o Carrefour devuelve productos con `data-price="private"`, la fuente queda en error visible y no inventa precios ni bloquea el tablero.
+El login automatico de Carrefour Comerciante queda desactivado por defecto porque
+reCAPTCHA Enterprise devuelve productos con precio privado. Para forzar el
+intento experimental, usar `CARREFOUR_COMERCIANTE_AUTO_LOGIN=true`.
+
+Nota tecnica: no cargar tokens manuales en `.env`: vencen y no sirven como
+credencial estable. Si Carrefour devuelve productos con `data-price="private"`,
+la fuente queda como pendiente/requiere login y no inventa precios ni bloquea el
+tablero.
 
 ## Publicacion
 

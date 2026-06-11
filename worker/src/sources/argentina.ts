@@ -16,13 +16,23 @@ const carrefourComercianteMissingFields = [
 ].flatMap(([label, value]) => (value ? [] : [label]));
 const hasCarrefourComercianteFields =
   carrefourComercianteMissingFields.length === 0;
+const hasCarrefourComercianteManualSession = Boolean(
+  config.carrefourComerciante.cookie,
+);
 const isCarrefourComercianteEnabled =
-  config.carrefourComerciante.enabled && hasCarrefourComercianteFields;
+  config.carrefourComerciante.enabled &&
+  (hasCarrefourComercianteManualSession ||
+    (config.carrefourComerciante.autoLoginEnabled &&
+      hasCarrefourComercianteFields));
 const carrefourComercianteDisabledReason =
-  carrefourComercianteMissingFields.length > 0
+  !config.carrefourComerciante.enabled
+    ? "Carrefour Comerciante requiere activar CARREFOUR_COMERCIANTE_ENABLED=true y cargar una sesion manual vigente para consultar precios."
+    : !hasCarrefourComercianteManualSession &&
+      !config.carrefourComerciante.autoLoginEnabled
+    ? "Carrefour Comerciante requiere CARREFOUR_COMERCIANTE_COOKIE y CARREFOUR_COMERCIANTE_USER_AGENT de una sesion manual donde los precios ya sean visibles. El login automatico queda desactivado por defecto porque reCAPTCHA Enterprise devuelve precios privados."
+    : !hasCarrefourComercianteManualSession &&
+        carrefourComercianteMissingFields.length > 0
     ? `Carrefour Comerciante requiere datos del comercio para intentar consultar precios: nombre y apellido, CUIT/DNI, telefono, email, provincia ${config.carrefourComerciante.region}, sucursal ${config.carrefourComerciante.sellerId} CARREFOUR MAXI RESISTENCIA CHACO y tipo de entrega ${config.carrefourComerciante.deliveryType}. Faltan variables: ${carrefourComercianteMissingFields.join(", ")}.`
-    : !config.carrefourComerciante.enabled
-    ? `Carrefour Comerciante tiene cargados los datos del comercio; activar CARREFOUR_COMERCIANTE_ENABLED=true para intentar sesion experimental con reCAPTCHA Enterprise. Provincia ${config.carrefourComerciante.region}, sucursal ${config.carrefourComerciante.sellerId} CARREFOUR MAXI RESISTENCIA CHACO y entrega ${config.carrefourComerciante.deliveryType}.`
     : undefined;
 
 export const scrapingSources: ScrapingSource[] = [
