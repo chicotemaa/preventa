@@ -208,6 +208,7 @@ Yaguar usa las mismas credenciales de Tokin si no se cargan variables propias:
 ```bash
 YAGUAR_ENABLED=true
 YAGUAR_BROWSER_FALLBACK=true
+YAGUAR_SOURCE_TIMEOUT_MS=45000
 YAGUAR_EMAIL=
 YAGUAR_PASSWORD=
 ```
@@ -215,7 +216,8 @@ YAGUAR_PASSWORD=
 Si `YAGUAR_EMAIL` y `YAGUAR_PASSWORD` quedan vacias, el worker intenta
 `TOKIN_EMAIL` y `TOKIN_PASSWORD`. El fallback con navegador real queda activo
 por defecto porque el login de Yaguar puede aceptar credenciales por AJAX pero
-no conservar la sesion en una llamada HTTP manual.
+no conservar la sesion en una llamada HTTP manual. Si el catalogo tarda en
+cargar, subir `YAGUAR_SOURCE_TIMEOUT_MS`.
 
 ### Carrefour Comerciante / Maxi Pedido
 

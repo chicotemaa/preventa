@@ -1,7 +1,9 @@
 import { extractProductsFromStaticHtmlText } from "./api-extractors.js";
 import { launchBrowser } from "./browser.js";
 import { config } from "./config.js";
-import type { Response as PlaywrightResponse } from "playwright";
+import { createProductResult } from "./extractors.js";
+import { normalizePrice } from "./normalizers.js";
+import type { Page, Response as PlaywrightResponse } from "playwright";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
 import { buildSearchUrl } from "./url.js";
 
@@ -21,7 +23,15 @@ type YaguarNonceResponse = {
   data?: string;
 };
 
-const YAGUAR_AUTH_TIMEOUT_MS = Math.max(config.sourceTimeoutMs, 20_000);
+type YaguarVisibleCandidate = {
+  rawName: string;
+  priceText: string;
+  sku: string | null;
+  imageUrl: string | null;
+  productUrl: string | null;
+};
+
+const YAGUAR_AUTH_TIMEOUT_MS = config.yaguar.sourceTimeoutMs;
 const YAGUAR_MAX_REDIRECTS = 5;
 const YAGUAR_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
@@ -40,15 +50,21 @@ export async function extractProductsFromYaguarAuth(
   }
 
   return withLocalTimeout(
-    fetchAuthenticatedYaguarProducts(source, query, email, password).catch(
-      (error) => {
+    fetchAuthenticatedYaguarProducts(source, query, email, password)
+      .then((results) => {
+        if (results.length > 0 || !config.yaguar.browserFallback) {
+          return results;
+        }
+
+        return fetchYaguarProductsWithBrowser(source, query, email, password);
+      })
+      .catch((error) => {
         if (!config.yaguar.browserFallback) {
           throw error;
         }
 
         return fetchYaguarProductsWithBrowser(source, query, email, password);
-      },
-    ),
+      }),
     YAGUAR_AUTH_TIMEOUT_MS,
   );
 }
@@ -94,12 +110,12 @@ async function fetchYaguarProductsWithBrowser(
   });
   const page = await context.newPage();
 
-  page.setDefaultTimeout(config.sourceTimeoutMs);
+  page.setDefaultTimeout(config.yaguar.sourceTimeoutMs);
 
   try {
     await page.goto(config.yaguar.loginUrl, {
       waitUntil: "domcontentloaded",
-      timeout: config.sourceTimeoutMs,
+      timeout: config.yaguar.sourceTimeoutMs,
     });
 
     await page.fill('input[name="username"], #username', email);
@@ -110,7 +126,7 @@ async function fetchYaguarProductsWithBrowser(
         (response) =>
           response.url().includes("/wp-admin/admin-ajax.php") &&
           response.request().method() === "POST",
-        { timeout: Math.min(config.sourceTimeoutMs, 12_000) },
+        { timeout: Math.min(config.yaguar.sourceTimeoutMs, 12_000) },
       )
       .catch(() => null);
 
@@ -130,7 +146,7 @@ async function fetchYaguarProductsWithBrowser(
 
     await page.goto(config.yaguar.homeUrl, {
       waitUntil: "domcontentloaded",
-      timeout: config.sourceTimeoutMs,
+      timeout: config.yaguar.sourceTimeoutMs,
     });
 
     const homeHtml = await page.content();
@@ -141,14 +157,16 @@ async function fetchYaguarProductsWithBrowser(
       );
     }
 
-    const url = buildSearchUrl(source.searchUrlTemplate, query);
-    await page.goto(url, {
+    await page.goto(config.yaguar.homeUrl, {
       waitUntil: "domcontentloaded",
-      timeout: config.sourceTimeoutMs,
+      timeout: config.yaguar.sourceTimeoutMs,
     });
+
+    await applyYaguarVisibleSearch(page, query);
     await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {
       return undefined;
     });
+    await page.waitForTimeout(1_000);
 
     const html = await page.content();
 
@@ -156,12 +174,174 @@ async function fetchYaguarProductsWithBrowser(
       throw new Error("Yaguar redirigio a login al consultar productos.");
     }
 
+    const browserResults = await extractProductsFromYaguarVisibleGrid(
+      page,
+      source,
+      query,
+    );
+
+    if (browserResults.length > 0) {
+      return browserResults;
+    }
+
+    const url = buildSearchUrl(source.searchUrlTemplate, query);
     return extractProductsFromStaticHtmlText(html, url, source, query);
   } finally {
     await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
   }
+}
+
+async function applyYaguarVisibleSearch(page: Page, query: string) {
+  const input = page
+    .locator(
+      [
+        'input[type="search"]',
+        'input[type="text"]',
+        'input:not([type])',
+      ].join(", "),
+    )
+    .filter({ visible: true })
+    .first();
+
+  try {
+    await input.fill(query, { timeout: 5_000 });
+    await input.press("Enter", { timeout: 2_000 }).catch(() => undefined);
+    await page.waitForTimeout(1_500);
+  } catch {
+    return undefined;
+  }
+}
+
+async function extractProductsFromYaguarVisibleGrid(
+  page: Page,
+  source: ScrapingSource,
+  query: string,
+) {
+  const candidates = (await page.evaluate(() => {
+    const addToCartPattern = /a(?:ñ|n)adir\s+al\s+carrito|agregar\s+al\s+carrito/i;
+    const pricePattern = /\$\s*\d[\d.,]*(?:\s*final)?/i;
+    const addToCartElements = "button, a, input[type='submit'], input[type='button']";
+    const buttons = Array.from(document.querySelectorAll(addToCartElements)).filter(
+      (element) => addToCartPattern.test(getElementText(element)),
+    );
+    const seen = new Set<Element>();
+
+    return buttons
+      .map((button) => {
+        const card = findProductCard(button);
+
+        if (!card || seen.has(card)) {
+          return null;
+        }
+
+        seen.add(card);
+        const text = (card as HTMLElement).innerText
+          .split("\n")
+          .map((line) => line.replace(/\s+/g, " ").trim())
+          .filter(Boolean);
+        const joinedText = text.join(" ");
+        const priceText = joinedText.match(pricePattern)?.[0] ?? "";
+        const priceLineIndex = text.findIndex((line) => pricePattern.test(line));
+        const nameLines = text
+          .slice(0, priceLineIndex >= 0 ? priceLineIndex : text.length)
+          .filter(isProductNameLine);
+        const rawName = nameLines.join(" ").replace(/\s+/g, " ").trim();
+        const code =
+          joinedText.match(/\bCod\.?\s*([A-Z0-9-]+)/i)?.[1] ??
+          joinedText.match(/\bSKU\s*([A-Z0-9-]+)/i)?.[1] ??
+          null;
+        const image = card.querySelector("img") as HTMLImageElement | null;
+        const link = card.querySelector('a[href*="/producto"], a[href*="/tienda/"]');
+
+        if (!rawName || !priceText) {
+          return null;
+        }
+
+        return {
+          rawName,
+          priceText,
+          sku: code,
+          imageUrl:
+            image?.currentSrc ||
+            image?.getAttribute("data-src") ||
+            image?.getAttribute("src") ||
+            null,
+          productUrl: link?.getAttribute("href") ?? null,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 80);
+
+    function findProductCard(button: Element) {
+      let current = button.parentElement;
+
+      while (current && current !== document.body) {
+        const text = (current as HTMLElement).innerText ?? "";
+        const addButtonsCount = Array.from(
+          current.querySelectorAll(addToCartElements),
+        ).filter((element) => addToCartPattern.test(getElementText(element)))
+          .length;
+
+        if (
+          addButtonsCount === 1 &&
+          pricePattern.test(text) &&
+          /\bCod\.?\s*[A-Z0-9-]+/i.test(text)
+        ) {
+          return current;
+        }
+
+        current = current.parentElement;
+      }
+
+      return null;
+    }
+
+    function isProductNameLine(line: string) {
+      return (
+        line.length >= 4 &&
+        !pricePattern.test(line) &&
+        !/^Cod\.?/i.test(line) &&
+        !/^\d+$/.test(line) &&
+        !addToCartPattern.test(line) &&
+        !/^limpiar filtros$/i.test(line) &&
+        !/^filtros$/i.test(line)
+      );
+    }
+
+    function getElementText(element: Element) {
+      const text = element.textContent?.trim();
+      const value = (element as HTMLInputElement).value?.trim();
+      const label = element.getAttribute("aria-label")?.trim();
+
+      return text || value || label || "";
+    }
+  })) as YaguarVisibleCandidate[];
+
+  const results: ProductSearchResult[] = [];
+
+  for (const candidate of candidates) {
+    const price = normalizePrice(candidate.priceText);
+
+    if (price === null) {
+      continue;
+    }
+
+    results.push({
+      ...createProductResult(
+        source,
+        query,
+        candidate.rawName,
+        price,
+        resolveYaguarUrl(candidate.productUrl),
+        resolveYaguarUrl(candidate.imageUrl),
+      ),
+      sku: candidate.sku,
+    });
+  }
+
+  return results;
 }
 
 async function readYaguarBrowserLoginError(
@@ -320,6 +500,22 @@ function resolveYaguarPostLoginUrl(payload: YaguarLoginResponse) {
     config.yaguar.homeUrl;
 
   return new URL(redirectCandidate, config.yaguar.homeUrl).toString();
+}
+
+function resolveYaguarUrl(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("data:image/")) {
+    return null;
+  }
+
+  try {
+    return new URL(value, config.yaguar.homeUrl).toString();
+  } catch {
+    return value;
+  }
 }
 
 function looksLikeUrl(value: string | undefined) {

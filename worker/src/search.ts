@@ -380,7 +380,7 @@ export async function searchSource(
   if (source.sourceKind === "yaguar_auth") {
     return withTimeout(
       runYaguarAuthSourceSearch(source, query, startedAt, options),
-      config.sourceTimeoutMs,
+      config.yaguar.sourceTimeoutMs,
     ).catch((error) => {
       const isTimeout =
         error instanceof Error &&

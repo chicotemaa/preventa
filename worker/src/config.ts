@@ -49,6 +49,10 @@ export const config = {
     email: getOptionalStringEnv("YAGUAR_EMAIL"),
     password: getOptionalStringEnv("YAGUAR_PASSWORD"),
     browserFallback: process.env.YAGUAR_BROWSER_FALLBACK !== "false",
+    sourceTimeoutMs: Math.max(
+      getNumberEnv("YAGUAR_SOURCE_TIMEOUT_MS", 45_000),
+      20_000,
+    ),
     loginUrl:
       getOptionalStringEnv("YAGUAR_LOGIN_URL") ??
       "https://yaguar.com.ar/chaco/login/",
