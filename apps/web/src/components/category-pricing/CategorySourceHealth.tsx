@@ -5,6 +5,9 @@ import type { SourceHealthSummary, SourceHealthItem } from "@/lib/category-prici
 
 export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary }) {
   const visibleItems = summary.items.filter((item) => item.expected || item.resultsCount > 0);
+  const ownItems = visibleItems.filter((item) => item.channel === "own");
+  const wholesaleItems = visibleItems.filter((item) => item.channel === "mayorista");
+  const retailItems = visibleItems.filter((item) => item.channel === "minorista");
 
   return (
     <section className="rounded-md border border-[#d9dee7] bg-white">
@@ -25,12 +28,46 @@ export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary
         </div>
       </div>
 
-      <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
-        {visibleItems.map((item) => (
+      <div className="flex flex-col gap-4 p-3">
+        <SourceHealthGroup title="Fuente propia" items={ownItems} />
+        <SourceHealthGroup title="Mayoristas prioritarios" items={wholesaleItems} emphasized />
+        <SourceHealthGroup title="Minoristas de referencia" items={retailItems} />
+      </div>
+    </section>
+  );
+}
+
+function SourceHealthGroup({
+  title,
+  items,
+  emphasized = false,
+}: {
+  title: string;
+  items: SourceHealthItem[];
+  emphasized?: boolean;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <div
+        className={
+          emphasized
+            ? "mb-2 flex items-center justify-between rounded bg-[#eaf7ef] px-3 py-2 text-xs font-black uppercase tracking-[0.05em] text-[#16613c]"
+            : "mb-2 px-1 text-xs font-black uppercase tracking-[0.05em] text-[#667789]"
+        }
+      >
+        <span>{title}</span>
+        {emphasized ? <span>{items.filter((item) => item.status === "ok").length} con datos</span> : null}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
           <SourceHealthCard key={item.sourceId} item={item} />
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 

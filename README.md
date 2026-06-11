@@ -183,6 +183,40 @@ MAXICONSUMO_HOME_URL=https://maxiconsumo.com/sucursal_chaco/
 MAXICONSUMO_LOGIN_URL=https://maxiconsumo.com/sucursal_chaco/customer/account/login/
 ```
 
+### Resolver de busquedas por categoria
+
+La vista de categorias busca por varias variantes del rubro para traer mas
+productos comparables. Para priorizar mayoristas sin disparar demasiado ruido en
+minoristas, se puede ajustar desde el worker:
+
+```bash
+CATEGORY_SEARCH_MAX_QUERIES=8
+CATEGORY_SEARCH_MAX_QUERIES_MAYORISTA=8
+CATEGORY_SEARCH_MAX_QUERIES_MINORISTA=5
+CATEGORY_SEARCH_MAX_QUERIES_YAGUAR=2
+CATEGORY_SEARCH_CONCURRENCY=8
+```
+
+Si faltan resultados mayoristas, subir primero
+`CATEGORY_SEARCH_MAX_QUERIES_MAYORISTA`. Si Yaguar queda lento, bajar
+`CATEGORY_SEARCH_MAX_QUERIES_YAGUAR`.
+
+### Yaguar Chaco
+
+Yaguar usa las mismas credenciales de Tokin si no se cargan variables propias:
+
+```bash
+YAGUAR_ENABLED=true
+YAGUAR_BROWSER_FALLBACK=true
+YAGUAR_EMAIL=
+YAGUAR_PASSWORD=
+```
+
+Si `YAGUAR_EMAIL` y `YAGUAR_PASSWORD` quedan vacias, el worker intenta
+`TOKIN_EMAIL` y `TOKIN_PASSWORD`. El fallback con navegador real queda activo
+por defecto porque el login de Yaguar puede aceptar credenciales por AJAX pero
+no conservar la sesion en una llamada HTTP manual.
+
 ### Carrefour Comerciante / Maxi Pedido
 
 Fuente mayorista esperada: https://comerciante.carrefour.com.ar/

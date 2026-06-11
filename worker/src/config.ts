@@ -26,6 +26,13 @@ export const config = {
     maxCandidates: getNumberEnv("AI_MATCHING_MAX_CANDIDATES", 5),
     timeoutMs: getNumberEnv("AI_MATCHING_TIMEOUT_MS", 6_000),
   },
+  categorySearch: {
+    maxQueries: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES", 8),
+    maxQueriesMayorista: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_MAYORISTA", 8),
+    maxQueriesMinorista: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_MINORISTA", 5),
+    maxQueriesYaguar: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_YAGUAR", 2),
+    concurrency: getNumberEnv("CATEGORY_SEARCH_CONCURRENCY", 8),
+  },
   maxiconsumo: {
     enabled: process.env.MAXICONSUMO_ENABLED !== "false",
     email: getOptionalStringEnv("MAXICONSUMO_EMAIL"),
@@ -41,6 +48,7 @@ export const config = {
     enabled: process.env.YAGUAR_ENABLED !== "false",
     email: getOptionalStringEnv("YAGUAR_EMAIL"),
     password: getOptionalStringEnv("YAGUAR_PASSWORD"),
+    browserFallback: process.env.YAGUAR_BROWSER_FALLBACK !== "false",
     loginUrl:
       getOptionalStringEnv("YAGUAR_LOGIN_URL") ??
       "https://yaguar.com.ar/chaco/login/",

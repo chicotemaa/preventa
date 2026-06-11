@@ -303,7 +303,9 @@ export const scrapingSources: ScrapingSource[] = [
     maxCards: 80,
     enabled: isTokinEnabled,
     disabledKind: "requires_login",
-    disabledReason: hasTokinCredentials
+    disabledReason: isTokinEnabled
+      ? undefined
+      : hasTokinCredentials
       ? "Fuente Tokin deshabilitada por TOKIN_ENABLED=false."
       : "Distribuidor oficial Arcor local; cargar TOKIN_EMAIL y TOKIN_PASSWORD para consultar el catalogo B2B en Tokin.",
   },
@@ -323,7 +325,9 @@ export const scrapingSources: ScrapingSource[] = [
     maxCards: 80,
     enabled: isYaguarEnabled,
     disabledKind: "requires_login",
-    disabledReason: hasYaguarCredentials
+    disabledReason: isYaguarEnabled
+      ? undefined
+      : hasYaguarCredentials
       ? "Fuente Yaguar Chaco deshabilitada por YAGUAR_ENABLED=false."
       : "Yaguar Chaco requiere login; cargar TOKIN_EMAIL/TOKIN_PASSWORD para usar las mismas credenciales de Aguiar, o YAGUAR_EMAIL/YAGUAR_PASSWORD si fueran distintas.",
   },

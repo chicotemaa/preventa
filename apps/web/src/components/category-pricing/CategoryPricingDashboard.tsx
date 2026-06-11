@@ -43,8 +43,8 @@ const filterOptions: Array<{ value: CategoryDecisionFilter; label: string }> = [
 ];
 
 const sortOptions: Array<{ value: CategoryDecisionSort; label: string }> = [
-  { value: "gap_desc", label: "Mayor diferencia vs Aguiar" },
   { value: "wholesale_price", label: "Menor precio mayorista" },
+  { value: "gap_desc", label: "Mayor diferencia vs Aguiar" },
   { value: "retail_price", label: "Menor precio minorista" },
   { value: "confidence_desc", label: "Mayor confianza" },
   { value: "winning_source", label: "Fuente ganadora" },
@@ -66,7 +66,7 @@ export function CategoryPricingDashboard({
     [group, searchedAt, sources],
   );
   const [filter, setFilter] = useState<CategoryDecisionFilter>("all");
-  const [sort, setSort] = useState<CategoryDecisionSort>("gap_desc");
+  const [sort, setSort] = useState<CategoryDecisionSort>("wholesale_price");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const rows = useMemo(

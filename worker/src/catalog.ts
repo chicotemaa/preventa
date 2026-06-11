@@ -36,6 +36,7 @@ import { compareSourcePriority } from "./source-priority.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
+import { config } from "./config.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
@@ -483,7 +484,7 @@ async function runCategorySourceSearches(
         query,
       })),
     ),
-    8,
+    config.categorySearch.concurrency,
     ({ source, query }) =>
       searchSource(source, query, undefined, {
         filterByConfidence: false,
@@ -514,7 +515,16 @@ function getCategoryQueriesForSource(
     return queries.slice(0, 1);
   }
 
-  return queries;
+  if (source.sourceKind === "yaguar_auth") {
+    return queries.slice(0, config.categorySearch.maxQueriesYaguar);
+  }
+
+  const maxQueries =
+    source.storeType === "mayorista"
+      ? config.categorySearch.maxQueriesMayorista
+      : config.categorySearch.maxQueriesMinorista;
+
+  return queries.slice(0, maxQueries);
 }
 
 function findCategoryCandidatesForQuery(query: string) {
@@ -584,7 +594,14 @@ function buildCategorySearchQueries(
     }
   }
 
-  return Array.from(queries).filter(Boolean).slice(0, 5);
+  const maxQueries = Math.max(
+    config.categorySearch.maxQueries,
+    config.categorySearch.maxQueriesMayorista,
+    config.categorySearch.maxQueriesMinorista,
+    config.categorySearch.maxQueriesYaguar,
+  );
+
+  return Array.from(queries).filter(Boolean).slice(0, maxQueries);
 }
 
 function buildCategorySearchGroups(

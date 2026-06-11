@@ -94,7 +94,6 @@ export function sourceNeedsBrowser(source: ScrapingSource) {
     "tokin",
     "vea_vtex_auth",
     "vtex_api",
-    "yaguar_auth",
     "static_html",
     "woocommerce_pmw_json",
     "cucher_supabase",

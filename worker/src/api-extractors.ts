@@ -273,6 +273,12 @@ export async function extractProductsFromCucherSupabase(
     },
   });
 
+  if (response.status === 402) {
+    throw new Error(
+      "Cucher Mercados no expone ofertas por API publica en este momento; Supabase respondio 402. Requiere nueva credencial, endpoint autorizado o carga manual de lista.",
+    );
+  }
+
   if (!response.ok) {
     throw new Error(`API Cucher Mercados respondio ${response.status}`);
   }
