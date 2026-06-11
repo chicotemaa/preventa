@@ -774,6 +774,9 @@ async function runYaguarAuthSourceSearch(
       results.length > 0 ? "success" : "no_results",
       results.length,
       startedAt,
+      results.length > 0
+        ? undefined
+        : "Yaguar fue consultado con las credenciales configuradas, pero no devolvio productos para esta busqueda.",
     ),
   };
 }

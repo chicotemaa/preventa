@@ -377,10 +377,38 @@ function buildSourceHealthItem(
     expected: Boolean(config?.expectedInDashboard),
     status,
     statusLabel: getSourceStatusLabel(status),
-    message: source?.errorMessage ?? config?.fallbackMessage ?? getSourceStatusLabel(status),
+    message: buildSourceHealthMessage(status, source, config),
     resultsCount: source?.resultsCount ?? 0,
     durationMs: source?.durationMs ?? 0,
   };
+}
+
+function buildSourceHealthMessage(
+  status: ExpectedSourceStatus,
+  source: SourceSearchStatus | undefined,
+  config: SourcePriorityConfig | null,
+) {
+  if (source?.errorMessage) {
+    return source.errorMessage;
+  }
+
+  if (source && status === "ok") {
+    if (config?.fallbackStatus === "requires_login") {
+      return "Fuente consultada con credenciales configuradas.";
+    }
+
+    return config?.fallbackMessage ?? "Fuente consultada con datos.";
+  }
+
+  if (source && status === "sin_datos") {
+    if (config?.sourceId === "yaguar-chaco-tienda-auth") {
+      return "Yaguar fue consultado con las credenciales configuradas, pero no devolvio productos para esta busqueda.";
+    }
+
+    return "Fuente consultada, sin productos utiles para esta busqueda.";
+  }
+
+  return config?.fallbackMessage ?? getSourceStatusLabel(status);
 }
 
 function classifySourceStatus(
