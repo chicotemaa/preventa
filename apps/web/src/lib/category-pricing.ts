@@ -390,10 +390,10 @@ function buildSourceHealthMessage(
 ) {
   if (source && status === "ok") {
     if (config?.fallbackStatus === "requires_login") {
-      return "Fuente consultada con credenciales configuradas.";
+      return "Fuente consultada con datos y credenciales configuradas.";
     }
 
-    return config?.fallbackMessage ?? "Fuente consultada con datos.";
+    return "Fuente consultada con datos.";
   }
 
   if (source && status === "sin_datos") {
