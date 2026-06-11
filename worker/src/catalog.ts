@@ -753,12 +753,17 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
       continue;
     }
 
+    const mergedStatus = mergeSourceStatus(current.status, source.status);
+
     bySource.set(source.sourceId, {
       ...current,
-      status: mergeSourceStatus(current.status, source.status),
+      status: mergedStatus,
       resultsCount: current.resultsCount + source.resultsCount,
       durationMs: current.durationMs + source.durationMs,
-      errorMessage: current.errorMessage ?? source.errorMessage,
+      errorMessage:
+        mergedStatus === "success"
+          ? undefined
+          : current.errorMessage ?? source.errorMessage,
     });
   }
 
@@ -2294,12 +2299,17 @@ function summarizeSourceStatuses(statuses: SourceSearchStatus[]) {
       continue;
     }
 
+    const mergedStatus = mergeStatus(existing.status, status.status);
+
     grouped.set(sourceId, {
       ...existing,
-      status: mergeStatus(existing.status, status.status),
+      status: mergedStatus,
       resultsCount: existing.resultsCount + status.resultsCount,
       durationMs: existing.durationMs + status.durationMs,
-      errorMessage: existing.errorMessage ?? status.errorMessage,
+      errorMessage:
+        mergedStatus === "success"
+          ? undefined
+          : existing.errorMessage ?? status.errorMessage,
       storeType:
         existing.storeType ??
         status.storeType ??

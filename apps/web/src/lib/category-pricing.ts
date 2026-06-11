@@ -388,10 +388,6 @@ function buildSourceHealthMessage(
   source: SourceSearchStatus | undefined,
   config: SourcePriorityConfig | null,
 ) {
-  if (source?.errorMessage) {
-    return source.errorMessage;
-  }
-
   if (source && status === "ok") {
     if (config?.fallbackStatus === "requires_login") {
       return "Fuente consultada con credenciales configuradas.";
@@ -406,6 +402,10 @@ function buildSourceHealthMessage(
     }
 
     return "Fuente consultada, sin productos utiles para esta busqueda.";
+  }
+
+  if (source?.errorMessage) {
+    return source.errorMessage;
   }
 
   return config?.fallbackMessage ?? getSourceStatusLabel(status);
