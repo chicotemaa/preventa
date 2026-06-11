@@ -7,7 +7,7 @@ type CookieJar = Map<string, string>;
 
 const userAgent =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+  "(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 
 export async function extractProductsFromMaxiconsumoAuth(
   source: ScrapingSource,
@@ -46,7 +46,9 @@ async function fetchPublicSearchResults(
   source: ScrapingSource,
   query: string,
 ) {
-  const publicHtml = await fetchHtml(searchUrl, new Map());
+  const cookies: CookieJar = new Map();
+  await fetchHtml(config.maxiconsumo.homeUrl, cookies).catch(() => undefined);
+  const publicHtml = await fetchHtml(searchUrl, cookies);
   return extractProductsFromStaticHtmlText(publicHtml, searchUrl, source, query);
 }
 
@@ -146,6 +148,12 @@ function buildHeaders(cookies: CookieJar) {
   const headers: Record<string, string> = {
     accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "accept-language": "es-AR,es;q=0.9,en;q=0.7",
+    "cache-control": "max-age=0",
+    referer: config.maxiconsumo.homeUrl,
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "same-origin",
+    "upgrade-insecure-requests": "1",
     "user-agent": userAgent,
   };
   const cookieHeader = serializeCookies(cookies);
