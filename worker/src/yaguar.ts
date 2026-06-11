@@ -3,11 +3,20 @@ import { launchBrowser } from "./browser.js";
 import { config } from "./config.js";
 import { createProductResult } from "./extractors.js";
 import { normalizePrice } from "./normalizers.js";
-import type { Page, Response as PlaywrightResponse } from "playwright";
+import type {
+  BrowserContext,
+  Page,
+  Response as PlaywrightResponse,
+} from "playwright";
 import type { ProductSearchResult, ScrapingSource } from "./types.js";
 import { buildSearchUrl } from "./url.js";
 
 type CookieJar = Map<string, string>;
+
+type YaguarAuthenticatedResult = {
+  results: ProductSearchResult[];
+  cookies: CookieJar;
+};
 
 type YaguarLoginResponse = {
   success?: boolean;
@@ -51,12 +60,18 @@ export async function extractProductsFromYaguarAuth(
 
   return withLocalTimeout(
     fetchAuthenticatedYaguarProducts(source, query, email, password)
-      .then((results) => {
+      .then(({ results, cookies }) => {
         if (results.length > 0 || !config.yaguar.browserFallback) {
           return results;
         }
 
-        return fetchYaguarProductsWithBrowser(source, query, email, password);
+        return fetchYaguarProductsWithBrowser(
+          source,
+          query,
+          email,
+          password,
+          cookies,
+        );
       })
       .catch((error) => {
         if (!config.yaguar.browserFallback) {
@@ -74,7 +89,7 @@ async function fetchAuthenticatedYaguarProducts(
   query: string,
   email: string,
   password: string,
-) {
+): Promise<YaguarAuthenticatedResult> {
   const cookies: CookieJar = new Map();
   const loginHtml = await fetchYaguarHtml(config.yaguar.loginUrl, cookies);
   const pageNonce = findYaguarLoginNonce(loginHtml);
@@ -93,7 +108,10 @@ async function fetchAuthenticatedYaguarProducts(
     throw new Error("Yaguar no mantuvo la sesion luego del login.");
   }
 
-  return extractProductsFromStaticHtmlText(html, url, source, query);
+  return {
+    results: extractProductsFromStaticHtmlText(html, url, source, query),
+    cookies,
+  };
 }
 
 async function fetchYaguarProductsWithBrowser(
@@ -101,6 +119,7 @@ async function fetchYaguarProductsWithBrowser(
   query: string,
   email: string,
   password: string,
+  authenticatedCookies?: CookieJar,
 ) {
   const browser = await launchBrowser();
   const context = await browser.newContext({
@@ -108,41 +127,17 @@ async function fetchYaguarProductsWithBrowser(
     timezoneId: "America/Argentina/Cordoba",
     userAgent: YAGUAR_USER_AGENT,
   });
+
+  await addYaguarCookiesToContext(context, authenticatedCookies);
+
   const page = await context.newPage();
 
   page.setDefaultTimeout(config.yaguar.sourceTimeoutMs);
 
   try {
-    await page.goto(config.yaguar.loginUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: config.yaguar.sourceTimeoutMs,
-    });
-
-    await page.fill('input[name="username"], #username', email);
-    await page.fill('input[name="password"], #password', password);
-
-    const loginResponse = page
-      .waitForResponse(
-        (response) =>
-          response.url().includes("/wp-admin/admin-ajax.php") &&
-          response.request().method() === "POST",
-        { timeout: Math.min(config.yaguar.sourceTimeoutMs, 12_000) },
-      )
-      .catch(() => null);
-
-    await page.click("#user_registration_ajax_login_submit, button[name='login']");
-    const response = await loginResponse;
-    const loginError = await readYaguarBrowserLoginError(response);
-
-    if (loginError) {
-      throw new Error(loginError);
+    if (!authenticatedCookies?.size) {
+      await loginYaguarWithBrowser(page, email, password);
     }
-
-    await page
-      .waitForURL((url) => !url.pathname.includes("/login"), {
-        timeout: 6_000,
-      })
-      .catch(() => undefined);
 
     await page.goto(config.yaguar.homeUrl, {
       waitUntil: "domcontentloaded",
@@ -191,6 +186,60 @@ async function fetchYaguarProductsWithBrowser(
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
   }
+}
+
+async function addYaguarCookiesToContext(
+  context: BrowserContext,
+  cookies: CookieJar | undefined,
+) {
+  if (!cookies?.size) {
+    return;
+  }
+
+  await context.addCookies(
+    Array.from(cookies.entries()).map(([name, value]) => ({
+      name,
+      value,
+      url: config.yaguar.homeUrl,
+    })),
+  );
+}
+
+async function loginYaguarWithBrowser(
+  page: Page,
+  email: string,
+  password: string,
+) {
+  await page.goto(config.yaguar.loginUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: config.yaguar.sourceTimeoutMs,
+  });
+
+  await page.fill('input[name="username"], #username', email);
+  await page.fill('input[name="password"], #password', password);
+
+  const loginResponse = page
+    .waitForResponse(
+      (response) =>
+        response.url().includes("/wp-admin/admin-ajax.php") &&
+        response.request().method() === "POST",
+      { timeout: Math.min(config.yaguar.sourceTimeoutMs, 12_000) },
+    )
+    .catch(() => null);
+
+  await page.click("#user_registration_ajax_login_submit, button[name='login']");
+  const response = await loginResponse;
+  const loginError = await readYaguarBrowserLoginError(response);
+
+  if (loginError) {
+    throw new Error(loginError);
+  }
+
+  await page
+    .waitForURL((url) => !url.pathname.includes("/login"), {
+      timeout: 6_000,
+    })
+    .catch(() => undefined);
 }
 
 async function applyYaguarVisibleSearch(page: Page, query: string) {
@@ -320,13 +369,18 @@ async function extractProductsFromYaguarVisibleGrid(
     }
 
     for (const element of document.querySelectorAll(productSelectors)) {
-      if (isSmallestProductCard(element)) {
+      if (isLikelyNamedProductCard(element)) {
         cards.add(element);
       }
     }
 
     for (const element of document.querySelectorAll("body *")) {
-      if (isSmallestProductCard(element)) {
+      if (
+        isLikelyNamedProductCard(element) &&
+        !Array.from(element.children).some((child) =>
+          isLikelyNamedProductCard(child),
+        )
+      ) {
         cards.add(element);
       }
     }
@@ -343,18 +397,7 @@ async function extractProductsFromYaguarVisibleGrid(
           .filter(Boolean);
         const joinedText = text.join(" ");
         const priceText = joinedText.match(pricePattern)?.[0] ?? "";
-        const priceLineIndex = text.findIndex((line) => pricePattern.test(line));
-        const codeLineIndex = text.findIndex((line) => codePattern.test(line));
-        const nameLines = text
-          .slice(
-            0,
-            codeLineIndex >= 0
-              ? codeLineIndex
-              : priceLineIndex >= 0
-              ? priceLineIndex
-              : text.length,
-          )
-          .filter(isProductNameLine);
+        const nameLines = getProductNameLines(card);
         const rawName = nameLines.join(" ").replace(/\s+/g, " ").trim();
         const code =
           joinedText.match(/\bCod\.?\s*([A-Z0-9-]+)/i)?.[1] ??
@@ -384,26 +427,21 @@ async function extractProductsFromYaguarVisibleGrid(
 
     function findProductCard(button: Element) {
       let current = button.parentElement;
+      let fallback: Element | null = null;
 
       while (current && current !== document.body) {
-        if (isLikelyProductCard(current)) {
+        if (isLikelyNamedProductCard(current)) {
           return current;
+        }
+
+        if (!fallback && isLikelyProductCard(current)) {
+          fallback = current;
         }
 
         current = current.parentElement;
       }
 
-      return null;
-    }
-
-    function isSmallestProductCard(element: Element) {
-      if (!isLikelyProductCard(element)) {
-        return false;
-      }
-
-      return !Array.from(element.children).some((child) =>
-        isLikelyProductCard(child),
-      );
+      return fallback;
     }
 
     function isLikelyProductCard(element: Element) {
@@ -425,6 +463,30 @@ async function extractProductsFromYaguarVisibleGrid(
         addButtonsCount <= 3 &&
         !/^filtros/i.test(text)
       );
+    }
+
+    function isLikelyNamedProductCard(element: Element) {
+      return isLikelyProductCard(element) && getProductNameLines(element).length > 0;
+    }
+
+    function getProductNameLines(element: Element) {
+      const lines = ((element as HTMLElement).innerText ?? "")
+        .split("\n")
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      const priceLineIndex = lines.findIndex((line) => pricePattern.test(line));
+      const codeLineIndex = lines.findIndex((line) => codePattern.test(line));
+
+      return lines
+        .slice(
+          0,
+          codeLineIndex >= 0
+            ? codeLineIndex
+            : priceLineIndex >= 0
+            ? priceLineIndex
+            : lines.length,
+        )
+        .filter(isProductNameLine);
     }
 
     function isProductNameLine(line: string) {
