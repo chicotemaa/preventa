@@ -194,20 +194,93 @@ async function fetchYaguarProductsWithBrowser(
 }
 
 async function applyYaguarVisibleSearch(page: Page, query: string) {
-  const input = page
-    .locator(
-      [
-        'input[type="search"]',
-        'input[type="text"]',
-        'input:not([type])',
-      ].join(", "),
-    )
-    .filter({ visible: true })
-    .first();
-
   try {
-    await input.fill(query, { timeout: 5_000 });
-    await input.press("Enter", { timeout: 2_000 }).catch(() => undefined);
+    const filled = await page.evaluate((searchTerm) => {
+      const inputs = Array.from(document.querySelectorAll("input")).filter(
+        (input) => {
+          const rect = input.getBoundingClientRect();
+          const style = window.getComputedStyle(input);
+          const type = input.getAttribute("type")?.toLowerCase() ?? "text";
+
+          return (
+            rect.width > 80 &&
+            rect.height > 16 &&
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            !["hidden", "password", "number", "checkbox", "radio", "submit"].includes(type)
+          );
+        },
+      );
+
+      const scoredInputs = inputs
+        .map((input) => {
+          const rect = input.getBoundingClientRect();
+          const surroundingText = getSurroundingText(input);
+          const type = input.getAttribute("type")?.toLowerCase() ?? "text";
+          let score = 100;
+
+          if (/filtros|limpiar filtros/i.test(surroundingText)) {
+            score -= 60;
+          }
+
+          if (type === "search") {
+            score -= 20;
+          }
+
+          if (rect.left < window.innerWidth * 0.45) {
+            score -= 10;
+          }
+
+          return { input, score };
+        })
+        .sort((first, second) => first.score - second.score);
+
+      const input = scoredInputs[0]?.input;
+
+      if (!input) {
+        return false;
+      }
+
+      input.focus();
+      input.value = searchTerm;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      input.dispatchEvent(
+        new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
+      );
+
+      return true;
+
+      function getSurroundingText(input: HTMLInputElement) {
+        let current: Element | null = input;
+
+        for (let depth = 0; current && depth < 5; depth += 1) {
+          const text = (current as HTMLElement).innerText;
+
+          if (text && text.length < 2_000) {
+            return text;
+          }
+
+          current = current.parentElement;
+        }
+
+        return "";
+      }
+    }, query);
+
+    if (!filled) {
+      return undefined;
+    }
+
+    await page.keyboard.press("Enter").catch(() => undefined);
+    await page
+      .waitForFunction(
+        () =>
+          /\bCod\.?\s*[A-Z0-9-]+/i.test(document.body.innerText) &&
+          /\$\s*\d[\d.,]*/.test(document.body.innerText),
+        { timeout: 10_000 },
+      )
+      .catch(() => undefined);
     await page.waitForTimeout(1_500);
   } catch {
     return undefined;
@@ -222,21 +295,48 @@ async function extractProductsFromYaguarVisibleGrid(
   const candidates = (await page.evaluate(() => {
     const addToCartPattern = /a(?:ñ|n)adir\s+al\s+carrito|agregar\s+al\s+carrito/i;
     const pricePattern = /\$\s*\d[\d.,]*(?:\s*final)?/i;
+    const codePattern = /\bCod\.?\s*[A-Z0-9-]+/i;
     const addToCartElements = "button, a, input[type='submit'], input[type='button']";
+    const productSelectors = [
+      ".product",
+      ".product-type-simple",
+      "li.product",
+      ".e-loop-item",
+      ".elementor-loop-item",
+      "[class*='product']",
+      "[data-product_id]",
+    ].join(", ");
+    const cards = new Set<Element>();
     const buttons = Array.from(document.querySelectorAll(addToCartElements)).filter(
       (element) => addToCartPattern.test(getElementText(element)),
     );
-    const seen = new Set<Element>();
 
-    return buttons
-      .map((button) => {
-        const card = findProductCard(button);
+    for (const button of buttons) {
+      const card = findProductCard(button);
 
-        if (!card || seen.has(card)) {
+      if (card) {
+        cards.add(card);
+      }
+    }
+
+    for (const element of document.querySelectorAll(productSelectors)) {
+      if (isSmallestProductCard(element)) {
+        cards.add(element);
+      }
+    }
+
+    for (const element of document.querySelectorAll("body *")) {
+      if (isSmallestProductCard(element)) {
+        cards.add(element);
+      }
+    }
+
+    return Array.from(cards)
+      .map((card) => {
+        if (!isLikelyProductCard(card)) {
           return null;
         }
 
-        seen.add(card);
         const text = (card as HTMLElement).innerText
           .split("\n")
           .map((line) => line.replace(/\s+/g, " ").trim())
@@ -244,8 +344,16 @@ async function extractProductsFromYaguarVisibleGrid(
         const joinedText = text.join(" ");
         const priceText = joinedText.match(pricePattern)?.[0] ?? "";
         const priceLineIndex = text.findIndex((line) => pricePattern.test(line));
+        const codeLineIndex = text.findIndex((line) => codePattern.test(line));
         const nameLines = text
-          .slice(0, priceLineIndex >= 0 ? priceLineIndex : text.length)
+          .slice(
+            0,
+            codeLineIndex >= 0
+              ? codeLineIndex
+              : priceLineIndex >= 0
+              ? priceLineIndex
+              : text.length,
+          )
           .filter(isProductNameLine);
         const rawName = nameLines.join(" ").replace(/\s+/g, " ").trim();
         const code =
@@ -278,17 +386,7 @@ async function extractProductsFromYaguarVisibleGrid(
       let current = button.parentElement;
 
       while (current && current !== document.body) {
-        const text = (current as HTMLElement).innerText ?? "";
-        const addButtonsCount = Array.from(
-          current.querySelectorAll(addToCartElements),
-        ).filter((element) => addToCartPattern.test(getElementText(element)))
-          .length;
-
-        if (
-          addButtonsCount === 1 &&
-          pricePattern.test(text) &&
-          /\bCod\.?\s*[A-Z0-9-]+/i.test(text)
-        ) {
+        if (isLikelyProductCard(current)) {
           return current;
         }
 
@@ -296,6 +394,37 @@ async function extractProductsFromYaguarVisibleGrid(
       }
 
       return null;
+    }
+
+    function isSmallestProductCard(element: Element) {
+      if (!isLikelyProductCard(element)) {
+        return false;
+      }
+
+      return !Array.from(element.children).some((child) =>
+        isLikelyProductCard(child),
+      );
+    }
+
+    function isLikelyProductCard(element: Element) {
+      const text = (element as HTMLElement).innerText ?? "";
+      const priceMatches = text.match(new RegExp(pricePattern, "gi")) ?? [];
+      const codeMatches = text.match(new RegExp(codePattern, "gi")) ?? [];
+      const addButtonsCount = Array.from(
+        element.querySelectorAll(addToCartElements),
+      ).filter((candidate) => addToCartPattern.test(getElementText(candidate)))
+        .length;
+
+      return (
+        text.length >= 20 &&
+        text.length <= 1_000 &&
+        priceMatches.length >= 1 &&
+        priceMatches.length <= 3 &&
+        codeMatches.length >= 1 &&
+        codeMatches.length <= 3 &&
+        addButtonsCount <= 3 &&
+        !/^filtros/i.test(text)
+      );
     }
 
     function isProductNameLine(line: string) {
