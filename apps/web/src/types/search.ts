@@ -109,6 +109,37 @@ export type CategoryBrandSummary = {
   sourceNames: string[];
 };
 
+export type CarrefourComercianteSessionValidationRequest = {
+  cookie?: string;
+  userAgent?: string;
+  query?: string;
+};
+
+export type CarrefourComercianteSessionValidationResponse = {
+  ok: boolean;
+  status:
+    | "authorized"
+    | "private_prices"
+    | "missing_cookie"
+    | "logged_out"
+    | "no_public_products"
+    | "failed";
+  message: string;
+  checkedAt: string;
+  query: string;
+  durationMs: number;
+  productsCount: number;
+  privateProductsCount: number;
+  visiblePriceProductsCount: number;
+  sampleProducts: Array<{
+    name: string;
+    price: number | null;
+    barcode: string | null;
+  }>;
+  nextAction: string;
+  requiredEnv: string[];
+};
+
 export type PriceListInputItem = {
   rowNumber: number;
   rubro?: string;

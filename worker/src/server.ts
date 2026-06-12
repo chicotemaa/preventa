@@ -1,5 +1,6 @@
 import http from "node:http";
 import { z } from "zod";
+import { validateCarrefourComercianteSession } from "./carrefour-comerciante.js";
 import {
   getCatalogMetadata,
   getCatalogSnapshot,
@@ -15,6 +16,12 @@ import { runLiveSearch } from "./search.js";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
+});
+
+const carrefourComercianteSessionValidationSchema = z.object({
+  cookie: z.string().trim().optional(),
+  userAgent: z.string().trim().optional(),
+  query: z.string().trim().min(2).max(120).optional(),
 });
 
 const priceListRequestSchema = z.object({
@@ -57,6 +64,8 @@ const server = http.createServer(async (request, response) => {
         catalog: "GET /catalog",
         catalogSearch: "POST /catalog/search",
         categorySearch: "POST /catalog/category-search",
+        carrefourComercianteSession:
+          "POST /sources/carrefour-comerciante/session/validate",
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         liveSearch: "POST /search",
@@ -97,6 +106,14 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (
+    request.method === "POST" &&
+    url.pathname === "/sources/carrefour-comerciante/session/validate"
+  ) {
+    await handleCarrefourComercianteSessionValidation(request, response);
+    return;
+  }
+
   if (request.method !== "POST" || url.pathname !== "/search") {
     sendJson(response, 404, {
       error: "Endpoint no encontrado.",
@@ -108,6 +125,7 @@ const server = http.createServer(async (request, response) => {
         "POST /catalog/category-search",
         "POST /catalog/price-list",
         "POST /catalog/sync",
+        "POST /sources/carrefour-comerciante/session/validate",
         "POST /search",
       ],
     });
@@ -222,6 +240,37 @@ async function handleCatalogPriceList(
         error instanceof Error
           ? error.message
           : "Error interno evaluando la lista.",
+    });
+  }
+}
+
+async function handleCarrefourComercianteSessionValidation(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    const body = await readJsonBody(request);
+    const parsed = carrefourComercianteSessionValidationSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error:
+          "Datos invalidos. La consulta debe tener entre 2 y 120 caracteres.",
+      });
+      return;
+    }
+
+    sendJson(
+      response,
+      200,
+      await validateCarrefourComercianteSession(parsed.data),
+    );
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno validando Carrefour Comerciante.",
     });
   }
 }

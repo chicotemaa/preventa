@@ -17,7 +17,7 @@ La aplicacion ayuda a preparar y revisar listas de precios semanales. El usuario
 ```text
 Aguiar Gestion de Precios
 
-[ Categorias ] [ Busqueda general ] [ Importacion ] [ Evolucion ] [ Historial ]
+[ Categorias ] [ Busqueda general ] [ Importacion ] [ Evolucion ] [ Historial ] [ Configuracion ]
 
 Categorias
   Buscar familia
@@ -37,6 +37,10 @@ Importacion
 Evolucion / Historial
   Ver corridas guardadas
   Comparar cambios de precios
+
+Configuracion
+  Validar sesiones privadas de fuentes mayoristas
+  Detectar si Carrefour Comerciante ya devuelve precios visibles
 ```
 
 ## Pagina: Categorias
@@ -199,6 +203,35 @@ Uso:
 2. Entrar a una corrida.
 3. Revisar detalle de articulos, precios y fuentes.
 4. Usar el detalle para auditar una lista anterior.
+
+## Pagina: Configuracion
+
+Ruta: `/configuracion`
+
+Sirve para validar sesiones de fuentes que no exponen precios publicos. El caso
+principal es Carrefour Comerciante.
+
+Estados posibles:
+
+- `Sesion valida`: la cookie devuelve productos con precios visibles.
+- `Precios privados`: la cookie devuelve productos, pero Carrefour aun oculta
+  precios.
+- `Sesion no autorizada`: la cookie no conserva el acceso al catalogo privado.
+- `Falta cookie`: no hay sesion para probar.
+
+Cuando la validacion da `Sesion valida`, cargar en el entorno del worker:
+
+```bash
+CARREFOUR_COMERCIANTE_ENABLED=true
+CARREFOUR_COMERCIANTE_COOKIE=
+CARREFOUR_COMERCIANTE_USER_AGENT=
+CARREFOUR_COMERCIANTE_REGION=CHACO
+CARREFOUR_COMERCIANTE_SELLER_ID=506
+CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
+```
+
+La cookie vence. Cuando Carrefour vuelva a mostrar precios privados, renovar la
+sesion y redeployar el worker con la cookie actualizada.
 
 ## Depuracion para usuarios
 

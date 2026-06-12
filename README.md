@@ -115,6 +115,7 @@ npm run dev:worker
 - `/importacion`: carga de Excel/lista semanal, comparacion y exportacion.
 - `/evolucion`: evolucion de precios con corridas guardadas.
 - `/historial`: historial y detalle de corridas guardadas.
+- `/configuracion`: validacion de sesiones privadas de fuentes mayoristas.
 
 ## Worker endpoints
 
@@ -124,6 +125,7 @@ npm run dev:worker
 - `POST /catalog/search`: busca sobre el catalogo actual.
 - `POST /catalog/category-search`: agrupa resultados por familia/categoria.
 - `POST /catalog/price-list`: compara una lista importada.
+- `POST /sources/carrefour-comerciante/session/validate`: valida cookie de Carrefour Comerciante.
 - `POST /search`: busqueda viva directa.
 
 ## Fuentes configuradas
@@ -232,7 +234,7 @@ El sitio permite ver productos publicos, pero oculta precios como `private` hast
 Datos a completar en el worker:
 
 ```bash
-CARREFOUR_COMERCIANTE_ENABLED=false
+CARREFOUR_COMERCIANTE_ENABLED=true
 CARREFOUR_COMERCIANTE_NAME=
 CARREFOUR_COMERCIANTE_DOCUMENT=
 CARREFOUR_COMERCIANTE_PHONE=
@@ -258,7 +260,15 @@ esa cookie en el repositorio.
 
 Si se carga `CARREFOUR_COMERCIANTE_COOKIE`, cargar tambien
 `CARREFOUR_COMERCIANTE_USER_AGENT` con el User-Agent exacto del navegador donde
-se obtuvo esa cookie. Cloudflare puede atar `cf_clearance` al User-Agent.
+se obtuvo esa cookie.
+
+La app incluye `/configuracion` para validar la cookie antes de cargarla en
+produccion. El resultado correcto es `Sesion valida`, con productos y precios
+visibles. Si devuelve `Precios privados`, la cookie pertenece a una sesion donde
+Carrefour aun no habilito precios y hay que renovarla desde una sesion manual
+donde ya se vean valores reales.
+Cloudflare puede atar `cf_clearance` al User-Agent, por eso ambos valores deben
+salir de la misma sesion.
 
 El login automatico de Carrefour Comerciante queda desactivado por defecto porque
 reCAPTCHA Enterprise devuelve productos con precio privado. Para forzar el

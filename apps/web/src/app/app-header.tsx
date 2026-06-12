@@ -9,6 +9,7 @@ const navItems = [
   { href: "/importacion", label: "Importación" },
   { href: "/evolucion", label: "Evolución" },
   { href: "/historial", label: "Historial" },
+  { href: "/configuracion", label: "Configuración" },
 ];
 
 export function AppHeader() {
