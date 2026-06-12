@@ -202,10 +202,12 @@ export async function searchSource(
   }
 
   if (source.sourceKind === "carrefour_comerciante") {
-    return withTimeout(
-      runCarrefourComercianteSourceSearch(source, query, startedAt, options),
-      config.carrefourComerciante.sourceTimeoutMs,
-    ).catch((error) => {
+    try {
+      return await withTimeout(
+        runCarrefourComercianteSourceSearch(source, query, startedAt, options),
+        config.carrefourComerciante.sourceTimeoutMs,
+      );
+    } catch (error) {
       const isTimeout =
         error instanceof Error &&
         error.message.toLowerCase().includes("timeout");
@@ -220,7 +222,7 @@ export async function searchSource(
           error instanceof Error ? error.message : "Error desconocido",
         ),
       };
-    });
+    }
   }
 
   if (source.sourceKind === "vea_vtex_auth") {
@@ -564,7 +566,45 @@ async function runCarrefourComercianteSourceSearch(
   startedAt: number,
   options: SearchSourceOptions,
 ): Promise<SearchSourceResult> {
-  const rawResults = await extractProductsFromCarrefourComerciante(source, query);
+  let rawResults: ProductSearchResult[];
+
+  try {
+    const extraction = await extractProductsFromCarrefourComerciante(
+      source,
+      query,
+    );
+
+    if (extraction.issue) {
+      return {
+        results: [],
+        status: buildStatus(
+          source,
+          extraction.issue.status,
+          0,
+          startedAt,
+          extraction.issue.message,
+        ),
+      };
+    }
+
+    rawResults = extraction.products;
+  } catch (error) {
+    const isTimeout =
+      error instanceof Error &&
+      error.message.toLowerCase().includes("timeout");
+
+    return {
+      results: [],
+      status: buildStatus(
+        source,
+        isTimeout ? "timeout" : "failed",
+        0,
+        startedAt,
+        error instanceof Error ? error.message : "Error desconocido",
+      ),
+    };
+  }
+
   const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
   const dedupedResults = dedupeResults(
@@ -585,6 +625,9 @@ async function runCarrefourComercianteSourceSearch(
       results.length > 0 ? "success" : "no_results",
       results.length,
       startedAt,
+      results.length > 0
+        ? undefined
+        : "Carrefour Comerciante fue consultado, pero no devolvio productos para esta busqueda.",
     ),
   };
 }
