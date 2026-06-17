@@ -123,6 +123,15 @@ export const config = {
       "CARREFOUR_COMERCIANTE_PRODUCT_TIMEOUT_MS",
       8_000,
     ),
+    syncMaxQueries: getNumberEnv("CARREFOUR_COMERCIANTE_SYNC_MAX_QUERIES", 30),
+    syncMaxPagesPerQuery: getNumberEnv(
+      "CARREFOUR_COMERCIANTE_SYNC_MAX_PAGES_PER_QUERY",
+      6,
+    ),
+    syncItemsPerPage: getNumberEnv(
+      "CARREFOUR_COMERCIANTE_SYNC_ITEMS_PER_PAGE",
+      24,
+    ),
   },
   tokin: {
     enabled: process.env.TOKIN_ENABLED !== "false",

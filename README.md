@@ -125,7 +125,11 @@ npm run dev:worker
 - `POST /catalog/search`: busca sobre el catalogo actual.
 - `POST /catalog/category-search`: agrupa resultados por familia/categoria.
 - `POST /catalog/price-list`: compara una lista importada.
+- `GET /sources/sessions`: estado de sesiones guardadas por fuente.
 - `POST /sources/carrefour-comerciante/session/validate`: valida cookie de Carrefour Comerciante.
+- `POST /sources/carrefour-comerciante/session/save`: valida y guarda una sesion autorizada de Carrefour Comerciante.
+- `GET /sources/carrefour-comerciante/catalog`: lee el snapshot guardado de Carrefour Comerciante.
+- `POST /sources/carrefour-comerciante/catalog/sync`: sincroniza productos de Carrefour Comerciante usando la sesion guardada.
 - `POST /search`: busqueda viva directa.
 
 ## Fuentes configuradas
@@ -295,6 +299,28 @@ SUPABASE_PERSIST_PRICE_LISTS=true
 ```
 
 Despues de cambiar `WORKER_URL`, redeployar el frontend.
+
+## Sesiones de fuentes privadas
+
+Para fuentes con precios privados, como Carrefour Comerciante, el usuario final no debe copiar cookies ni usar DevTools. El flujo recomendado es:
+
+1. Un administrador entra en `/configuracion`.
+2. Valida una sesion donde los precios ya son visibles.
+3. Guarda la sesion en el worker.
+4. Ejecuta `Sincronizar catalogo`.
+5. La app usa el snapshot guardado en categorias y comparativas.
+
+Variables recomendadas en el worker:
+
+```bash
+CARREFOUR_COMERCIANTE_ENABLED=true
+SOURCE_SESSION_SECRET=<clave-larga-aleatoria>
+CARREFOUR_COMERCIANTE_REGION=CHACO
+CARREFOUR_COMERCIANTE_SELLER_ID=506
+CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
+```
+
+`SOURCE_SESSION_SECRET` cifra las cookies guardadas. Si no se configura, el MVP guarda en modo local sin cifrado fuerte, util solo para desarrollo. En produccion usar un worker con disco durable/volumen o mover `worker/data/source-sessions.json` y `worker/data/source-snapshots.json` a una base de datos.
 
 ## Matching con IA
 

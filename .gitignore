@@ -1,6 +1,8 @@
 node_modules/
 apps/web/.next/
 worker/dist/
+worker/data/source-sessions.json
+worker/data/source-snapshots.json
 
 .env
 .env.*

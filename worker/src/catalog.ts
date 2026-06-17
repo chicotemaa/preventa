@@ -33,6 +33,10 @@ import {
 import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { compareSourcePriority } from "./source-priority.js";
+import {
+  getStoredSourceCatalogProducts,
+  getStoredSourceCatalogStatuses,
+} from "./source-session-store.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
@@ -112,6 +116,7 @@ export async function loadCatalogFromDisk() {
     await persistCatalogIfWritable(currentCatalog);
   }
 
+  await reloadStoredSourceCatalogs();
   return currentCatalog;
 }
 
@@ -147,10 +152,16 @@ export function syncCatalogInBackground() {
   });
 }
 
-export function searchCatalog(query: string) {
+export async function searchCatalog(query: string) {
   const startedAt = Date.now();
   const normalizedQuery = normalizeQuery(query);
-  const results = currentCatalog.products
+  const storedProducts = await getStoredSourceCatalogProducts();
+  const storedStatuses = await getStoredSourceCatalogStatuses();
+  const products = dedupeCatalogProducts([
+    ...currentCatalog.products,
+    ...storedProducts,
+  ]);
+  const results = products
     .map((product) => ({
       ...product,
       confidenceScore: calculateCatalogProductScore(query, product),
@@ -173,9 +184,32 @@ export function searchCatalog(query: string) {
     searchedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
     results,
-    sources: currentCatalog.sources,
+    sources: summarizeSourceStatuses([...currentCatalog.sources, ...storedStatuses]),
     catalog: getCatalogMetadata(),
   };
+}
+
+export async function reloadStoredSourceCatalogs() {
+  const storedProducts = await getStoredSourceCatalogProducts();
+  const storedStatuses = await getStoredSourceCatalogStatuses();
+
+  if (storedProducts.length === 0 && storedStatuses.length === 0) {
+    return currentCatalog;
+  }
+
+  const products = dedupeCatalogProducts([
+    ...currentCatalog.products,
+    ...storedProducts.map((product) => decorateCatalogProduct(product)),
+  ]);
+
+  currentCatalog = {
+    ...currentCatalog,
+    products,
+    productsCount: products.length,
+    sources: summarizeSourceStatuses([...currentCatalog.sources, ...storedStatuses]),
+  };
+
+  return currentCatalog;
 }
 
 export async function searchCategory(
@@ -187,9 +221,12 @@ export async function searchCategory(
   const searchQueries = buildCategorySearchQueries(query, initialCategories);
   const activeSources = scrapingSources.filter((source) => source.enabled !== false);
   const sourceResults = await runCategorySourceSearches(activeSources, searchQueries);
+  const storedProducts = await getStoredSourceCatalogProducts();
+  const storedStatuses = await getStoredSourceCatalogStatuses();
   const sources = summarizeCategorySourceStatuses(
     [
       ...sourceResults.map((result) => result.status),
+      ...storedStatuses,
       ...buildDisabledSourceSearchStatuses(),
     ],
   );
@@ -197,6 +234,7 @@ export async function searchCategory(
     [
       ...sourceResults.flatMap((result) => result.results),
       ...currentCatalog.products,
+      ...storedProducts,
     ],
   );
   const categoryCandidates =

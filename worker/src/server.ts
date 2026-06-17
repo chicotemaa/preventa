@@ -1,11 +1,15 @@
 import http from "node:http";
 import { z } from "zod";
-import { validateCarrefourComercianteSession } from "./carrefour-comerciante.js";
+import {
+  syncCarrefourComercianteCatalog,
+  validateCarrefourComercianteSession,
+} from "./carrefour-comerciante.js";
 import {
   getCatalogMetadata,
   getCatalogSnapshot,
   loadCatalogFromDisk,
   matchPriceListItems,
+  reloadStoredSourceCatalogs,
   searchCategory,
   searchCatalog,
   syncCatalog,
@@ -13,6 +17,17 @@ import {
 } from "./catalog.js";
 import { config } from "./config.js";
 import { runLiveSearch } from "./search.js";
+import {
+  getSourceCatalogSnapshot,
+  getSourceSessionStates,
+  saveSourceCatalogSnapshot,
+  saveSourceSession,
+  updateSourceSessionValidation,
+  type SourceSessionValidationSummary,
+} from "./source-session-store.js";
+import { scrapingSources } from "./sources/argentina.js";
+
+const CARREFOUR_COMERCIANTE_SOURCE_ID = "carrefour-comerciante-maxi";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
@@ -22,6 +37,18 @@ const carrefourComercianteSessionValidationSchema = z.object({
   cookie: z.string().trim().optional(),
   userAgent: z.string().trim().optional(),
   query: z.string().trim().min(2).max(120).optional(),
+});
+
+const carrefourComercianteSessionSaveSchema = z.object({
+  cookie: z.string().trim().min(10).max(20_000),
+  userAgent: z.string().trim().min(20).max(800),
+  query: z.string().trim().min(2).max(120).optional(),
+});
+
+const carrefourComercianteCatalogSyncSchema = z.object({
+  queries: z.array(z.string().trim().min(2).max(120)).max(60).optional(),
+  maxPagesPerQuery: z.number().int().positive().max(20).optional(),
+  itemsPerPage: z.number().int().positive().max(48).optional(),
 });
 
 const priceListRequestSchema = z.object({
@@ -64,8 +91,15 @@ const server = http.createServer(async (request, response) => {
         catalog: "GET /catalog",
         catalogSearch: "POST /catalog/search",
         categorySearch: "POST /catalog/category-search",
+        sourceSessions: "GET /sources/sessions",
         carrefourComercianteSession:
           "POST /sources/carrefour-comerciante/session/validate",
+        carrefourComercianteSessionSave:
+          "POST /sources/carrefour-comerciante/session/save",
+        carrefourComercianteCatalog:
+          "GET /sources/carrefour-comerciante/catalog",
+        carrefourComercianteCatalogSync:
+          "POST /sources/carrefour-comerciante/catalog/sync",
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         liveSearch: "POST /search",
@@ -82,6 +116,23 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/catalog") {
     sendJson(response, 200, getCatalogSnapshot());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/sources/sessions") {
+    sendJson(response, 200, {
+      sources: await getSourceSessionStates(),
+    });
+    return;
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname === "/sources/carrefour-comerciante/catalog"
+  ) {
+    sendJson(response, 200, {
+      snapshot: await getSourceCatalogSnapshot(CARREFOUR_COMERCIANTE_SOURCE_ID),
+    });
     return;
   }
 
@@ -114,6 +165,22 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (
+    request.method === "POST" &&
+    url.pathname === "/sources/carrefour-comerciante/session/save"
+  ) {
+    await handleCarrefourComercianteSessionSave(request, response);
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/sources/carrefour-comerciante/catalog/sync"
+  ) {
+    await handleCarrefourComercianteCatalogSync(request, response);
+    return;
+  }
+
   if (request.method !== "POST" || url.pathname !== "/search") {
     sendJson(response, 404, {
       error: "Endpoint no encontrado.",
@@ -121,11 +188,15 @@ const server = http.createServer(async (request, response) => {
         "GET /",
         "GET /health",
         "GET /catalog",
+        "GET /sources/sessions",
+        "GET /sources/carrefour-comerciante/catalog",
         "POST /catalog/search",
         "POST /catalog/category-search",
         "POST /catalog/price-list",
         "POST /catalog/sync",
         "POST /sources/carrefour-comerciante/session/validate",
+        "POST /sources/carrefour-comerciante/session/save",
+        "POST /sources/carrefour-comerciante/catalog/sync",
         "POST /search",
       ],
     });
@@ -181,7 +252,7 @@ async function handleCatalogSearch(
       return;
     }
 
-    sendJson(response, 200, searchCatalog(parsed.data.query));
+    sendJson(response, 200, await searchCatalog(parsed.data.query));
   } catch (error) {
     sendJson(response, 500, {
       error:
@@ -260,11 +331,14 @@ async function handleCarrefourComercianteSessionValidation(
       return;
     }
 
-    sendJson(
-      response,
-      200,
-      await validateCarrefourComercianteSession(parsed.data),
+    const validation = await validateCarrefourComercianteSession(parsed.data);
+
+    await updateSourceSessionValidation(
+      CARREFOUR_COMERCIANTE_SOURCE_ID,
+      toSourceSessionValidationSummary(validation),
     );
+
+    sendJson(response, 200, validation);
   } catch (error) {
     sendJson(response, 500, {
       error:
@@ -273,6 +347,128 @@ async function handleCarrefourComercianteSessionValidation(
           : "Error interno validando Carrefour Comerciante.",
     });
   }
+}
+
+async function handleCarrefourComercianteSessionSave(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    const body = await readJsonBody(request);
+    const parsed = carrefourComercianteSessionSaveSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error:
+          "Datos invalidos. La cookie y el User-Agent deben pertenecer a una sesion vigente.",
+      });
+      return;
+    }
+
+    const validation = await validateCarrefourComercianteSession(parsed.data);
+    const source = getCarrefourComercianteSource();
+
+    if (!validation.ok) {
+      sendJson(response, 422, {
+        error:
+          "La sesion no se guardo porque Carrefour Comerciante no devolvio precios visibles.",
+        validation,
+      });
+      return;
+    }
+
+    const session = await saveSourceSession({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      cookie: parsed.data.cookie,
+      userAgent: parsed.data.userAgent,
+      validation: toSourceSessionValidationSummary(validation),
+    });
+
+    sendJson(response, 200, {
+      ok: true,
+      session,
+      validation,
+      message:
+        "Sesion guardada. El worker puede reutilizarla hasta que Carrefour la invalide.",
+    });
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno guardando sesion Carrefour Comerciante.",
+    });
+  }
+}
+
+async function handleCarrefourComercianteCatalogSync(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    const body = await readJsonBody(request);
+    const parsed = carrefourComercianteCatalogSyncSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error:
+          "Parametros invalidos. Revisar consultas, paginas por consulta e items por pagina.",
+      });
+      return;
+    }
+
+    const source = getCarrefourComercianteSource();
+    const snapshot = await syncCarrefourComercianteCatalog(source, parsed.data);
+    const summary = await saveSourceCatalogSnapshot(snapshot);
+
+    await reloadStoredSourceCatalogs();
+
+    sendJson(response, 200, {
+      ok: snapshot.status === "success",
+      snapshot: summary,
+      message:
+        snapshot.status === "success"
+          ? "Catalogo Carrefour Comerciante sincronizado y guardado."
+          : "La sincronizacion termino sin productos utiles guardados.",
+    });
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno sincronizando catalogo Carrefour Comerciante.",
+    });
+  }
+}
+
+function getCarrefourComercianteSource() {
+  const source = scrapingSources.find(
+    (candidate) => candidate.id === CARREFOUR_COMERCIANTE_SOURCE_ID,
+  );
+
+  if (!source) {
+    throw new Error("No se encontro la fuente Carrefour Comerciante.");
+  }
+
+  return source;
+}
+
+function toSourceSessionValidationSummary(
+  validation: Awaited<ReturnType<typeof validateCarrefourComercianteSession>>,
+): SourceSessionValidationSummary {
+  return {
+    status: validation.status,
+    ok: validation.ok,
+    message: validation.message,
+    checkedAt: validation.checkedAt,
+    query: validation.query,
+    durationMs: validation.durationMs,
+    productsCount: validation.productsCount,
+    privateProductsCount: validation.privateProductsCount,
+    visiblePriceProductsCount: validation.visiblePriceProductsCount,
+  };
 }
 
 function setCorsHeaders(response: http.ServerResponse) {

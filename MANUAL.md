@@ -322,6 +322,10 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `POST /api/price-list/save`
 - `GET /api/price-list/history`
 - `GET /api/price-list/evolution`
+- `GET /api/source-sessions`
+- `POST /api/source-sessions/carrefour-comerciante/validate`
+- `POST /api/source-sessions/carrefour-comerciante/save`
+- `POST /api/source-sessions/carrefour-comerciante/sync`
 
 ## Endpoints worker
 
@@ -331,6 +335,11 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `POST /catalog/search`
 - `POST /catalog/category-search`
 - `POST /catalog/price-list`
+- `GET /sources/sessions`
+- `POST /sources/carrefour-comerciante/session/validate`
+- `POST /sources/carrefour-comerciante/session/save`
+- `GET /sources/carrefour-comerciante/catalog`
+- `POST /sources/carrefour-comerciante/catalog/sync`
 - `POST /search`
 
 ## Variables tecnicas principales
@@ -352,6 +361,7 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
+SOURCE_SESSION_SECRET=<clave-larga-aleatoria>
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
 TOKIN_PASSWORD=
@@ -370,6 +380,19 @@ CARREFOUR_PASSWORD=
 AI_MATCHING_ENABLED=false
 OPENAI_API_KEY=
 ```
+
+### Sesiones privadas
+
+En `/configuracion`, el administrador puede validar y guardar una sesion de Carrefour Comerciante. El usuario final no necesita ver cookies ni variables.
+
+Estados esperados:
+
+- `Sesion guardada`: el worker tiene datos para reutilizar.
+- `Sesion valida`: Carrefour devuelve precios visibles.
+- `Precios privados`: la sesion no quedo autorizada para precios.
+- `Catalogo sincronizado`: hay snapshot guardado para usar en categorias.
+
+Importante: en Vercel el filesystem no es durable para este caso. Para mantener sesiones y snapshots entre deploys, usar Railway/Render con volumen o una tabla/DB para sesiones y snapshots.
 
 ## Fuentes y prioridad
 

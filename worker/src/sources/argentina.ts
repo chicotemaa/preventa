@@ -19,11 +19,7 @@ const hasCarrefourComercianteFields =
 const hasCarrefourComercianteManualSession = Boolean(
   config.carrefourComerciante.cookie,
 );
-const isCarrefourComercianteEnabled =
-  config.carrefourComerciante.enabled &&
-  (hasCarrefourComercianteManualSession ||
-    (config.carrefourComerciante.autoLoginEnabled &&
-      hasCarrefourComercianteFields));
+const isCarrefourComercianteEnabled = config.carrefourComerciante.enabled;
 const carrefourComercianteDisabledReason =
   !config.carrefourComerciante.enabled
     ? "Carrefour Comerciante requiere activar CARREFOUR_COMERCIANTE_ENABLED=true y cargar una sesion manual vigente para consultar precios."

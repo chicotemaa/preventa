@@ -140,6 +140,70 @@ export type CarrefourComercianteSessionValidationResponse = {
   requiredEnv: string[];
 };
 
+export type SourceSessionValidationSummary = Omit<
+  CarrefourComercianteSessionValidationResponse,
+  "sampleProducts" | "nextAction" | "requiredEnv"
+>;
+
+export type SourceCatalogSnapshotSummary = {
+  sourceId: string;
+  storeName: string;
+  storeType: "mayorista" | "minorista";
+  sourceUrl?: string | null;
+  dataOrigin?: string;
+  sourceScope?: string;
+  status: SourceSearchStatus["status"];
+  syncedAt: string;
+  durationMs: number;
+  queries: string[];
+  productsCount: number;
+  privateProductsCount: number;
+  visiblePriceProductsCount: number;
+  errors: string[];
+  sampleProducts: ProductSearchResult[];
+};
+
+export type SourceSessionState = {
+  sourceId: string;
+  storeName: string;
+  storeType: "mayorista" | "minorista";
+  hasSession: boolean;
+  savedAt: string | null;
+  updatedAt: string | null;
+  isEncrypted: boolean;
+  lastValidation?: SourceSessionValidationSummary;
+  snapshot?: SourceCatalogSnapshotSummary | null;
+};
+
+export type SourceSessionsResponse = {
+  sources: SourceSessionState[];
+};
+
+export type CarrefourComercianteSessionSaveRequest = {
+  cookie: string;
+  userAgent: string;
+  query?: string;
+};
+
+export type CarrefourComercianteSessionSaveResponse = {
+  ok: boolean;
+  session: SourceSessionState | null;
+  validation: CarrefourComercianteSessionValidationResponse;
+  message: string;
+};
+
+export type CarrefourComercianteCatalogSyncRequest = {
+  queries?: string[];
+  maxPagesPerQuery?: number;
+  itemsPerPage?: number;
+};
+
+export type CarrefourComercianteCatalogSyncResponse = {
+  ok: boolean;
+  snapshot: SourceCatalogSnapshotSummary | null;
+  message: string;
+};
+
 export type PriceListInputItem = {
   rowNumber: number;
   rubro?: string;

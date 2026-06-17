@@ -3,13 +3,21 @@
 import {
   CheckCircle2,
   ClipboardCheck,
+  Database,
   KeyRound,
   Loader2,
+  RefreshCw,
+  Save,
   ShieldAlert,
   XCircle,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
-import type { CarrefourComercianteSessionValidationResponse } from "@/types/search";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type {
+  CarrefourComercianteCatalogSyncResponse,
+  CarrefourComercianteSessionSaveResponse,
+  CarrefourComercianteSessionValidationResponse,
+  SourceSessionState,
+} from "@/types/search";
 
 const statusStyles: Record<
   CarrefourComercianteSessionValidationResponse["status"],
@@ -29,20 +37,53 @@ export default function ConfiguracionPage() {
   const [query, setQuery] = useState("alfajor");
   const [result, setResult] =
     useState<CarrefourComercianteSessionValidationResponse | null>(null);
+  const [sessionState, setSessionState] = useState<SourceSessionState | null>(
+    null,
+  );
+  const [syncResult, setSyncResult] =
+    useState<CarrefourComercianteCatalogSyncResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const envPreview = useMemo(
     () => [
       "CARREFOUR_COMERCIANTE_ENABLED=true",
-      "CARREFOUR_COMERCIANTE_COOKIE=<cookie validada>",
-      "CARREFOUR_COMERCIANTE_USER_AGENT=<user-agent validado>",
+      "SOURCE_SESSION_SECRET=<clave larga para cifrar sesiones>",
       "CARREFOUR_COMERCIANTE_REGION=CHACO",
       "CARREFOUR_COMERCIANTE_SELLER_ID=506",
       "CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio",
     ],
     [],
   );
+
+  useEffect(() => {
+    void loadSessionState();
+  }, []);
+
+  async function loadSessionState() {
+    try {
+      const response = await fetch("/api/source-sessions", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        sources: SourceSessionState[];
+      };
+      setSessionState(
+        payload.sources.find(
+          (source) => source.sourceId === "carrefour-comerciante-maxi",
+        ) ?? null,
+      );
+    } catch {
+      setSessionState(null);
+    }
+  }
 
   async function validateSession(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -72,6 +113,7 @@ export default function ConfiguracionPage() {
       }
 
       setResult(payload as CarrefourComercianteSessionValidationResponse);
+      void loadSessionState();
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -80,6 +122,88 @@ export default function ConfiguracionPage() {
       );
     } finally {
       setIsValidating(false);
+    }
+  }
+
+  async function saveSession() {
+    setError(null);
+    setIsSaving(true);
+
+    try {
+      const response = await fetch(
+        "/api/source-sessions/carrefour-comerciante/save",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            cookie: cookie.trim(),
+            userAgent: userAgent.trim(),
+            query: query.trim() || "alfajor",
+          }),
+        },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        if (payload.validation) {
+          setResult(payload.validation as CarrefourComercianteSessionValidationResponse);
+        }
+
+        throw new Error(payload.error ?? "No se pudo guardar la sesión.");
+      }
+
+      const savePayload = payload as CarrefourComercianteSessionSaveResponse;
+      setResult(savePayload.validation);
+      setSessionState(savePayload.session);
+      setCookie("");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo guardar la sesión.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function syncCatalog() {
+    setError(null);
+    setSyncResult(null);
+    setIsSyncing(true);
+
+    try {
+      const response = await fetch(
+        "/api/source-sessions/carrefour-comerciante/sync",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            maxPagesPerQuery: 6,
+            itemsPerPage: 24,
+          }),
+        },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "No se pudo sincronizar el catálogo.");
+      }
+
+      setSyncResult(payload as CarrefourComercianteCatalogSyncResponse);
+      await loadSessionState();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo sincronizar el catálogo.",
+      );
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -101,6 +225,8 @@ export default function ConfiguracionPage() {
           </h1>
           <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
             Control de sesiones para fuentes mayoristas con precios privados.
+            La sesión se guarda del lado del worker y después se usa para
+            sincronizar catálogos.
           </p>
         </div>
       </section>
@@ -114,8 +240,8 @@ export default function ConfiguracionPage() {
                 Carrefour Comerciante
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#667789]">
-                La validación se hace server-side y no guarda la cookie en el
-                navegador ni en el repositorio.
+                La validación y el guardado se hacen server-side. La cookie no
+                queda en el navegador ni en el repositorio.
               </p>
             </div>
             <button
@@ -187,10 +313,50 @@ export default function ConfiguracionPage() {
               </button>
               <p className="text-xs leading-5 text-[#667789]">
                 Si el campo queda vacío, se valida la cookie cargada en el
-                entorno del worker.
+                entorno o la sesión guardada en el worker.
               </p>
             </div>
           </form>
+
+          <div className="mt-5 grid gap-3 border-t border-[#edf0f4] pt-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-[0.06em] text-[#667789]">
+                Sesión operativa
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-[#526170]">
+                Validá una sesión con precios visibles, guardala y luego
+                sincronizá el catálogo para que la app use datos persistidos.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={saveSession}
+                disabled={isSaving || !cookie.trim() || !userAgent.trim()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#df2e38] px-5 text-sm font-bold text-white transition hover:bg-[#c82831] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSaving ? "Guardando..." : "Guardar sesión"}
+              </button>
+              <button
+                type="button"
+                onClick={syncCatalog}
+                disabled={isSyncing || !sessionState?.hasSession}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#153d7b] px-5 text-sm font-bold text-white transition hover:bg-[#0f3165] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSyncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                {isSyncing ? "Sincronizando..." : "Sincronizar catálogo"}
+              </button>
+            </div>
+          </div>
 
           {error ? (
             <div className="mt-4 rounded-md border border-[#efb8b0] bg-[#fff1ef] px-4 py-3 text-sm font-semibold text-[#9b2f1c]">
@@ -199,9 +365,96 @@ export default function ConfiguracionPage() {
           ) : null}
         </section>
 
+        <SessionStatus
+          sessionState={sessionState}
+          syncResult={syncResult}
+          envPreview={envPreview}
+        />
+
         {result ? <ValidationResult result={result} envPreview={envPreview} /> : null}
       </section>
     </main>
+  );
+}
+
+function SessionStatus({
+  sessionState,
+  syncResult,
+  envPreview,
+}: {
+  sessionState: SourceSessionState | null;
+  syncResult: CarrefourComercianteCatalogSyncResponse | null;
+  envPreview: string[];
+}) {
+  return (
+    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-[#17202a]">
+          <Database className="h-5 w-5 text-[#153d7b]" />
+          Estado guardado
+        </h2>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric
+            label="Sesión"
+            value={sessionState?.hasSession ? "Guardada" : "Sin guardar"}
+          />
+          <Metric
+            label="Validación"
+            value={sessionState?.lastValidation?.status ?? "-"}
+          />
+          <Metric
+            label="Catálogo"
+            value={sessionState?.snapshot?.productsCount ?? 0}
+          />
+          <Metric
+            label="Cifrado"
+            value={sessionState?.isEncrypted ? "Sí" : "No / local"}
+          />
+        </div>
+
+        {sessionState?.lastValidation ? (
+          <div className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm leading-6 text-[#526170]">
+            {sessionState.lastValidation.message}
+          </div>
+        ) : null}
+
+        {syncResult?.snapshot ? (
+          <div className="mt-4 overflow-hidden rounded-md border border-[#d9dee7]">
+            <div className="border-b border-[#edf0f4] bg-[#f8fafc] px-3 py-2 text-sm font-bold text-[#17202a]">
+              Última sincronización
+            </div>
+            <div className="grid gap-2 p-3 sm:grid-cols-3">
+              <Metric
+                label="Productos"
+                value={syncResult.snapshot.productsCount}
+              />
+              <Metric
+                label="Con precio"
+                value={syncResult.snapshot.visiblePriceProductsCount}
+              />
+              <Metric
+                label="Privados"
+                value={syncResult.snapshot.privateProductsCount}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <aside className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="text-lg font-bold text-[#17202a]">
+          Producción
+        </h2>
+        <p className="mt-1 text-sm leading-6 text-[#667789]">
+          Para que la sesión sobreviva deploys, usar worker con disco durable o
+          mover este storage a base de datos. Configuración mínima:
+        </p>
+        <pre className="mt-4 overflow-auto rounded-md bg-[#17202a] p-3 text-xs leading-5 text-white">
+          {envPreview.join("\n")}
+        </pre>
+      </aside>
+    </section>
   );
 }
 
