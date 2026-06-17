@@ -46,6 +46,13 @@ export default function ConfiguracionPage() {
   const [isValidating, setIsValidating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [commerceData, setCommerceData] = useState({
+    name: "",
+    document: "",
+    phone: "",
+    email: "",
+  });
 
   const envPreview = useMemo(
     () => [
@@ -166,6 +173,56 @@ export default function ConfiguracionPage() {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function connectFromBackend() {
+    setError(null);
+    setResult(null);
+    setSyncResult(null);
+    setIsConnecting(true);
+
+    try {
+      const response = await fetch(
+        "/api/source-sessions/carrefour-comerciante/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...commerceData,
+            query: query.trim() || "alfajor",
+          }),
+        },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        if (payload.validation) {
+          setResult(
+            payload.validation as CarrefourComercianteSessionValidationResponse,
+          );
+        }
+
+        throw new Error(
+          payload.error ??
+            "No se pudo conectar Carrefour Comerciante desde el backend.",
+        );
+      }
+
+      const savePayload = payload as CarrefourComercianteSessionSaveResponse;
+      setResult(savePayload.validation);
+      setSessionState(savePayload.session);
+      await loadSessionState();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo conectar Carrefour Comerciante desde el backend.",
+      );
+    } finally {
+      setIsConnecting(false);
     }
   }
 
@@ -317,6 +374,111 @@ export default function ConfiguracionPage() {
               </p>
             </div>
           </form>
+
+          <div className="mt-5 rounded-md border border-[#d9dee7] bg-[#f8fafc] p-4">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-[0.06em] text-[#667789]">
+                  Conexión desde backend
+                </h3>
+                <p className="mt-1 max-w-4xl text-sm leading-6 text-[#526170]">
+                  Usá este camino si la cookie copiada desde tu navegador no
+                  valida. El worker intenta abrir Carrefour, completar los datos
+                  del comercio y guardar la sesión solo si ve precios visibles.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={connectFromBackend}
+                disabled={isConnecting}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#153d7b] px-5 text-sm font-bold text-white transition hover:bg-[#0f3165] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isConnecting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                {isConnecting ? "Conectando..." : "Conectar desde backend"}
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+                  Nombre y apellido
+                </span>
+                <input
+                  value={commerceData.name}
+                  onChange={(event) =>
+                    setCommerceData((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Opcional si está en el worker"
+                  className="h-11 rounded-md border border-[#d9dee7] bg-white px-3 text-sm text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+                  CUIT / DNI
+                </span>
+                <input
+                  value={commerceData.document}
+                  onChange={(event) =>
+                    setCommerceData((current) => ({
+                      ...current,
+                      document: event.target.value,
+                    }))
+                  }
+                  placeholder="Opcional si está en el worker"
+                  className="h-11 rounded-md border border-[#d9dee7] bg-white px-3 text-sm text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+                  Teléfono
+                </span>
+                <input
+                  value={commerceData.phone}
+                  onChange={(event) =>
+                    setCommerceData((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                  placeholder="Opcional si está en el worker"
+                  className="h-11 rounded-md border border-[#d9dee7] bg-white px-3 text-sm text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
+                  Email
+                </span>
+                <input
+                  value={commerceData.email}
+                  onChange={(event) =>
+                    setCommerceData((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                  placeholder="Opcional si está en el worker"
+                  className="h-11 rounded-md border border-[#d9dee7] bg-white px-3 text-sm text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+                />
+              </label>
+            </div>
+
+            <p className="mt-3 text-xs leading-5 text-[#667789]">
+              Si estos datos ya están cargados como variables del worker, podés
+              dejar los campos vacíos. Si Carrefour devuelve precios privados,
+              la automatización queda bloqueada por la sesión y no se guardan
+              datos inválidos.
+            </p>
+          </div>
 
           <div className="mt-5 grid gap-3 border-t border-[#edf0f4] pt-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div>

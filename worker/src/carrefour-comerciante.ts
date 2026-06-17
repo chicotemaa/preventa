@@ -103,6 +103,20 @@ export type CarrefourComercianteCatalogSyncRequest = {
   itemsPerPage?: number;
 };
 
+export type CarrefourComercianteLoginSessionRequest = {
+  name?: string;
+  document?: string;
+  phone?: string;
+  email?: string;
+  query?: string;
+};
+
+export type CarrefourComercianteLoginSessionResponse =
+  CarrefourComercianteSessionValidationResponse & {
+    cookie?: string;
+    userAgent: string;
+  };
+
 export async function extractProductsFromCarrefourComerciante(
   source: ScrapingSource,
   query: string,
@@ -179,6 +193,123 @@ export async function extractProductsFromCarrefourComerciante(
   }
 }
 
+export async function loginAndValidateCarrefourComercianteSession(
+  request: CarrefourComercianteLoginSessionRequest,
+): Promise<CarrefourComercianteLoginSessionResponse> {
+  const startedAt = Date.now();
+  const query = (request.query?.trim() || "alfajor").slice(0, 120);
+  const userAgent = config.carrefourComerciante.userAgent;
+
+  if (!config.carrefourComerciante.enabled) {
+    return {
+      ok: false,
+      status: "failed",
+      message:
+        "Carrefour Comerciante esta deshabilitado. Activar CARREFOUR_COMERCIANTE_ENABLED=true antes de conectar.",
+      checkedAt: new Date().toISOString(),
+      query,
+      durationMs: Date.now() - startedAt,
+      productsCount: 0,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: 0,
+      sampleProducts: [],
+      nextAction:
+        "Activar CARREFOUR_COMERCIANTE_ENABLED=true en el entorno del worker y redeployar.",
+      requiredEnv: getCarrefourComercianteRequiredEnv(),
+      userAgent,
+    };
+  }
+
+  const formValues = buildCarrefourComercianteLoginFormValues(request);
+
+  try {
+    assertCarrefourComercianteLoginFields(formValues);
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Faltan datos del comercio para conectar Carrefour Comerciante desde backend.",
+      checkedAt: new Date().toISOString(),
+      query,
+      durationMs: Date.now() - startedAt,
+      productsCount: 0,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: 0,
+      sampleProducts: [],
+      nextAction:
+        "Completar nombre, CUIT/DNI, telefono e email en la pantalla o cargarlos como variables del worker.",
+      requiredEnv: getCarrefourComercianteRequiredEnv(),
+      userAgent,
+    };
+  }
+
+  const browser = await launchBrowser();
+  const context = await browser.newContext({
+    locale: "es-AR",
+    timezoneId: "America/Argentina/Cordoba",
+    userAgent,
+  });
+  const page = await context.newPage();
+
+  try {
+    await establishCarrefourComercianteSession(
+      page,
+      getCarrefourComercianteDeliveryTypes()[0],
+      formValues,
+    );
+
+    const url = buildCarrefourComercianteProductsUrlFromQuery(query);
+    const html = await fetchCarrefourComercianteProductsHtml(page, url, query);
+    const validation = buildCarrefourComercianteValidationFromHtml({
+      html,
+      query,
+      startedAt,
+      fallbackUserAgent: userAgent,
+    });
+
+    if (!validation.ok) {
+      return validation;
+    }
+
+    const cookieHeader = cookiesToHeader(await context.cookies(BASE_URL));
+
+    return {
+      ...validation,
+      cookie: cookieHeader,
+      userAgent,
+      nextAction:
+        "Sesion creada desde el worker. Guardarla y ejecutar sincronizacion de catalogo.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message:
+        error instanceof Error
+          ? error.message
+          : "No se pudo iniciar sesion en Carrefour Comerciante desde el worker.",
+      checkedAt: new Date().toISOString(),
+      query,
+      durationMs: Date.now() - startedAt,
+      productsCount: 0,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: 0,
+      sampleProducts: [],
+      nextAction:
+        "Si aparece reCAPTCHA o precios privados, Carrefour esta rechazando login automatico desde backend y se necesita API/feed oficial o navegador remoto persistente.",
+      requiredEnv: getCarrefourComercianteRequiredEnv(),
+      userAgent,
+    };
+  } finally {
+    await page.close().catch(() => undefined);
+    await context.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
+  }
+}
+
 export async function validateCarrefourComercianteSession(
   request: CarrefourComercianteSessionValidationRequest,
 ): Promise<CarrefourComercianteSessionValidationResponse> {
@@ -188,21 +319,14 @@ export async function validateCarrefourComercianteSession(
     ? null
     : await getStoredSourceSessionCredentials(CARREFOUR_COMERCIANTE_SOURCE_ID);
   const cookie =
-    request.cookie?.trim() ||
+    normalizeCookieHeader(request.cookie) ||
     storedSession?.cookie ||
     config.carrefourComerciante.cookie;
   const userAgent =
-    request.userAgent?.trim() ||
+    normalizeHeaderValue(request.userAgent, "user-agent") ||
     storedSession?.userAgent ||
     config.carrefourComerciante.userAgent;
-  const requiredEnv = [
-    "CARREFOUR_COMERCIANTE_ENABLED=true",
-    "CARREFOUR_COMERCIANTE_COOKIE",
-    "CARREFOUR_COMERCIANTE_USER_AGENT",
-    "CARREFOUR_COMERCIANTE_REGION=CHACO",
-    "CARREFOUR_COMERCIANTE_SELLER_ID=506",
-    "CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio",
-  ];
+  const requiredEnv = getCarrefourComercianteRequiredEnv();
 
   if (!cookie) {
     return {
@@ -231,53 +355,18 @@ export async function validateCarrefourComercianteSession(
       userAgent,
       query,
     );
-    const cards = extractCarrefourComercianteCards(html);
-    const visiblePriceCards = cards.filter((card) => card.price !== null);
-    const privateCards = cards.filter(
-      (card) => card.hasVisibleProduct && card.hasPrivatePrice,
-    );
-    const sampleProducts = cards.slice(0, 5).map((card) => ({
-      name: card.name,
-      price: card.price,
-      barcode: card.barcode,
-    }));
+    const validation = buildCarrefourComercianteValidationFromHtml({
+      html,
+      query,
+      startedAt,
+      fallbackUserAgent: userAgent,
+    });
 
-    if (visiblePriceCards.length > 0) {
-      return {
-        ok: true,
-        status: "authorized",
-        message:
-          "Sesion valida: Carrefour Comerciante devolvio productos con precios visibles.",
-        checkedAt: new Date().toISOString(),
-        query,
-        durationMs: Date.now() - startedAt,
-        productsCount: cards.length,
-        privateProductsCount: privateCards.length,
-        visiblePriceProductsCount: visiblePriceCards.length,
-        sampleProducts,
-        nextAction:
-          "Cargar CARREFOUR_COMERCIANTE_COOKIE y CARREFOUR_COMERCIANTE_USER_AGENT en el entorno del worker y redeployar.",
-        requiredEnv,
-      };
-    }
-
-    if (privateCards.length > 0) {
-      return {
-        ok: false,
-        status: "private_prices",
-        message:
-          "La cookie funciona para ver catalogo publico, pero Carrefour sigue devolviendo precios privados. La sesion no esta autorizada para precios.",
-        checkedAt: new Date().toISOString(),
-        query,
-        durationMs: Date.now() - startedAt,
-        productsCount: cards.length,
-        privateProductsCount: privateCards.length,
-        visiblePriceProductsCount: 0,
-        sampleProducts,
-        nextAction:
-          "Abrir Carrefour Comerciante manualmente, completar sucursal/datos hasta ver precios reales y volver a copiar la cookie de esa sesion.",
-        requiredEnv,
-      };
+    if (
+      validation.status === "authorized" ||
+      validation.status === "private_prices"
+    ) {
+      return validation;
     }
 
     const publicHtml = await fetchPublicCarrefourComercianteProductsHtml(url);
@@ -353,11 +442,11 @@ export async function syncCarrefourComercianteCatalog(
     ? null
     : await getStoredSourceSessionCredentials(source.id);
   const cookie =
-    request.cookie?.trim() ||
+    normalizeCookieHeader(request.cookie) ||
     storedSession?.cookie ||
     config.carrefourComerciante.cookie;
   const userAgent =
-    request.userAgent?.trim() ||
+    normalizeHeaderValue(request.userAgent, "user-agent") ||
     storedSession?.userAgent ||
     config.carrefourComerciante.userAgent;
   const maxPagesPerQuery = clampPositiveInteger(
@@ -599,6 +688,7 @@ async function extractCarrefourComercianteProductsWithDiagnostics(
 async function establishCarrefourComercianteSession(
   page: Page,
   deliveryType: CarrefourComercianteDeliveryType,
+  formValues = buildCarrefourComercianteLoginFormValues(),
 ) {
   page.setDefaultTimeout(config.carrefourComerciante.loginTimeoutMs);
 
@@ -723,7 +813,7 @@ async function establishCarrefourComercianteSession(
     },
     {
       deliveryType,
-      formValues: buildCarrefourComercianteLoginFormValues(),
+      formValues,
     },
   );
 
@@ -915,6 +1005,87 @@ function buildCarrefourComercianteProductsUrlFromQuery(
   )}&filters=&orderBy=&currentPage=${page}&itemsPerPage=${itemsPerPage}&method=productsList`;
 }
 
+function buildCarrefourComercianteValidationFromHtml({
+  html,
+  query,
+  startedAt,
+  fallbackUserAgent,
+}: {
+  html: string;
+  query: string;
+  startedAt: number;
+  fallbackUserAgent: string;
+}): CarrefourComercianteLoginSessionResponse {
+  const cards = extractCarrefourComercianteCards(html);
+  const visiblePriceCards = cards.filter((card) => card.price !== null);
+  const privateCards = cards.filter(
+    (card) => card.hasVisibleProduct && card.hasPrivatePrice,
+  );
+  const sampleProducts = cards.slice(0, 5).map((card) => ({
+    name: card.name,
+    price: card.price,
+    barcode: card.barcode,
+  }));
+
+  if (visiblePriceCards.length > 0) {
+    return {
+      ok: true,
+      status: "authorized",
+      message:
+        "Sesion valida: Carrefour Comerciante devolvio productos con precios visibles.",
+      checkedAt: new Date().toISOString(),
+      query,
+      durationMs: Date.now() - startedAt,
+      productsCount: cards.length,
+      privateProductsCount: privateCards.length,
+      visiblePriceProductsCount: visiblePriceCards.length,
+      sampleProducts,
+      nextAction:
+        "Guardar la sesion en el worker y sincronizar catalogo.",
+      requiredEnv: getCarrefourComercianteRequiredEnv(),
+      userAgent: fallbackUserAgent,
+    };
+  }
+
+  if (privateCards.length > 0) {
+    return {
+      ok: false,
+      status: "private_prices",
+      message:
+        "La sesion permite ver catalogo, pero Carrefour sigue devolviendo precios privados. No esta autorizada para precios en el worker.",
+      checkedAt: new Date().toISOString(),
+      query,
+      durationMs: Date.now() - startedAt,
+      productsCount: cards.length,
+      privateProductsCount: privateCards.length,
+      visiblePriceProductsCount: 0,
+      sampleProducts,
+      nextAction:
+        "Usar conexion desde backend con datos del comercio. Si vuelve a quedar privado, Carrefour esta bloqueando automatizacion y hace falta API/feed oficial o navegador remoto persistente.",
+      requiredEnv: getCarrefourComercianteRequiredEnv(),
+      userAgent: fallbackUserAgent,
+    };
+  }
+
+  return {
+    ok: false,
+    status: "logged_out",
+    message:
+      "Carrefour no devolvio productos autorizados con esta sesion.",
+    checkedAt: new Date().toISOString(),
+    query,
+    durationMs: Date.now() - startedAt,
+    productsCount: 0,
+    privateProductsCount: 0,
+    visiblePriceProductsCount: 0,
+    sampleProducts,
+    nextAction:
+      "Revisar que la sesion pertenezca al mismo backend o intentar conexion desde backend.",
+    requiredEnv: getCarrefourComercianteRequiredEnv(),
+    userAgent: fallbackUserAgent,
+  };
+}
+
 function buildCarrefourComercianteSearchSlug(query: string) {
   return encodeURIComponent(query.trim().replace(/\s+/g, "-"));
 }
@@ -925,15 +1096,110 @@ function looksLikeCarrefourComercianteLoggedOutHtml(html: string) {
   );
 }
 
-function buildCarrefourComercianteLoginFormValues() {
+function buildCarrefourComercianteLoginFormValues(
+  overrides?: CarrefourComercianteLoginSessionRequest,
+) {
   return {
     region: config.carrefourComerciante.region,
     seller: config.carrefourComerciante.sellerId,
-    name: config.carrefourComerciante.name ?? "",
-    numberId: config.carrefourComerciante.document ?? "",
-    phone: config.carrefourComerciante.phone ?? "",
-    email: config.carrefourComerciante.email ?? "",
+    name: overrides?.name?.trim() || config.carrefourComerciante.name || "",
+    numberId:
+      overrides?.document?.trim() || config.carrefourComerciante.document || "",
+    phone: overrides?.phone?.trim() || config.carrefourComerciante.phone || "",
+    email: overrides?.email?.trim() || config.carrefourComerciante.email || "",
   };
+}
+
+function assertCarrefourComercianteLoginFields(
+  formValues: ReturnType<typeof buildCarrefourComercianteLoginFormValues>,
+) {
+  const missingFields = [
+    ["nombre y apellido", formValues.name],
+    ["CUIT/DNI", formValues.numberId],
+    ["telefono", formValues.phone],
+    ["email", formValues.email],
+  ].flatMap(([label, value]) => (value ? [] : [label]));
+
+  if (missingFields.length > 0) {
+    throw new Error(
+      `Faltan datos del comercio para conectar Carrefour Comerciante desde backend: ${missingFields.join(", ")}.`,
+    );
+  }
+}
+
+function getCarrefourComercianteRequiredEnv() {
+  return [
+    "CARREFOUR_COMERCIANTE_ENABLED=true",
+    "SOURCE_SESSION_SECRET",
+    "CARREFOUR_COMERCIANTE_REGION=CHACO",
+    "CARREFOUR_COMERCIANTE_SELLER_ID=506",
+    "CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio",
+  ];
+}
+
+function normalizeCookieHeader(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  const cookieLine = value
+    .replace(/\r?\n/g, "; ")
+    .split(/(?:^|\s)(?:cookie|Cookie):\s*/u)
+    .pop()
+    ?.replace(/^['"]|['"]$/g, "")
+    .trim();
+
+  if (!cookieLine) {
+    return "";
+  }
+
+  const seen = new Set<string>();
+  const parts = cookieLine
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => {
+      const separatorIndex = part.indexOf("=");
+
+      if (separatorIndex <= 0) {
+        return [];
+      }
+
+      const name = part.slice(0, separatorIndex).trim();
+      const cookieValue = part.slice(separatorIndex + 1).trim();
+
+      if (!name || !cookieValue || seen.has(name)) {
+        return [];
+      }
+
+      seen.add(name);
+      return [`${name}=${cookieValue}`];
+    });
+
+  return parts.join("; ");
+}
+
+function normalizeHeaderValue(value: string | undefined, headerName: string) {
+  if (!value) {
+    return "";
+  }
+
+  return value
+    .replace(/\r?\n/g, " ")
+    .replace(new RegExp(`^${headerName}\\s*:\\s*`, "i"), "")
+    .trim();
+}
+
+function cookiesToHeader(
+  cookies: Array<{
+    name: string;
+    value: string;
+  }>,
+) {
+  return cookies
+    .filter((cookie) => cookie.name && cookie.value)
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join("; ");
 }
 
 function assertCarrefourComercianteConfig(hasCookie = false) {

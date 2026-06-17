@@ -1,6 +1,7 @@
 import http from "node:http";
 import { z } from "zod";
 import {
+  loginAndValidateCarrefourComercianteSession,
   syncCarrefourComercianteCatalog,
   validateCarrefourComercianteSession,
 } from "./carrefour-comerciante.js";
@@ -42,6 +43,14 @@ const carrefourComercianteSessionValidationSchema = z.object({
 const carrefourComercianteSessionSaveSchema = z.object({
   cookie: z.string().trim().min(10).max(20_000),
   userAgent: z.string().trim().min(20).max(800),
+  query: z.string().trim().min(2).max(120).optional(),
+});
+
+const carrefourComercianteSessionLoginSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  document: z.string().trim().min(5).max(20).optional(),
+  phone: z.string().trim().min(6).max(40).optional(),
+  email: z.string().trim().email().max(160).optional(),
   query: z.string().trim().min(2).max(120).optional(),
 });
 
@@ -96,6 +105,8 @@ const server = http.createServer(async (request, response) => {
           "POST /sources/carrefour-comerciante/session/validate",
         carrefourComercianteSessionSave:
           "POST /sources/carrefour-comerciante/session/save",
+        carrefourComercianteSessionLogin:
+          "POST /sources/carrefour-comerciante/session/login",
         carrefourComercianteCatalog:
           "GET /sources/carrefour-comerciante/catalog",
         carrefourComercianteCatalogSync:
@@ -175,6 +186,14 @@ const server = http.createServer(async (request, response) => {
 
   if (
     request.method === "POST" &&
+    url.pathname === "/sources/carrefour-comerciante/session/login"
+  ) {
+    await handleCarrefourComercianteSessionLogin(request, response);
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
     url.pathname === "/sources/carrefour-comerciante/catalog/sync"
   ) {
     await handleCarrefourComercianteCatalogSync(request, response);
@@ -196,6 +215,7 @@ const server = http.createServer(async (request, response) => {
         "POST /catalog/sync",
         "POST /sources/carrefour-comerciante/session/validate",
         "POST /sources/carrefour-comerciante/session/save",
+        "POST /sources/carrefour-comerciante/session/login",
         "POST /sources/carrefour-comerciante/catalog/sync",
         "POST /search",
       ],
@@ -399,6 +419,66 @@ async function handleCarrefourComercianteSessionSave(
         error instanceof Error
           ? error.message
           : "Error interno guardando sesion Carrefour Comerciante.",
+    });
+  }
+}
+
+async function handleCarrefourComercianteSessionLogin(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    const body = await readJsonBody(request);
+    const parsed = carrefourComercianteSessionLoginSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error:
+          "Datos invalidos. Completar nombre, CUIT/DNI, telefono e email si no estan en variables del worker.",
+      });
+      return;
+    }
+
+    const validation = await loginAndValidateCarrefourComercianteSession(
+      parsed.data,
+    );
+
+    if (!validation.ok || !validation.cookie) {
+      const { cookie: _cookie, ...safeValidation } = validation;
+
+      sendJson(response, 422, {
+        error:
+          "Carrefour no devolvio precios visibles desde el backend. La sesion no se guardo.",
+        validation: safeValidation,
+      });
+      return;
+    }
+
+    const source = getCarrefourComercianteSource();
+    const session = await saveSourceSession({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      cookie: validation.cookie,
+      userAgent: validation.userAgent,
+      validation: toSourceSessionValidationSummary(validation),
+    });
+
+    const { cookie: _cookie, ...safeValidation } = validation;
+
+    sendJson(response, 200, {
+      ok: true,
+      session,
+      validation: safeValidation,
+      message:
+        "Sesion Carrefour Comerciante creada desde el backend y guardada.",
+    });
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno conectando Carrefour Comerciante desde backend.",
     });
   }
 }

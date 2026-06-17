@@ -128,6 +128,7 @@ npm run dev:worker
 - `GET /sources/sessions`: estado de sesiones guardadas por fuente.
 - `POST /sources/carrefour-comerciante/session/validate`: valida cookie de Carrefour Comerciante.
 - `POST /sources/carrefour-comerciante/session/save`: valida y guarda una sesion autorizada de Carrefour Comerciante.
+- `POST /sources/carrefour-comerciante/session/login`: intenta crear y guardar una sesion desde el backend con datos del comercio.
 - `GET /sources/carrefour-comerciante/catalog`: lee el snapshot guardado de Carrefour Comerciante.
 - `POST /sources/carrefour-comerciante/catalog/sync`: sincroniza productos de Carrefour Comerciante usando la sesion guardada.
 - `POST /search`: busqueda viva directa.
@@ -266,13 +267,17 @@ Si se carga `CARREFOUR_COMERCIANTE_COOKIE`, cargar tambien
 `CARREFOUR_COMERCIANTE_USER_AGENT` con el User-Agent exacto del navegador donde
 se obtuvo esa cookie.
 
-La app incluye `/configuracion` para validar la cookie antes de cargarla en
-produccion. El resultado correcto es `Sesion valida`, con productos y precios
-visibles. Si devuelve `Precios privados`, la cookie pertenece a una sesion donde
-Carrefour aun no habilito precios y hay que renovarla desde una sesion manual
-donde ya se vean valores reales.
-Cloudflare puede atar `cf_clearance` al User-Agent, por eso ambos valores deben
-salir de la misma sesion.
+La app incluye `/configuracion` con dos caminos:
+
+- `Conectar desde backend`: el worker completa el formulario con datos del
+  comercio y guarda la sesion solo si Carrefour devuelve precios visibles.
+- `Validar cookie`: fallback manual para pegar una cookie de una sesion donde ya
+  se vean precios.
+
+El resultado correcto es `Sesion valida`, con productos y precios visibles. Si
+devuelve `Precios privados`, Carrefour no autorizo esa sesion. Cloudflare puede
+atar `cf_clearance` al navegador, User-Agent e IP, por eso una cookie copiada de
+un navegador local puede no servir desde el worker aunque sea reciente.
 
 El login automatico de Carrefour Comerciante queda desactivado por defecto porque
 reCAPTCHA Enterprise devuelve productos con precio privado. Para forzar el
@@ -305,10 +310,17 @@ Despues de cambiar `WORKER_URL`, redeployar el frontend.
 Para fuentes con precios privados, como Carrefour Comerciante, el usuario final no debe copiar cookies ni usar DevTools. El flujo recomendado es:
 
 1. Un administrador entra en `/configuracion`.
-2. Valida una sesion donde los precios ya son visibles.
-3. Guarda la sesion en el worker.
+2. Usa `Conectar desde backend` con los datos del comercio o con esos datos ya
+   cargados en variables del worker.
+3. Si el resultado es `Sesion valida`, la sesion queda guardada en el worker.
 4. Ejecuta `Sincronizar catalogo`.
 5. La app usa el snapshot guardado en categorias y comparativas.
+
+Si el backend no logra ver precios por reCAPTCHA/Cloudflare, usar el fallback
+`Validar cookie` desde una sesion manual con precios visibles. Si ambos caminos
+devuelven precios privados, la solucion estable es una API/feed oficial del
+proveedor o un navegador remoto persistente ejecutado en la misma infraestructura
+del worker.
 
 Variables recomendadas en el worker:
 

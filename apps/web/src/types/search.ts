@@ -192,6 +192,14 @@ export type CarrefourComercianteSessionSaveResponse = {
   message: string;
 };
 
+export type CarrefourComercianteSessionLoginRequest = {
+  name?: string;
+  document?: string;
+  phone?: string;
+  email?: string;
+  query?: string;
+};
+
 export type CarrefourComercianteCatalogSyncRequest = {
   queries?: string[];
   maxPagesPerQuery?: number;

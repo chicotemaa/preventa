@@ -40,6 +40,7 @@ Evolucion / Historial
 
 Configuracion
   Validar sesiones privadas de fuentes mayoristas
+  Conectar Carrefour Comerciante desde el backend
   Detectar si Carrefour Comerciante ya devuelve precios visibles
 ```
 
@@ -383,7 +384,7 @@ OPENAI_API_KEY=
 
 ### Sesiones privadas
 
-En `/configuracion`, el administrador puede validar y guardar una sesion de Carrefour Comerciante. El usuario final no necesita ver cookies ni variables.
+En `/configuracion`, el administrador puede conectar Carrefour Comerciante desde el backend con los datos del comercio, validar el resultado y guardar la sesion solo si devuelve precios visibles. El usuario final no necesita ver cookies ni variables.
 
 Estados esperados:
 
@@ -391,6 +392,8 @@ Estados esperados:
 - `Sesion valida`: Carrefour devuelve precios visibles.
 - `Precios privados`: la sesion no quedo autorizada para precios.
 - `Catalogo sincronizado`: hay snapshot guardado para usar en categorias.
+
+Si la conexion desde backend no valida por Cloudflare/reCAPTCHA, queda disponible el fallback de validar una cookie manual de una sesion con precios visibles. Esa cookie no se guarda en el navegador ni en el repositorio.
 
 Importante: en Vercel el filesystem no es durable para este caso. Para mantener sesiones y snapshots entre deploys, usar Railway/Render con volumen o una tabla/DB para sesiones y snapshots.
 
