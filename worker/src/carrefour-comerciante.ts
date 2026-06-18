@@ -252,37 +252,56 @@ export async function loginAndValidateCarrefourComercianteSession(
     timezoneId: "America/Argentina/Cordoba",
     userAgent,
   });
-  const page = await context.newPage();
+  let lastValidation: CarrefourComercianteLoginSessionResponse | null = null;
+  let lastError: unknown;
 
   try {
-    await establishCarrefourComercianteSession(
-      page,
-      getCarrefourComercianteDeliveryTypes()[0],
-      formValues,
-    );
+    for (const deliveryType of getCarrefourComercianteDeliveryTypes()) {
+      const page = await context.newPage();
 
-    const url = buildCarrefourComercianteProductsUrlFromQuery(query);
-    const html = await fetchCarrefourComercianteProductsHtml(page, url, query);
-    const validation = buildCarrefourComercianteValidationFromHtml({
-      html,
-      query,
-      startedAt,
-      fallbackUserAgent: userAgent,
-    });
+      try {
+        await establishCarrefourComercianteSession(page, deliveryType, formValues);
 
-    if (!validation.ok) {
-      return validation;
+        const url = buildCarrefourComercianteProductsUrlFromQuery(query);
+        const html = await fetchCarrefourComercianteProductsHtml(page, url, query);
+        const validation = buildCarrefourComercianteValidationFromHtml({
+          html,
+          query,
+          startedAt,
+          fallbackUserAgent: userAgent,
+        });
+
+        lastValidation = validation;
+
+        if (!validation.ok) {
+          continue;
+        }
+
+        const cookieHeader = cookiesToHeader(await context.cookies(BASE_URL));
+
+        return {
+          ...validation,
+          cookie: cookieHeader,
+          userAgent,
+          nextAction:
+            "Sesion creada desde el worker. Guardarla y ejecutar sincronizacion de catalogo.",
+        };
+      } catch (error) {
+        lastError = error;
+      } finally {
+        await page.close().catch(() => undefined);
+      }
     }
 
-    const cookieHeader = cookiesToHeader(await context.cookies(BASE_URL));
+    if (lastValidation) {
+      return {
+        ...lastValidation,
+        nextAction:
+          "Se probaron las modalidades configuradas, pero Carrefour siguio devolviendo precios privados. Revisar cookie manual, API/feed oficial o navegador remoto persistente.",
+      };
+    }
 
-    return {
-      ...validation,
-      cookie: cookieHeader,
-      userAgent,
-      nextAction:
-        "Sesion creada desde el worker. Guardarla y ejecutar sincronizacion de catalogo.",
-    };
+    throw lastError;
   } catch (error) {
     return {
       ok: false,
@@ -304,7 +323,6 @@ export async function loginAndValidateCarrefourComercianteSession(
       userAgent,
     };
   } finally {
-    await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
   }
@@ -730,7 +748,7 @@ async function establishCarrefourComercianteSession(
     .catch(() => null);
 
   await page.evaluate(
-    ({ deliveryType: selectedDeliveryType, formValues }) => {
+    async ({ deliveryType: selectedDeliveryType, formValues }) => {
       const form = document.querySelector<HTMLFormElement>("#userForm");
 
       if (!form) {
@@ -749,10 +767,10 @@ async function establishCarrefourComercianteSession(
         input.dispatchEvent(new Event("change", { bubbles: true }));
       };
 
-      const ensureSelectedOption = (
+      const setSelectValue = (
         selector: string,
         value: string,
-        label = value,
+        fallbackLabel = value,
       ) => {
         const select = document.querySelector<HTMLSelectElement>(selector);
 
@@ -763,16 +781,57 @@ async function establishCarrefourComercianteSession(
         if (!Array.from(select.options).some((option) => option.value === value)) {
           const option = document.createElement("option");
           option.value = value;
-          option.textContent = label;
+          option.textContent = fallbackLabel;
           select.appendChild(option);
         }
 
         select.value = value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      const fetchHtml = async (path: string, body: string) => {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "x-requested-with": "XMLHttpRequest",
+          },
+          body,
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Carrefour respondio ${response.status} al preparar ${path}.`,
+          );
+        }
+
+        return response.text();
       };
 
       document
         .querySelector<HTMLInputElement>('input[name="customerType"][value="business"]')
         ?.click();
+
+      (
+        window as unknown as {
+          setCurrentReturnUrl?: () => void;
+          setStoreChangeMode?: (enabled: boolean) => void;
+          setStep?: (step: number) => void;
+          applyCurrentDeliveryType?: (deliveryType: string) => void;
+        }
+      ).setCurrentReturnUrl?.();
+      (
+        window as unknown as {
+          setStoreChangeMode?: (enabled: boolean) => void;
+        }
+      ).setStoreChangeMode?.(false);
+      (
+        window as unknown as {
+          setStep?: (step: number) => void;
+        }
+      ).setStep?.(3);
 
       const deliveryRadios = Array.from(
         document.querySelectorAll<HTMLInputElement>('input[name="delivery"]'),
@@ -795,12 +854,35 @@ async function establishCarrefourComercianteSession(
         envioCheckbox.checked = selectedDeliveryType === "envio";
       }
 
+      (
+        window as unknown as {
+          applyCurrentDeliveryType?: (deliveryType: string) => void;
+        }
+      ).applyCurrentDeliveryType?.(selectedDeliveryType);
+
       setInputValue("#url_c", window.location.href);
-      ensureSelectedOption("#region", formValues.region);
-      ensureSelectedOption(
+
+      const regionSelect = document.querySelector<HTMLSelectElement>("#region");
+      const sellerSelect = document.querySelector<HTMLSelectElement>("#seller");
+      const sellerDeliveryType = selectedDeliveryType === "envio" ? "1" : "0";
+
+      if (regionSelect) {
+        regionSelect.innerHTML = await fetchHtml("seller?method=zone", "");
+      }
+
+      setSelectValue("#region", formValues.region);
+
+      if (sellerSelect) {
+        sellerSelect.innerHTML = await fetchHtml(
+          "seller?method=sellersLists",
+          `zoneId=${encodeURIComponent(formValues.region)}&deliveryType=${sellerDeliveryType}`,
+        );
+      }
+
+      setSelectValue(
         "#seller",
         formValues.seller,
-        "CARREFOUR MAXI RESISTENCIA CHACO",
+        "CARREFOUR MAXI RESISTENCIA CHACO -  (Ruta 11 y alvear) Av.estado de Israel 4419",
       );
       setInputValue("#user-name", formValues.name);
       setInputValue("#user-cuit", formValues.numberId);
@@ -809,7 +891,16 @@ async function establishCarrefourComercianteSession(
 
       const submitButton =
         document.querySelector<HTMLButtonElement>("#btn_step3") ?? undefined;
-      form.requestSubmit(submitButton);
+
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.classList.remove("disabled", "btn-disabled-outlined");
+        submitButton.classList.add("btn-blue-filled");
+        submitButton.click();
+        return;
+      }
+
+      form.requestSubmit();
     },
     {
       deliveryType,

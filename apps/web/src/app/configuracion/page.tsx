@@ -521,8 +521,17 @@ export default function ConfiguracionPage() {
           </div>
 
           {error ? (
-            <div className="mt-4 rounded-md border border-[#efb8b0] bg-[#fff1ef] px-4 py-3 text-sm font-semibold text-[#9b2f1c]">
+            <div
+              aria-live="polite"
+              className="mt-4 rounded-md border border-[#efb8b0] bg-[#fff1ef] px-4 py-3 text-sm font-semibold text-[#9b2f1c]"
+            >
               {error}
+            </div>
+          ) : null}
+
+          {result ? (
+            <div className="mt-4">
+              <ValidationResult result={result} envPreview={envPreview} />
             </div>
           ) : null}
         </section>
@@ -532,8 +541,6 @@ export default function ConfiguracionPage() {
           syncResult={syncResult}
           envPreview={envPreview}
         />
-
-        {result ? <ValidationResult result={result} envPreview={envPreview} /> : null}
       </section>
     </main>
   );
