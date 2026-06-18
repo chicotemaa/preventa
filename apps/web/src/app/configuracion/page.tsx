@@ -316,75 +316,17 @@ export default function ConfiguracionPage() {
             </button>
           </div>
 
-          <form onSubmit={validateSession} className="mt-5 grid gap-4">
-            <label className="grid gap-2">
-              <span className="text-sm font-semibold text-[#17202a]">
-                Cookie de sesión
-              </span>
-              <textarea
-                value={cookie}
-                onChange={(event) => setCookie(event.target.value)}
-                rows={5}
-                placeholder="PHPSESSID=...; cf_clearance=...; ..."
-                className="min-h-[130px] w-full resize-y rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 py-2 font-mono text-xs text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
-              />
-            </label>
-
-            <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
-              <label className="grid gap-2">
-                <span className="text-sm font-semibold text-[#17202a]">
-                  User-Agent
-                </span>
-                <input
-                  value={userAgent}
-                  onChange={(event) => setUserAgent(event.target.value)}
-                  placeholder="Mozilla/5.0 ..."
-                  className="h-11 rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 text-sm text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-sm font-semibold text-[#17202a]">
-                  Consulta de prueba
-                </span>
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="h-11 rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 text-sm font-semibold text-[#17202a] outline-none transition focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
-                />
-              </label>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
-                type="submit"
-                disabled={isValidating}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#153d7b] px-5 text-sm font-bold text-white transition hover:bg-[#0f3165] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isValidating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ShieldAlert className="h-4 w-4" />
-                )}
-                {isValidating ? "Validando..." : "Validar cookie"}
-              </button>
-              <p className="text-xs leading-5 text-[#667789]">
-                Si el campo queda vacío, se valida la cookie cargada en el
-                entorno o la sesión guardada en el worker.
-              </p>
-            </div>
-          </form>
+          <ValidationSummary result={result} isBusy={isValidating || isConnecting || isSaving} />
 
           <div className="mt-5 rounded-md border border-[#d9dee7] bg-[#f8fafc] p-4">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h3 className="text-sm font-bold uppercase tracking-[0.06em] text-[#667789]">
-                  Conexión desde backend
+                  1. Conectar con datos del comercio
                 </h3>
                 <p className="mt-1 max-w-4xl text-sm leading-6 text-[#526170]">
-                  Usá este camino si la cookie copiada desde tu navegador no
-                  valida. El worker intenta abrir Carrefour, completar los datos
-                  del comercio y guardar la sesión solo si ve precios visibles.
+                  Este es el flujo recomendado. Si Carrefour autoriza precios,
+                  la sesión queda guardada automáticamente del lado del worker.
                 </p>
               </div>
               <button
@@ -398,7 +340,7 @@ export default function ConfiguracionPage() {
                 ) : (
                   <KeyRound className="h-4 w-4" />
                 )}
-                {isConnecting ? "Conectando..." : "Conectar desde backend"}
+                {isConnecting ? "Conectando..." : "Conectar y guardar sesión"}
               </button>
             </div>
 
@@ -473,21 +415,89 @@ export default function ConfiguracionPage() {
             </div>
 
             <p className="mt-3 text-xs leading-5 text-[#667789]">
-              Si estos datos ya están cargados como variables del worker, podés
-              dejar los campos vacíos. Si Carrefour devuelve precios privados,
-              la automatización queda bloqueada por la sesión y no se guardan
-              datos inválidos.
+              Usá este botón para los datos del comercio. No hace falta tocar
+              “Guardar cookie validada” cuando estás usando este flujo.
             </p>
           </div>
+
+          <form onSubmit={validateSession} className="mt-5 grid gap-4">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-[0.06em] text-[#667789]">
+                2. Fallback técnico: validar cookie manual
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-[#526170]">
+                Usalo solo si ya tenés una cookie de una sesión donde los
+                precios se ven en el navegador.
+              </p>
+            </div>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-[#17202a]">
+                Cookie de sesión
+              </span>
+              <textarea
+                value={cookie}
+                onChange={(event) => setCookie(event.target.value)}
+                rows={5}
+                placeholder="PHPSESSID=...; cf_clearance=...; ..."
+                className="min-h-[130px] w-full resize-y rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 py-2 font-mono text-xs text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+              />
+            </label>
+
+            <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+              <label className="grid gap-2">
+                <span className="text-sm font-semibold text-[#17202a]">
+                  User-Agent
+                </span>
+                <input
+                  value={userAgent}
+                  onChange={(event) => setUserAgent(event.target.value)}
+                  placeholder="Mozilla/5.0 ..."
+                  className="h-11 rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 text-sm text-[#17202a] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-semibold text-[#17202a]">
+                  Consulta de prueba
+                </span>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="h-11 rounded-md border border-[#d9dee7] bg-[#fffdfa] px-3 text-sm font-semibold text-[#17202a] outline-none transition focus:border-[#153d7b] focus:ring-2 focus:ring-[#153d7b]/15"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="submit"
+                disabled={isValidating}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#153d7b] px-5 text-sm font-bold text-white transition hover:bg-[#0f3165] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isValidating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldAlert className="h-4 w-4" />
+                )}
+                {isValidating ? "Validando..." : "Validar cookie"}
+              </button>
+              <p className="text-xs leading-5 text-[#667789]">
+                Si el campo queda vacío, se valida la cookie cargada en el
+                entorno o la sesión guardada en el worker.
+              </p>
+            </div>
+          </form>
 
           <div className="mt-5 grid gap-3 border-t border-[#edf0f4] pt-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-[0.06em] text-[#667789]">
-                Sesión operativa
+                3. Acciones sobre sesión manual
               </h3>
               <p className="mt-1 text-sm leading-6 text-[#526170]">
-                Validá una sesión con precios visibles, guardala y luego
-                sincronizá el catálogo para que la app use datos persistidos.
+                Este guardado usa la cookie del bloque técnico. Si conectaste
+                con datos del comercio, la sesión ya queda guardada cuando
+                valida correctamente.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -502,7 +512,7 @@ export default function ConfiguracionPage() {
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                {isSaving ? "Guardando..." : "Guardar sesión"}
+                {isSaving ? "Guardando..." : "Guardar cookie validada"}
               </button>
               <button
                 type="button"
@@ -627,6 +637,88 @@ function SessionStatus({
   );
 }
 
+function ValidationSummary({
+  result,
+  isBusy,
+}: {
+  result: CarrefourComercianteSessionValidationResponse | null;
+  isBusy: boolean;
+}) {
+  if (isBusy) {
+    return (
+      <div
+        aria-live="polite"
+        className="mt-5 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3"
+      >
+        <div className="flex items-center gap-2 text-sm font-bold text-[#153d7b]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Validando sesión...
+        </div>
+        <p className="mt-1 text-sm leading-6 text-[#526170]">
+          Esperá el resultado antes de guardar o sincronizar.
+        </p>
+      </div>
+    );
+  }
+
+  if (!result) {
+    return (
+      <div
+        aria-live="polite"
+        className="mt-5 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3"
+      >
+        <div className="text-sm font-bold text-[#17202a]">
+          Estado: sin validar
+        </div>
+        <p className="mt-1 text-sm leading-6 text-[#526170]">
+          Todavía no se comprobó si Carrefour devuelve precios visibles.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      aria-live="polite"
+      className={`mt-5 rounded-md border px-4 py-3 ${statusStyles[result.status]}`}
+    >
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-base font-extrabold">
+            {result.ok ? "Validó: precios visibles" : "No validó"}
+          </div>
+          <p className="mt-1 text-sm leading-6">{result.message}</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold sm:min-w-[340px]">
+          <div className="rounded-md bg-white/70 px-2 py-2">
+            <div className="text-[10px] uppercase tracking-[0.06em] opacity-75">
+              Productos
+            </div>
+            <div className="text-lg">{result.productsCount}</div>
+          </div>
+          <div className="rounded-md bg-white/70 px-2 py-2">
+            <div className="text-[10px] uppercase tracking-[0.06em] opacity-75">
+              Con precio
+            </div>
+            <div className="text-lg">{result.visiblePriceProductsCount}</div>
+          </div>
+          <div className="rounded-md bg-white/70 px-2 py-2">
+            <div className="text-[10px] uppercase tracking-[0.06em] opacity-75">
+              Privados
+            </div>
+            <div className="text-lg">{result.privateProductsCount}</div>
+          </div>
+        </div>
+      </div>
+      {!result.ok ? (
+        <div className="mt-3 rounded-md bg-white/70 px-3 py-2 text-sm font-semibold">
+          {result.nextAction}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ValidationResult({
   result,
   envPreview,
@@ -647,7 +739,7 @@ function ValidationResult({
         </div>
 
         <h2 className="mt-4 text-lg font-bold text-[#17202a]">
-          Resultado de validación
+          {result.ok ? "Validación aprobada" : "Validación no aprobada"}
         </h2>
         <p className="mt-1 text-sm leading-6 text-[#526170]">{result.message}</p>
 
@@ -669,6 +761,15 @@ function ValidationResult({
 
         {result.sampleProducts.length > 0 ? (
           <div className="mt-4 overflow-hidden rounded-md border border-[#d9dee7]">
+            <div className="border-b border-[#edf0f4] bg-[#f8fafc] px-3 py-2">
+              <div className="text-sm font-bold text-[#17202a]">
+                Productos detectados en la prueba
+              </div>
+              <div className="text-xs leading-5 text-[#667789]">
+                Si figuran como privado, Carrefour encontró productos pero no
+                autorizó precios para esta sesión.
+              </div>
+            </div>
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-[#f8fafc] text-xs uppercase tracking-[0.06em] text-[#667789]">
                 <tr>
@@ -697,7 +798,11 @@ function ValidationResult({
               </tbody>
             </table>
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3 text-sm leading-6 text-[#526170]">
+            No se detectaron productos en la consulta de prueba.
+          </div>
+        )}
       </div>
 
       <aside className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
