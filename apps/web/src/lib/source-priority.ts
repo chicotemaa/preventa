@@ -127,18 +127,6 @@ export const sourcePriorityConfig: SourcePriorityConfig[] = [
     fallbackMessage: "Requiere credenciales de comerciante para consultar precios.",
   },
   {
-    sourceId: "sabor-y-aroma-formosa",
-    aliases: ["sabor y aroma", "sabor aroma"],
-    displayName: "Sabor y Aroma",
-    channel: "mayorista",
-    priority: 7,
-    criticalForDecision: false,
-    expectedInDashboard: true,
-    region: "NEA",
-    fallbackStatus: "sin_datos",
-    fallbackMessage: "Sin datos utiles para esta busqueda.",
-  },
-  {
     sourceId: "cucher-mercados-ofertas",
     aliases: [
       "cucher",
@@ -149,7 +137,7 @@ export const sourcePriorityConfig: SourcePriorityConfig[] = [
     ],
     displayName: "Cucher Mercados",
     channel: "mayorista",
-    priority: 8,
+    priority: 7,
     criticalForDecision: true,
     expectedInDashboard: true,
     region: "NEA",

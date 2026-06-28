@@ -196,26 +196,6 @@ export const scrapingSources: ScrapingSource[] = [
       : "Fuente Maxiconsumo Chaco deshabilitada por MAXICONSUMO_ENABLED=false.",
   },
   {
-    id: "sabor-y-aroma-formosa",
-    storeName: "Sabor y Aroma Mayorista",
-    storeType: "mayorista",
-    city: "Formosa",
-    sourceUrl: "https://ventamayorista.saboryaroma.com/",
-    dataOrigin: "HTML publico de la tienda mayorista Sabor y Aroma",
-    sourceScope: "NEA: Formosa",
-    sourceKind: "static_html",
-    searchUrlTemplate:
-      "https://ventamayorista.saboryaroma.com/?s={query}&post_type=product",
-    requiresJavascript: false,
-    maxCards: 24,
-    selectors: {
-      productCard: ".product-card.product",
-      name: ".product-card__name",
-      price: ".product-card__price",
-      image: ".product-card__image",
-    },
-  },
-  {
     id: "cucher-mercados-ofertas",
     storeName: "Cucher Mercados",
     storeType: "mayorista",

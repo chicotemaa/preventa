@@ -68,6 +68,7 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
 const catalogPath = path.resolve(workerRoot, "data/catalog.json");
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
+const REMOVED_CATALOG_SOURCE_IDS = new Set(["sabor-y-aroma-formosa"]);
 const MIN_PRICE_LIST_CONFIDENCE_SCORE = 60;
 const DIAGNOSTIC_REJECT_LIMIT = 5;
 const AGUIAR_REFERENCE_NORMALIZE_TRIGGER_MULTIPLIER = 3;
@@ -102,13 +103,14 @@ export async function loadCatalogFromDisk() {
   try {
     const raw = await readFile(catalogPath, "utf8");
     currentCatalog = JSON.parse(raw) as CatalogSnapshot;
-    currentCatalog.products = currentCatalog.products.map((product) =>
-      withUnitPricing(product, getProductMatchText(product)),
-    );
+    currentCatalog.products = currentCatalog.products
+      .filter(isActiveCatalogProduct)
+      .map((product) => withUnitPricing(product, getProductMatchText(product)));
+    currentCatalog.productsCount = currentCatalog.products.length;
     currentCatalog.region = catalogRegion;
     currentCatalog.pendingSources = getPendingSources();
     currentCatalog.sources = hydrateSourceStatusStoreTypes(
-      currentCatalog.sources,
+      currentCatalog.sources.filter(isActiveSourceStatus),
       currentCatalog.products,
     );
 
@@ -169,7 +171,7 @@ export async function searchCatalog(query: string) {
   const storedStatuses = await getStoredSourceCatalogStatuses();
   const products = dedupeCatalogProducts([
     ...currentCatalog.products,
-    ...storedProducts,
+    ...storedProducts.filter(isActiveCatalogProduct),
   ]);
   const results = products
     .map((product) => ({
@@ -194,7 +196,10 @@ export async function searchCatalog(query: string) {
     searchedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
     results,
-    sources: summarizeSourceStatuses([...currentCatalog.sources, ...storedStatuses]),
+    sources: summarizeSourceStatuses([
+      ...currentCatalog.sources,
+      ...storedStatuses.filter(isActiveSourceStatus),
+    ]),
     catalog: getCatalogMetadata(),
   };
 }
@@ -209,14 +214,19 @@ export async function reloadStoredSourceCatalogs() {
 
   const products = dedupeCatalogProducts([
     ...currentCatalog.products,
-    ...storedProducts.map((product) => decorateCatalogProduct(product)),
+    ...storedProducts
+      .filter(isActiveCatalogProduct)
+      .map((product) => decorateCatalogProduct(product)),
   ]);
 
   currentCatalog = {
     ...currentCatalog,
     products,
     productsCount: products.length,
-    sources: summarizeSourceStatuses([...currentCatalog.sources, ...storedStatuses]),
+    sources: summarizeSourceStatuses([
+      ...currentCatalog.sources,
+      ...storedStatuses.filter(isActiveSourceStatus),
+    ]),
   };
 
   return currentCatalog;
@@ -251,7 +261,7 @@ export async function searchCategory(
     [
       ...sourceResults.flatMap((result) => result.results),
       ...currentCatalog.products,
-      ...storedProducts,
+      ...storedProducts.filter(isActiveCatalogProduct),
     ],
   );
   const categoryCandidates =
@@ -920,6 +930,10 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
   const bySource = new Map<string, SourceSearchStatus>();
 
   for (const source of sources) {
+    if (!isActiveSourceStatus(source)) {
+      continue;
+    }
+
     const current = bySource.get(source.sourceId);
 
     if (!current) {
@@ -1055,6 +1069,10 @@ function dedupeProductResults(products: ProductSearchResult[]) {
   const byKey = new Map<string, ProductSearchResult>();
 
   for (const product of products) {
+    if (!isActiveCatalogProduct(product)) {
+      continue;
+    }
+
     if (!productIsInStock(product)) {
       continue;
     }
@@ -2463,11 +2481,24 @@ function isReadOnlyFilesystemError(error: unknown) {
   );
 }
 
+function isActiveCatalogProduct(product: ProductSearchResult) {
+  return !REMOVED_CATALOG_SOURCE_IDS.has(product.sourceId);
+}
+
+function isActiveSourceStatus(status: SourceSearchStatus) {
+  const sourceId = status.sourceId.split(":")[0] ?? status.sourceId;
+  return !REMOVED_CATALOG_SOURCE_IDS.has(sourceId);
+}
+
 function dedupeCatalogProducts(products: ProductSearchResult[]) {
   const seen = new Set<string>();
   const deduped: ProductSearchResult[] = [];
 
   for (const product of products) {
+    if (!isActiveCatalogProduct(product)) {
+      continue;
+    }
+
     if (!productIsInStock(product)) {
       continue;
     }
@@ -2493,6 +2524,10 @@ function summarizeSourceStatuses(statuses: SourceSearchStatus[]) {
   const grouped = new Map<string, SourceSearchStatus>();
 
   for (const status of statuses) {
+    if (!isActiveSourceStatus(status)) {
+      continue;
+    }
+
     const sourceId = status.sourceId.split(":")[0] ?? status.sourceId;
     const existing = grouped.get(sourceId);
 

@@ -74,13 +74,6 @@ const SOURCE_PRIORITY_CONFIG: SourcePriorityConfig[] = [
     priority: 6,
   },
   {
-    sourceId: "sabor-y-aroma-formosa",
-    aliases: ["sabor y aroma", "sabor aroma"],
-    displayName: "Sabor y Aroma",
-    channel: "mayorista",
-    priority: 7,
-  },
-  {
     sourceId: "cucher-mercados-ofertas",
     aliases: [
       "cucher",
@@ -91,7 +84,7 @@ const SOURCE_PRIORITY_CONFIG: SourcePriorityConfig[] = [
     ],
     displayName: "Cucher Mercados",
     channel: "mayorista",
-    priority: 8,
+    priority: 7,
   },
   {
     sourceId: "vea-argentina-vtex",

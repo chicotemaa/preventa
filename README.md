@@ -162,7 +162,6 @@ Fuentes activas o preparadas:
 - MasOnline / ChangoMas
 - Cordiez
 - Depot Express
-- Sabor y Aroma Mayorista
 
 Fuentes identificadas pero no activas por falta de catalogo/precios publicos confiables:
 

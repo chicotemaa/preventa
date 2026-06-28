@@ -454,7 +454,6 @@ Fuentes actuales o preparadas:
 | MasOnline / ChangoMas | minorista | Argentina | activa por API |
 | Cordiez | minorista | Argentina | activa por API |
 | Depot Express | minorista | Argentina | HTML publico |
-| Sabor y Aroma Mayorista | mayorista | Formosa | HTML publico |
 
 ## Matching con IA
 
