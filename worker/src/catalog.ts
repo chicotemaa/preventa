@@ -238,14 +238,6 @@ export async function searchCategory(
         )
       : [];
   const storedProducts = await getStoredSourceCatalogProducts();
-  const storedStatuses = await getStoredSourceCatalogStatuses();
-  const sources = summarizeCategorySourceStatuses(
-    [
-      ...sourceResults.map((result) => result.status),
-      ...storedStatuses,
-      ...buildDisabledSourceSearchStatuses(),
-    ],
-  );
   const products = dedupeProductResults(
     [
       ...sourceResults.flatMap((result) => result.results),
@@ -262,6 +254,25 @@ export async function searchCategory(
     categoryCandidates,
     products,
   );
+  const visibleProductSourceStatuses = buildCategoryProductSourceStatuses(
+    groups.flatMap((group) => [
+      ...group.tokinProducts,
+      ...group.competitorProducts,
+    ]),
+  );
+  const sourcesWithVisibleProducts = new Set(
+    visibleProductSourceStatuses.map((source) => source.sourceId),
+  );
+  const sources = summarizeCategorySourceStatuses([
+    ...sourceResults.map((result) => ({
+      ...result.status,
+      resultsCount: sourcesWithVisibleProducts.has(result.status.sourceId)
+        ? 0
+        : result.status.resultsCount,
+    })),
+    ...visibleProductSourceStatuses,
+    ...buildDisabledSourceSearchStatuses(),
+  ]);
 
   return {
     query,
@@ -922,6 +933,38 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
   }
 
   return Array.from(bySource.values()).sort(compareSourceStatusesForDashboard);
+}
+
+function buildCategoryProductSourceStatuses(products: ProductSearchResult[]) {
+  const bySource = new Map<string, SourceSearchStatus>();
+  const sourceById = new Map(
+    scrapingSources.map((source) => [source.id, source]),
+  );
+
+  for (const product of products) {
+    const current = bySource.get(product.sourceId);
+    const configuredSource = sourceById.get(product.sourceId);
+
+    bySource.set(product.sourceId, {
+      sourceId: product.sourceId,
+      storeName: product.storeName,
+      storeType: product.storeType,
+      sourceUrl:
+        product.sourceUrl ??
+        current?.sourceUrl ??
+        configuredSource?.sourceUrl ??
+        null,
+      dataOrigin:
+        product.dataOrigin ?? current?.dataOrigin ?? configuredSource?.dataOrigin,
+      sourceScope:
+        product.sourceScope ?? current?.sourceScope ?? configuredSource?.sourceScope,
+      status: "success",
+      resultsCount: (current?.resultsCount ?? 0) + 1,
+      durationMs: current?.durationMs ?? 0,
+    });
+  }
+
+  return Array.from(bySource.values());
 }
 
 function compareSourceStatusesForDashboard(
