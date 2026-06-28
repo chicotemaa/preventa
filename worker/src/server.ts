@@ -64,6 +64,8 @@ const carrefourComercianteCatalogSyncSchema = z.object({
   itemsPerPage: z.number().int().positive().max(48).optional(),
 });
 
+const PRICE_LIST_MAX_ITEMS = 1500;
+
 const priceListRequestSchema = z.object({
   items: z
     .array(
@@ -79,7 +81,7 @@ const priceListRequestSchema = z.object({
       }),
     )
     .min(1)
-    .max(250),
+    .max(PRICE_LIST_MAX_ITEMS),
 });
 
 const server = http.createServer(async (request, response) => {
@@ -360,7 +362,7 @@ async function handleCatalogPriceList(
 
     if (!parsed.success) {
       sendJson(response, 400, {
-        error: "Lista invalida. Debe incluir entre 1 y 250 articulos.",
+        error: `Lista invalida. Debe incluir entre 1 y ${PRICE_LIST_MAX_ITEMS} articulos.`,
       });
       return;
     }

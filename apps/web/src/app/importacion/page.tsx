@@ -374,7 +374,9 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
     return (
       headers.includes("rubro") &&
       headers.some((header) => header.includes("descripcion")) &&
-      headers.some((header) => header === "codigo" || header === "code")
+      headers.some((header) =>
+        ["codigo", "code", "articulo"].includes(header),
+      )
     );
   });
 
@@ -391,12 +393,28 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
     "descripcion",
     "description",
   ]);
-  const codeIndex = findColumn(headers, ["codigo", "code"]);
-  const eanDiIndex = findColumn(headers, ["ean 13 di", "ean13 di", "ean di"]);
-  const eanBuIndex = findColumn(headers, ["ean 13 bu", "ean13 bu", "ean bu"]);
+  const codeIndex = findColumn(headers, ["codigo", "code", "articulo"]);
+  const eanDiIndex = findColumn(headers, [
+    "ean 13 di",
+    "ean13 di",
+    "ean di",
+    "ean 13 unidad",
+    "ean13 unidad",
+  ]);
+  const eanBuIndex = findColumn(headers, [
+    "ean 13 bu",
+    "ean13 bu",
+    "ean bu",
+    "ean 13 display",
+    "ean 13 dispaly",
+    "ean13 display",
+    "ean13 dispaly",
+  ]);
   const currentPriceIndex = findColumn(headers, [
     "precio aguiar",
     "precio ara",
+    "precio x unid",
+    "precio por unidad",
     "precio actual",
     "precio lista",
     "precio venta",
