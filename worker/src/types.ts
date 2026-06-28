@@ -238,6 +238,8 @@ export type CatalogMetadata = {
   region: CatalogRegion;
   brands: string[];
   lastSyncedAt: string | null;
+  syncStartedAt?: string | null;
+  syncProgress?: CatalogSyncProgress | null;
   durationMs: number | null;
   productsCount: number;
   sources: SourceSearchStatus[];
@@ -247,6 +249,21 @@ export type CatalogMetadata = {
 
 export type CatalogSnapshot = CatalogMetadata & {
   products: ProductSearchResult[];
+};
+
+export type CatalogSyncProgress = {
+  phase:
+    | "starting"
+    | "full_page_sources"
+    | "brands"
+    | "categories"
+    | "imports"
+    | "persisting";
+  current: string;
+  completedSteps: number;
+  totalSteps: number | null;
+  productsFound: number;
+  updatedAt: string;
 };
 
 export type ScrapingSource = {

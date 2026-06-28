@@ -44,6 +44,7 @@ import { config } from "./config.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
+  CatalogSyncProgress,
   CategoryBrandSummary,
   CategorySearchGroup,
   CategorySearchResponse,
@@ -87,6 +88,8 @@ let currentCatalog: CatalogSnapshot = {
   region: catalogRegion,
   brands: targetBrands.map((brand) => brand.name),
   lastSyncedAt: null,
+  syncStartedAt: null,
+  syncProgress: null,
   durationMs: null,
   productsCount: 0,
   sources: [],
@@ -325,10 +328,20 @@ async function matchPriceListItemWithDirectAguiar(
 
 async function runCatalogSync(): Promise<CatalogSnapshot> {
   const startedAt = Date.now();
+  const syncStartedAt = new Date(startedAt).toISOString();
 
   currentCatalog = {
     ...currentCatalog,
-    status: currentCatalog.productsCount > 0 ? currentCatalog.status : "syncing",
+    status: "syncing",
+    syncStartedAt,
+    syncProgress: {
+      phase: "starting",
+      current: "Preparando fuentes",
+      completedSteps: 0,
+      totalSteps: null,
+      productsFound: 0,
+      updatedAt: syncStartedAt,
+    },
     errorMessage: undefined,
   };
 
@@ -341,8 +354,23 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
   const fullPageSources = activeSources.filter(
     (source) => source.catalogSearchMode === "full_page",
   );
+  const brandSearchTerms = buildUniqueBrandSearchTerms();
+  const categorySearchTerms = buildUniqueCategorySearchTerms();
+  const totalSteps =
+    fullPageSources.length + brandSearchTerms.length + categorySearchTerms.length + 2;
+  let completedSteps = 0;
+
   try {
     for (const source of fullPageSources) {
+      throwIfCatalogSyncTimedOut(startedAt);
+      updateCatalogSyncProgress({
+        phase: "full_page_sources",
+        current: source.storeName,
+        completedSteps,
+        totalSteps,
+        productsFound: products.length,
+      });
+
       const result = await searchSource(source, "", undefined, {
         filterByConfidence: false,
         limitResults: false,
@@ -357,69 +385,67 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
         status: allowedProducts.length > 0 ? "success" : "no_results",
       });
       products.push(...allowedProducts);
+      completedSteps += 1;
     }
 
-    for (const brand of targetBrands) {
-      const seenSearchTerms = new Set<string>();
+    for (const { brand, searchTerm, normalizedSearchTerm } of brandSearchTerms) {
+      throwIfCatalogSyncTimedOut(startedAt);
+      updateCatalogSyncProgress({
+        phase: "brands",
+        current: `${brand.name}: ${searchTerm}`,
+        completedSteps,
+        totalSteps,
+        productsFound: products.length,
+      });
 
-      for (const searchTerm of brand.searchTerms) {
-        const normalizedSearchTerm = normalizeProductName(searchTerm);
+      const apiLikeQuerySources = querySources.filter(
+        (source) => !sourceNeedsBrowser(source),
+      );
+      const browserQuerySources = querySources.filter(sourceNeedsBrowser);
+      const apiLikeSourceResults = await Promise.all(
+        apiLikeQuerySources.map((source) =>
+          searchSource(source, searchTerm),
+        ),
+      );
+      const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
 
-        if (seenSearchTerms.has(normalizedSearchTerm)) {
-          continue;
-        }
-
-        seenSearchTerms.add(normalizedSearchTerm);
-
-        const apiLikeQuerySources = querySources.filter(
-          (source) => !sourceNeedsBrowser(source),
+      for (const source of browserQuerySources) {
+        browserSourceResults.push(
+          await searchSource(source, searchTerm),
         );
-        const browserQuerySources = querySources.filter(sourceNeedsBrowser);
-        const apiLikeSourceResults = await Promise.all(
-          apiLikeQuerySources.map((source) =>
-            searchSource(source, searchTerm),
-          ),
-        );
-        const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
-
-        for (const source of browserQuerySources) {
-          browserSourceResults.push(
-            await searchSource(source, searchTerm),
-          );
-        }
-
-        const sourceResults = [
-          ...apiLikeSourceResults,
-          ...browserSourceResults,
-        ];
-
-        for (const result of sourceResults) {
-          sourceStatuses.push({
-            ...result.status,
-            sourceId: `${result.status.sourceId}:${normalizedSearchTerm}`,
-          });
-
-          products.push(
-            ...result.results
-              .filter((product) =>
-                isAllowedBrandProduct(getProductMatchText(product)),
-              )
-              .map((product) => decorateCatalogProduct(product, brand.name)),
-          );
-        }
       }
+
+      const sourceResults = [
+        ...apiLikeSourceResults,
+        ...browserSourceResults,
+      ];
+
+      for (const result of sourceResults) {
+        sourceStatuses.push({
+          ...result.status,
+          sourceId: `${result.status.sourceId}:${normalizedSearchTerm}`,
+        });
+
+        products.push(
+          ...result.results
+            .filter((product) =>
+              isAllowedBrandProduct(getProductMatchText(product)),
+            )
+            .map((product) => decorateCatalogProduct(product, brand.name)),
+        );
+      }
+      completedSteps += 1;
     }
 
-    const seenCategorySearchTerms = new Set<string>();
-
-    for (const searchTerm of buildCatalogCategorySearchTerms()) {
-      const normalizedSearchTerm = normalizeProductName(searchTerm);
-
-      if (seenCategorySearchTerms.has(normalizedSearchTerm)) {
-        continue;
-      }
-
-      seenCategorySearchTerms.add(normalizedSearchTerm);
+    for (const { searchTerm, normalizedSearchTerm } of categorySearchTerms) {
+      throwIfCatalogSyncTimedOut(startedAt);
+      updateCatalogSyncProgress({
+        phase: "categories",
+        current: searchTerm,
+        completedSteps,
+        totalSteps,
+        productsFound: products.length,
+      });
 
       const apiLikeQuerySources = querySources.filter(
         (source) => !sourceNeedsBrowser(source),
@@ -453,12 +479,28 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
             ),
         );
       }
+      completedSteps += 1;
     }
 
+    updateCatalogSyncProgress({
+      phase: "imports",
+      current: "Importaciones locales",
+      completedSteps,
+      totalSteps,
+      productsFound: products.length,
+    });
     const importedCatalog = await loadImportedCatalogProducts();
     products.push(...importedCatalog.products);
     sourceStatuses.push(...importedCatalog.statuses);
+    completedSteps += 1;
 
+    updateCatalogSyncProgress({
+      phase: "persisting",
+      current: "Guardando snapshot",
+      completedSteps,
+      totalSteps,
+      productsFound: products.length,
+    });
     const dedupedProducts = dedupeCatalogProducts(products).sort(
       (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     );
@@ -468,6 +510,8 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
       region: catalogRegion,
       brands: targetBrands.map((brand) => brand.name),
       lastSyncedAt: new Date().toISOString(),
+      syncStartedAt: null,
+      syncProgress: null,
       durationMs: Date.now() - startedAt,
       productsCount: dedupedProducts.length,
       sources: summarizeSourceStatuses(sourceStatuses),
@@ -481,12 +525,71 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
     currentCatalog = {
       ...currentCatalog,
       status: "failed",
+      syncStartedAt: null,
+      syncProgress: null,
       errorMessage:
         error instanceof Error ? error.message : "Error sincronizando catalogo.",
     };
     await persistCatalogIfWritable(currentCatalog);
     return currentCatalog;
   }
+}
+
+function buildUniqueBrandSearchTerms() {
+  return targetBrands.flatMap((brand) => {
+    const seenSearchTerms = new Set<string>();
+
+    return brand.searchTerms.flatMap((searchTerm) => {
+      const normalizedSearchTerm = normalizeProductName(searchTerm);
+
+      if (!normalizedSearchTerm || seenSearchTerms.has(normalizedSearchTerm)) {
+        return [];
+      }
+
+      seenSearchTerms.add(normalizedSearchTerm);
+      return [{ brand, searchTerm, normalizedSearchTerm }];
+    });
+  });
+}
+
+function buildUniqueCategorySearchTerms() {
+  const seenCategorySearchTerms = new Set<string>();
+
+  return buildCatalogCategorySearchTerms().flatMap((searchTerm) => {
+    const normalizedSearchTerm = normalizeProductName(searchTerm);
+
+    if (!normalizedSearchTerm || seenCategorySearchTerms.has(normalizedSearchTerm)) {
+      return [];
+    }
+
+    seenCategorySearchTerms.add(normalizedSearchTerm);
+    return [{ searchTerm, normalizedSearchTerm }];
+  });
+}
+
+function updateCatalogSyncProgress(progress: Omit<CatalogSyncProgress, "updatedAt">) {
+  currentCatalog = {
+    ...currentCatalog,
+    status: "syncing",
+    syncProgress: {
+      ...progress,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function throwIfCatalogSyncTimedOut(startedAt: number) {
+  const elapsedMs = Date.now() - startedAt;
+
+  if (elapsedMs <= config.catalogSyncTimeoutMs) {
+    return;
+  }
+
+  throw new Error(
+    `La sincronizacion supero el limite de ${Math.round(
+      config.catalogSyncTimeoutMs / 1000,
+    )} segundos.`,
+  );
 }
 
 function getProductMatchText(product: ProductSearchResult) {
