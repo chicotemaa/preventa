@@ -142,6 +142,8 @@ export async function syncCatalog() {
 }
 
 export function syncCatalogInBackground() {
+  const alreadyRunning = Boolean(activeSync);
+
   void syncCatalog().catch((error) => {
     currentCatalog = {
       ...currentCatalog,
@@ -150,6 +152,11 @@ export function syncCatalogInBackground() {
         error instanceof Error ? error.message : "Error sincronizando catalogo.",
     };
   });
+
+  return {
+    alreadyRunning,
+    started: !alreadyRunning,
+  };
 }
 
 export async function searchCatalog(query: string) {
@@ -214,13 +221,19 @@ export async function reloadStoredSourceCatalogs() {
 
 export async function searchCategory(
   query: string,
+  options: { mode?: "catalog" | "live" } = {},
 ): Promise<CategorySearchResponse> {
   const startedAt = Date.now();
   const normalizedQuery = normalizeQuery(query);
   const initialCategories = findCategoryCandidatesForQuery(query);
-  const searchQueries = buildCategorySearchQueries(query, initialCategories);
-  const activeSources = scrapingSources.filter((source) => source.enabled !== false);
-  const sourceResults = await runCategorySourceSearches(activeSources, searchQueries);
+  const mode = options.mode ?? config.categorySearch.mode;
+  const sourceResults =
+    mode === "live"
+      ? await runCategorySourceSearches(
+          scrapingSources.filter((source) => source.enabled !== false),
+          buildCategorySearchQueries(query, initialCategories),
+        )
+      : [];
   const storedProducts = await getStoredSourceCatalogProducts();
   const storedStatuses = await getStoredSourceCatalogStatuses();
   const sources = summarizeCategorySourceStatuses(

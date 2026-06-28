@@ -27,12 +27,17 @@ export const config = {
     timeoutMs: getNumberEnv("AI_MATCHING_TIMEOUT_MS", 6_000),
   },
   categorySearch: {
+    mode:
+      process.env.CATEGORY_SEARCH_MODE === "live" ? "live" : "catalog",
     maxQueries: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES", 8),
     maxQueriesMayorista: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_MAYORISTA", 8),
     maxQueriesMinorista: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_MINORISTA", 5),
     maxQueriesYaguar: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_YAGUAR", 2),
     concurrency: getNumberEnv("CATEGORY_SEARCH_CONCURRENCY", 8),
   },
+  catalogSyncSecret:
+    getOptionalStringEnv("CATALOG_SYNC_SECRET") ??
+    getOptionalStringEnv("CRON_SECRET"),
   maxiconsumo: {
     enabled: process.env.MAXICONSUMO_ENABLED !== "false",
     email: getOptionalStringEnv("MAXICONSUMO_EMAIL"),

@@ -32,6 +32,9 @@ Crear `apps/web/.env.local`:
 
 ```bash
 WORKER_URL=http://127.0.0.1:4000
+CATEGORY_SEARCH_MODE=catalog
+CRON_SECRET=
+WORKER_CRON_SECRET=
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -45,6 +48,9 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
+AUTO_SYNC_ON_STARTUP=true
+CATEGORY_SEARCH_MODE=catalog
+CATALOG_SYNC_SECRET=
 
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
@@ -82,6 +88,8 @@ Notas:
 - Yaguar puede usar `YAGUAR_EMAIL/YAGUAR_PASSWORD`; si no estan, toma las credenciales de Tokin.
 - Vea y Carrefour intentan sesion con sus credenciales propias; si no estan, usan las de Tokin como fallback.
 - Supabase es opcional para guardar historial/evolucion de corridas.
+- `CATEGORY_SEARCH_MODE=catalog` hace que categorias consulte el catalogo precargado; usar `live` solo para diagnostico.
+- `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
 
 ## Correr localmente
 
@@ -122,6 +130,7 @@ npm run dev:worker
 - `GET /health`: estado del worker.
 - `GET /catalog`: snapshot actual del catalogo.
 - `POST /catalog/sync`: sincroniza fuentes y reemplaza el snapshot.
+- `POST /catalog/sync/background`: dispara sincronizacion en background para cron.
 - `POST /catalog/search`: busca sobre el catalogo actual.
 - `POST /catalog/category-search`: agrupa resultados por familia/categoria.
 - `POST /catalog/price-list`: compara una lista importada.
@@ -207,6 +216,36 @@ CATEGORY_SEARCH_CONCURRENCY=8
 Si faltan resultados mayoristas, subir primero
 `CATEGORY_SEARCH_MAX_QUERIES_MAYORISTA`. Si Yaguar queda lento, bajar
 `CATEGORY_SEARCH_MAX_QUERIES_YAGUAR`.
+
+### Sincronizacion programada
+
+El frontend incluye un cron de Vercel en `apps/web/vercel.json`:
+
+- Lunes 9:00 Argentina: `0 12 * * 1` UTC.
+- Todos los dias 12:00 Argentina: `0 15 * * *` UTC.
+
+Ambos llaman `GET /api/cron/catalog-sync`, que valida `CRON_SECRET` y dispara
+`POST /catalog/sync/background` en el worker. El endpoint del worker responde
+rapido y la sincronizacion sigue en background, por eso no bloquea la funcion de
+Vercel.
+
+Variables necesarias en produccion:
+
+```bash
+# Vercel / frontend
+CRON_SECRET=<clave-larga-aleatoria>
+WORKER_CRON_SECRET=<misma-clave-si-el-worker-usa-CATALOG_SYNC_SECRET>
+CATEGORY_SEARCH_MODE=catalog
+
+# Worker
+CATALOG_SYNC_SECRET=<misma-clave>
+CATEGORY_SEARCH_MODE=catalog
+AUTO_SYNC_ON_STARTUP=true
+```
+
+Operacion recomendada: dejar categorias en modo `catalog`, usar
+`/busqueda-general` para consultas vivas puntuales y revisar `/health` o
+`/catalog` para confirmar `lastSyncedAt` despues del cron.
 
 ### Yaguar Chaco
 

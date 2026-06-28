@@ -35,6 +35,7 @@ export async function POST(request: Request) {
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
 
   try {
+    const mode = process.env.CATEGORY_SEARCH_MODE === "live" ? "live" : "catalog";
     const response = await fetch(
       `${workerUrl.replace(/\/$/, "")}/catalog/category-search`,
       {
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, mode }),
         cache: "no-store",
       },
     );

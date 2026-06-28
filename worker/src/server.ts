@@ -34,6 +34,10 @@ const searchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
 });
 
+const categorySearchRequestSchema = searchRequestSchema.extend({
+  mode: z.enum(["catalog", "live"]).optional(),
+});
+
 const carrefourComercianteSessionValidationSchema = z.object({
   cookie: z.string().trim().optional(),
   userAgent: z.string().trim().optional(),
@@ -113,6 +117,7 @@ const server = http.createServer(async (request, response) => {
           "POST /sources/carrefour-comerciante/catalog/sync",
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
+        catalogSyncBackground: "POST /catalog/sync/background",
         liveSearch: "POST /search",
       },
       catalog: getCatalogMetadata(),
@@ -148,8 +153,31 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === "POST" && url.pathname === "/catalog/sync") {
+    if (!isAuthorizedCatalogSyncRequest(request)) {
+      sendJson(response, 401, { error: "No autorizado." });
+      return;
+    }
+
     const snapshot = await syncCatalog();
     sendJson(response, 200, snapshot);
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/catalog/sync/background"
+  ) {
+    if (!isAuthorizedCatalogSyncRequest(request)) {
+      sendJson(response, 401, { error: "No autorizado." });
+      return;
+    }
+
+    const syncState = syncCatalogInBackground();
+    sendJson(response, 202, {
+      ok: true,
+      ...syncState,
+      catalog: getCatalogMetadata(),
+    });
     return;
   }
 
@@ -213,6 +241,7 @@ const server = http.createServer(async (request, response) => {
         "POST /catalog/category-search",
         "POST /catalog/price-list",
         "POST /catalog/sync",
+        "POST /catalog/sync/background",
         "POST /sources/carrefour-comerciante/session/validate",
         "POST /sources/carrefour-comerciante/session/save",
         "POST /sources/carrefour-comerciante/session/login",
@@ -289,7 +318,7 @@ async function handleCatalogCategorySearch(
 ) {
   try {
     const body = await readJsonBody(request);
-    const parsed = searchRequestSchema.safeParse(body);
+    const parsed = categorySearchRequestSchema.safeParse(body);
 
     if (!parsed.success) {
       sendJson(response, 400, {
@@ -298,7 +327,11 @@ async function handleCatalogCategorySearch(
       return;
     }
 
-    sendJson(response, 200, await searchCategory(parsed.data.query));
+    sendJson(
+      response,
+      200,
+      await searchCategory(parsed.data.query, { mode: parsed.data.mode }),
+    );
   } catch (error) {
     sendJson(response, 500, {
       error:
@@ -307,6 +340,14 @@ async function handleCatalogCategorySearch(
           : "Error interno buscando rubros.",
     });
   }
+}
+
+function isAuthorizedCatalogSyncRequest(request: http.IncomingMessage) {
+  if (!config.catalogSyncSecret) {
+    return true;
+  }
+
+  return request.headers.authorization === `Bearer ${config.catalogSyncSecret}`;
 }
 
 async function handleCatalogPriceList(

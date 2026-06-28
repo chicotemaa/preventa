@@ -327,6 +327,7 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `POST /api/source-sessions/carrefour-comerciante/validate`
 - `POST /api/source-sessions/carrefour-comerciante/save`
 - `POST /api/source-sessions/carrefour-comerciante/sync`
+- `GET /api/cron/catalog-sync`
 
 ## Endpoints worker
 
@@ -336,6 +337,7 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `POST /catalog/search`
 - `POST /catalog/category-search`
 - `POST /catalog/price-list`
+- `POST /catalog/sync/background`
 - `GET /sources/sessions`
 - `POST /sources/carrefour-comerciante/session/validate`
 - `POST /sources/carrefour-comerciante/session/save`
@@ -349,6 +351,9 @@ Frontend:
 
 ```bash
 WORKER_URL=http://127.0.0.1:4000
+CATEGORY_SEARCH_MODE=catalog
+CRON_SECRET=<clave-larga-aleatoria>
+WORKER_CRON_SECRET=<opcional-si-difiere-del-worker>
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -362,6 +367,9 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
+AUTO_SYNC_ON_STARTUP=true
+CATEGORY_SEARCH_MODE=catalog
+CATALOG_SYNC_SECRET=<misma-clave-que-CRON_SECRET-o-WORKER_CRON_SECRET>
 SOURCE_SESSION_SECRET=<clave-larga-aleatoria>
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
@@ -396,6 +404,34 @@ Estados esperados:
 Si la conexion desde backend no valida por Cloudflare/reCAPTCHA, queda disponible el fallback de validar una cookie manual de una sesion con precios visibles. Esa cookie no se guarda en el navegador ni en el repositorio.
 
 Importante: en Vercel el filesystem no es durable para este caso. Para mantener sesiones y snapshots entre deploys, usar Railway/Render con volumen o una tabla/DB para sesiones y snapshots.
+
+### Sincronizacion programada de catalogo
+
+La app esta preparada para consultar categorias desde el catalogo precargado en
+vez de consultar todas las fuentes en vivo cada vez.
+
+Flujo:
+
+1. Vercel ejecuta `GET /api/cron/catalog-sync`.
+2. La ruta valida `CRON_SECRET`.
+3. La ruta llama al worker en `POST /catalog/sync/background`.
+4. El worker valida `CATALOG_SYNC_SECRET`.
+5. El worker sincroniza fuentes en background y actualiza `catalog.json`.
+6. Las paginas consultan categorias en modo `catalog`.
+
+Horarios configurados:
+
+- Lunes 9:00 Argentina: `0 12 * * 1` UTC.
+- Todos los dias 12:00 Argentina: `0 15 * * *` UTC.
+
+Regla de uso:
+
+- `CATEGORY_SEARCH_MODE=catalog`: uso normal, rapido, basado en snapshot.
+- `CATEGORY_SEARCH_MODE=live`: diagnostico puntual, mas lento, consulta fuentes
+  en el momento.
+
+Despues del cron, validar `GET /health` o `GET /catalog` y revisar
+`lastSyncedAt`, `productsCount` y estados de fuentes.
 
 ## Fuentes y prioridad
 

@@ -2,5 +2,15 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "0 12 * * 1"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "0 15 * * *"
+    }
+  ]
 }
