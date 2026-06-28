@@ -230,11 +230,20 @@ export async function searchCategory(
   const normalizedQuery = normalizeQuery(query);
   const initialCategories = findCategoryCandidatesForQuery(query);
   const mode = options.mode ?? config.categorySearch.mode;
-  const sourceResults =
+  const activeSources = scrapingSources.filter((source) => source.enabled !== false);
+  const categorySearchQueries = buildCategorySearchQueries(
+    query,
+    initialCategories,
+  );
+  const liveCategorySources =
     mode === "live"
+      ? activeSources
+      : activeSources.filter((source) => source.id === AGUIAR_TOKIN_SOURCE_ID);
+  const sourceResults =
+    liveCategorySources.length > 0
       ? await runCategorySourceSearches(
-          scrapingSources.filter((source) => source.enabled !== false),
-          buildCategorySearchQueries(query, initialCategories),
+          liveCategorySources,
+          categorySearchQueries,
         )
       : [];
   const storedProducts = await getStoredSourceCatalogProducts();
