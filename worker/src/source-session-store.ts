@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -10,7 +11,7 @@ import type {
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
-const dataDir = path.resolve(workerRoot, "data");
+const dataDir = resolveSourceStoreDir();
 const sessionsPath = path.resolve(dataDir, "source-sessions.json");
 const snapshotsPath = path.resolve(dataDir, "source-snapshots.json");
 
@@ -117,6 +118,20 @@ type SnapshotStoreFile = {
   version: 1;
   snapshots: Record<string, SourceCatalogSnapshot>;
 };
+
+function resolveSourceStoreDir() {
+  const configuredDir = process.env.SOURCE_SESSION_STORE_DIR?.trim();
+
+  if (configuredDir) {
+    return path.resolve(configuredDir);
+  }
+
+  if (process.env.VERCEL) {
+    return path.resolve(os.tmpdir(), "preventistas-worker-data");
+  }
+
+  return path.resolve(workerRoot, "data");
+}
 
 export async function saveSourceSession(input: SaveSourceSessionInput) {
   const store = await readSessionStore();
