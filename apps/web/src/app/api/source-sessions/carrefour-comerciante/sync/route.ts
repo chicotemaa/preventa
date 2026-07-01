@@ -34,15 +34,21 @@ export async function POST(request: Request) {
       ? Math.min(Math.max(Math.floor(body.itemsPerPage), 1), 48)
       : undefined;
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
+  const workerSecret = process.env.WORKER_CRON_SECRET ?? process.env.CRON_SECRET;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (workerSecret) {
+    headers.Authorization = `Bearer ${workerSecret}`;
+  }
 
   try {
     const response = await fetch(
       `${workerUrl.replace(/\/$/, "")}/sources/carrefour-comerciante/catalog/sync`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({ queries, maxPagesPerQuery, itemsPerPage }),
         cache: "no-store",
       },

@@ -100,7 +100,7 @@ export const sourcePriorityConfig: SourcePriorityConfig[] = [
     region: "Argentina",
     fallbackStatus: "requires_login",
     fallbackMessage:
-      "Requiere cookie y User-Agent de una sesion manual autorizada para ver precios.",
+      "Sin catalogo guardado en produccion. Validar sesion y sincronizar Carrefour Comerciante desde Configuracion.",
   },
   {
     sourceId: "check-chek-mayorista",
