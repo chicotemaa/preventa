@@ -8,6 +8,12 @@ const yaguarEmail = config.yaguar.email ?? config.tokin.email;
 const yaguarPassword = config.yaguar.password ?? config.tokin.password;
 const hasYaguarCredentials = Boolean(yaguarEmail && yaguarPassword);
 const isYaguarEnabled = config.yaguar.enabled && hasYaguarCredentials;
+const yaguarCredentialSource =
+  config.yaguar.email && config.yaguar.password
+    ? "YAGUAR_EMAIL/YAGUAR_PASSWORD"
+    : config.tokin.email && config.tokin.password
+    ? "TOKIN_EMAIL/TOKIN_PASSWORD"
+    : null;
 const carrefourComercianteMissingFields = [
   ["nombre", config.carrefourComerciante.name],
   ["CUIT/DNI", config.carrefourComerciante.document],
@@ -304,8 +310,8 @@ export const scrapingSources: ScrapingSource[] = [
     disabledReason: isYaguarEnabled
       ? undefined
       : hasYaguarCredentials
-      ? "Fuente Yaguar Chaco deshabilitada por YAGUAR_ENABLED=false."
-      : "Yaguar Chaco requiere login; cargar TOKIN_EMAIL/TOKIN_PASSWORD para usar las mismas credenciales de Aguiar, o YAGUAR_EMAIL/YAGUAR_PASSWORD si fueran distintas.",
+      ? `Yaguar Chaco tiene credenciales detectadas por ${yaguarCredentialSource}, pero esta deshabilitado por YAGUAR_ENABLED=false. Activar YAGUAR_ENABLED=true y reiniciar el worker.`
+      : "Yaguar Chaco no esta recibiendo credenciales en el worker. Cargar YAGUAR_EMAIL/YAGUAR_PASSWORD o TOKIN_EMAIL/TOKIN_PASSWORD en el entorno del worker, no solo en el frontend, y reiniciar/redeployar.",
   },
   {
     id: "jotabe-nea",

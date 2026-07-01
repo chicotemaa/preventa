@@ -1,6 +1,7 @@
 import http from "node:http";
 import { z } from "zod";
 import {
+  buildCarrefourComercianteBrowserImportSnapshot,
   loginAndValidateCarrefourComercianteSession,
   syncCarrefourComercianteCatalog,
   validateCarrefourComercianteSession,
@@ -64,6 +65,39 @@ const carrefourComercianteCatalogSyncSchema = z.object({
   itemsPerPage: z.number().int().positive().max(48).optional(),
 });
 
+const carrefourComercianteCatalogImportSchema = z.object({
+  mode: z.enum(["replace", "append"]).optional(),
+  query: z.string().trim().min(2).max(120),
+  page: z.number().int().positive().max(200).optional(),
+  sourceUrl: z.string().trim().url().optional().nullable(),
+  errors: z.array(z.string().trim().min(1).max(300)).max(50).optional(),
+  products: z
+    .array(
+      z.object({
+        name: z.string().trim().min(2).max(240),
+        price: z.union([z.number().positive(), z.string().trim().min(1)]),
+        sku: z.string().trim().max(80).optional().nullable(),
+        barcode: z.string().trim().max(80).optional().nullable(),
+        brand: z.string().trim().max(80).optional().nullable(),
+        category: z.string().trim().max(160).optional().nullable(),
+        imageUrl: z.string().trim().url().optional().nullable(),
+        productUrl: z.string().trim().url().optional().nullable(),
+        priceCondition: z.string().trim().max(160).optional().nullable(),
+        alternatePrices: z
+          .array(
+            z.object({
+              label: z.string().trim().min(1).max(80),
+              price: z.number().positive(),
+              comparisonPrice: z.number().positive().optional().nullable(),
+            }),
+          )
+          .max(8)
+          .optional(),
+      }),
+    )
+    .max(120),
+});
+
 const PRICE_LIST_MAX_ITEMS = 1500;
 
 const priceListRequestSchema = z.object({
@@ -117,6 +151,8 @@ const server = http.createServer(async (request, response) => {
           "GET /sources/carrefour-comerciante/catalog",
         carrefourComercianteCatalogSync:
           "POST /sources/carrefour-comerciante/catalog/sync",
+        carrefourComercianteCatalogImport:
+          "POST /sources/carrefour-comerciante/catalog/import",
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         catalogSyncBackground: "POST /catalog/sync/background",
@@ -230,6 +266,14 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (
+    request.method === "POST" &&
+    url.pathname === "/sources/carrefour-comerciante/catalog/import"
+  ) {
+    await handleCarrefourComercianteCatalogImport(request, response);
+    return;
+  }
+
   if (request.method !== "POST" || url.pathname !== "/search") {
     sendJson(response, 404, {
       error: "Endpoint no encontrado.",
@@ -248,6 +292,7 @@ const server = http.createServer(async (request, response) => {
         "POST /sources/carrefour-comerciante/session/save",
         "POST /sources/carrefour-comerciante/session/login",
         "POST /sources/carrefour-comerciante/catalog/sync",
+        "POST /sources/carrefour-comerciante/catalog/import",
         "POST /search",
       ],
     });
@@ -566,6 +611,62 @@ async function handleCarrefourComercianteCatalogSync(
   }
 }
 
+async function handleCarrefourComercianteCatalogImport(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) {
+  try {
+    if (!isAuthorizedCatalogSyncRequest(request)) {
+      sendJson(response, 401, { error: "No autorizado." });
+      return;
+    }
+
+    const body = await readJsonBody(request);
+    const parsed = carrefourComercianteCatalogImportSchema.safeParse(body);
+
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error:
+          "Importacion invalida. Enviar query y hasta 120 productos con precio visible por lote.",
+      });
+      return;
+    }
+
+    const source = getCarrefourComercianteSource();
+    const existingSnapshot =
+      parsed.data.mode === "append"
+        ? await getSourceCatalogSnapshot(CARREFOUR_COMERCIANTE_SOURCE_ID)
+        : null;
+    const snapshot = buildCarrefourComercianteBrowserImportSnapshot(
+      source,
+      parsed.data,
+      existingSnapshot,
+    );
+    const summary = await saveSourceCatalogSnapshot(snapshot);
+
+    await reloadStoredSourceCatalogs();
+
+    sendJson(response, 200, {
+      ok: snapshot.status === "success",
+      snapshot: summary,
+      importedCount: parsed.data.products.length,
+      acceptedCount:
+        snapshot.productsCount - (existingSnapshot?.productsCount ?? 0),
+      message:
+        snapshot.status === "success"
+          ? "Lote Carrefour Comerciante importado y guardado."
+          : "El lote no incluyo productos utiles con precio.",
+    });
+  } catch (error) {
+    sendJson(response, 500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error interno importando catalogo Carrefour Comerciante.",
+    });
+  }
+}
+
 function getCarrefourComercianteSource() {
   const source = scrapingSources.find(
     (candidate) => candidate.id === CARREFOUR_COMERCIANTE_SOURCE_ID,
@@ -597,7 +698,11 @@ function toSourceSessionValidationSummary(
 function setCorsHeaders(response: http.ServerResponse) {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader(
+    "Access-Control-Allow-Headers",
+    "Authorization, Content-Type",
+  );
+  response.setHeader("Access-Control-Allow-Private-Network", "true");
 }
 
 function sendJson(

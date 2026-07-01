@@ -103,6 +103,28 @@ export type CarrefourComercianteCatalogSyncRequest = {
   itemsPerPage?: number;
 };
 
+export type CarrefourComercianteBrowserImportProduct = {
+  name: string;
+  price: number | string;
+  sku?: string | null;
+  barcode?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  imageUrl?: string | null;
+  productUrl?: string | null;
+  priceCondition?: string | null;
+  alternatePrices?: AlternatePrice[];
+};
+
+export type CarrefourComercianteBrowserImportRequest = {
+  mode?: "replace" | "append";
+  query: string;
+  page?: number;
+  sourceUrl?: string | null;
+  products: CarrefourComercianteBrowserImportProduct[];
+  errors?: string[];
+};
+
 export type CarrefourComercianteLoginSessionRequest = {
   name?: string;
   document?: string;
@@ -567,6 +589,50 @@ export async function syncCarrefourComercianteCatalog(
     visiblePriceProductsCount,
     errors,
     products: dedupedProducts,
+  };
+}
+
+export function buildCarrefourComercianteBrowserImportSnapshot(
+  source: ScrapingSource,
+  request: CarrefourComercianteBrowserImportRequest,
+  existingSnapshot: SourceCatalogSnapshot | null = null,
+): SourceCatalogSnapshot {
+  const query = request.query.trim().replace(/\s+/g, " ");
+  const importedProducts = request.products
+    .map((product) =>
+      toCarrefourComercianteImportedProductResult(product, source, query),
+    )
+    .filter((product): product is ProductSearchResult => product !== null);
+  const existingProducts =
+    request.mode === "append" ? existingSnapshot?.products ?? [] : [];
+  const mergedProducts = dedupeCarrefourComercianteProducts([
+    ...existingProducts,
+    ...importedProducts,
+  ]);
+  const existingQueries =
+    request.mode === "append" ? existingSnapshot?.queries ?? [] : [];
+  const querySet = new Set([...existingQueries, query].filter(Boolean));
+  const existingErrors =
+    request.mode === "append" ? existingSnapshot?.errors ?? [] : [];
+  const errors = [...existingErrors, ...(request.errors ?? [])].filter(Boolean);
+  const startedAt = existingSnapshot?.durationMs ?? 0;
+
+  return {
+    sourceId: source.id,
+    storeName: source.storeName,
+    storeType: source.storeType,
+    sourceUrl: request.sourceUrl ?? source.sourceUrl ?? null,
+    dataOrigin: source.dataOrigin,
+    sourceScope: source.sourceScope,
+    status: mergedProducts.length > 0 ? "success" : errors.length > 0 ? "failed" : "no_results",
+    syncedAt: new Date().toISOString(),
+    durationMs: startedAt,
+    queries: Array.from(querySet),
+    productsCount: mergedProducts.length,
+    privateProductsCount: 0,
+    visiblePriceProductsCount: mergedProducts.length,
+    errors,
+    products: mergedProducts,
   };
 }
 
@@ -1495,6 +1561,61 @@ function toCarrefourComercianteProductResult(
   };
 }
 
+function toCarrefourComercianteImportedProductResult(
+  importedProduct: CarrefourComercianteBrowserImportProduct,
+  source: ScrapingSource,
+  query: string,
+): ProductSearchResult | null {
+  const rawName = importedProduct.name.replace(/\s+/g, " ").trim();
+  const price =
+    typeof importedProduct.price === "number"
+      ? importedProduct.price
+      : normalizePrice(importedProduct.price);
+
+  if (!rawName || price === null || !Number.isFinite(price) || price <= 0) {
+    return null;
+  }
+
+  const product = createProductResult(
+    source,
+    query,
+    rawName,
+    price,
+    importedProduct.productUrl ?? null,
+    importedProduct.imageUrl ?? null,
+  );
+  const sku = normalizeIdentifier(importedProduct.sku) ?? null;
+  const barcode = normalizeIdentifier(importedProduct.barcode) ?? null;
+  const brand =
+    importedProduct.brand?.trim() || findAllowedBrand(rawName)?.name || undefined;
+  const category =
+    importedProduct.category?.trim() || findCatalogCategory(rawName)?.name;
+  const matchText = [brand, category, rawName, sku, barcode]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    ...product,
+    sku,
+    barcodes: barcode ? [barcode] : [],
+    brand,
+    category: category ?? product.category,
+    priceCondition:
+      importedProduct.priceCondition ??
+      "Carrefour Comerciante - importado desde navegador autorizado",
+    alternatePrices: normalizeImportedAlternatePrices(
+      importedProduct.alternatePrices,
+      price,
+    ),
+    availability: "in_stock",
+    confidenceScore: calculateCarrefourComercianteConfidenceScore(
+      query,
+      matchText,
+      [sku, barcode],
+    ),
+  };
+}
+
 function normalizeCarrefourComerciantePrice(rawPrice: string, cardHtml: string) {
   const normalizedRawPrice = normalizePrivatePrice(rawPrice);
 
@@ -1508,6 +1629,31 @@ function normalizeCarrefourComerciantePrice(rawPrice: string, cardHtml: string) 
 
   const visiblePrice = matchFirst(cardHtml, /\$\s*\d[\d.,]*/);
   return visiblePrice ? normalizePrice(visiblePrice) : null;
+}
+
+function normalizeImportedAlternatePrices(
+  alternatePrices: AlternatePrice[] | undefined,
+  regularPrice: number,
+) {
+  return alternatePrices
+    ?.map((alternatePrice) => ({
+      ...alternatePrice,
+      comparisonPrice: alternatePrice.comparisonPrice ?? alternatePrice.price,
+    }))
+    .filter((alternatePrice) => {
+      if (!Number.isFinite(alternatePrice.price) || alternatePrice.price <= 0) {
+        return false;
+      }
+
+      if (
+        /\bllevando\b/i.test(alternatePrice.label) &&
+        alternatePrice.price > regularPrice * 1.25
+      ) {
+        return false;
+      }
+
+      return true;
+    });
 }
 
 function normalizePrivatePrice(value: string) {

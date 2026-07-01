@@ -48,7 +48,7 @@ export default function BusquedaGeneralPage() {
     setIsLoading(true);
 
     try {
-      const result = await fetch("/api/live-search", {
+      const result = await fetch("/api/catalog-search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -98,7 +98,7 @@ export default function BusquedaGeneralPage() {
           </h1>
           <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
             Buscá un producto puntual por nombre, código, SKU o EAN y revisá
-            resultados vivos de las fuentes configuradas.
+            resultados del catálogo guardado de las fuentes configuradas.
           </p>
         </div>
       </section>
@@ -110,8 +110,8 @@ export default function BusquedaGeneralPage() {
               Buscar producto
             </h2>
             <p className="text-sm text-[#5d6b7a]">
-              Usá esta página para búsquedas puntuales, no para importar una
-              lista completa.
+              Usá esta página para búsquedas puntuales sobre los datos ya
+              guardados del catálogo.
             </p>
           </div>
 
