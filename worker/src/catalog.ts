@@ -257,6 +257,7 @@ export async function searchCategory(
         )
       : [];
   const storedProducts = await getStoredSourceCatalogProducts();
+  const storedStatuses = await getStoredSourceCatalogStatuses();
   const products = dedupeProductResults(
     [
       ...sourceResults.flatMap((result) => result.results),
@@ -290,6 +291,7 @@ export async function searchCategory(
         : result.status.resultsCount,
     })),
     ...visibleProductSourceStatuses,
+    ...storedStatuses.filter(isActiveSourceStatus),
     ...buildDisabledSourceSearchStatuses(),
   ]);
 
