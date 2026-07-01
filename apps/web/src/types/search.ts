@@ -171,6 +171,7 @@ export type SourceSessionState = {
   savedAt: string | null;
   updatedAt: string | null;
   isEncrypted: boolean;
+  storageBackend?: "supabase" | "file";
   lastValidation?: SourceSessionValidationSummary;
   snapshot?: SourceCatalogSnapshotSummary | null;
 };

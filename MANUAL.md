@@ -224,15 +224,18 @@ Cuando la validacion da `Sesion valida`, cargar en el entorno del worker:
 
 ```bash
 CARREFOUR_COMERCIANTE_ENABLED=true
-CARREFOUR_COMERCIANTE_COOKIE=
-CARREFOUR_COMERCIANTE_USER_AGENT=
+SOURCE_SESSION_STORE_BACKEND=supabase
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SOURCE_SESSION_SECRET=
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
 ```
 
-La cookie vence. Cuando Carrefour vuelva a mostrar precios privados, renovar la
-sesion y redeployar el worker con la cookie actualizada.
+La sesion validada se guarda server-side en Supabase. La cookie vence; cuando
+Carrefour vuelva a mostrar precios privados, renovar la sesion desde
+`/configuracion` y volver a sincronizar catalogo.
 
 ## Depuracion para usuarios
 
@@ -268,7 +271,8 @@ flowchart LR
   Worker --> Mayoristas["Mayoristas"]
   Worker --> Minoristas["Minoristas"]
   Worker --> Catalogo["Snapshot catalog.json"]
-  Api --> Supabase["Supabase opcional"]
+  Worker --> Supabase["Supabase sesiones y snapshots"]
+  Api --> Supabase2["Supabase historial/evolucion"]
 ```
 
 Principios tecnicos:
@@ -371,6 +375,9 @@ AUTO_SYNC_ON_STARTUP=true
 CATEGORY_SEARCH_MODE=catalog
 CATALOG_SYNC_SECRET=<misma-clave-que-CRON_SECRET-o-WORKER_CRON_SECRET>
 CATALOG_SYNC_TIMEOUT_MS=1200000
+SOURCE_SESSION_STORE_BACKEND=supabase
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
 SOURCE_SESSION_SECRET=<clave-larga-aleatoria>
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
@@ -404,7 +411,12 @@ Estados esperados:
 
 Si la conexion desde backend no valida por Cloudflare/reCAPTCHA, queda disponible el fallback de validar una cookie manual de una sesion con precios visibles. Esa cookie no se guarda en el navegador ni en el repositorio.
 
-Importante: en Vercel el filesystem no es durable para este caso. Para mantener sesiones y snapshots entre deploys, usar Railway/Render con volumen o una tabla/DB para sesiones y snapshots.
+Importante: en produccion las sesiones y snapshots privados deben guardarse en
+Supabase. Aplicar la migracion
+`supabase/migrations/20260701213000_source_sessions.sql` y cargar
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SOURCE_SESSION_STORE_BACKEND=supabase`
+y `SOURCE_SESSION_SECRET` en el worker. El storage local queda solo como fallback
+de desarrollo.
 
 ### Sincronizacion programada de catalogo
 

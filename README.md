@@ -52,6 +52,10 @@ AUTO_SYNC_ON_STARTUP=true
 CATEGORY_SEARCH_MODE=catalog
 CATALOG_SYNC_SECRET=
 CATALOG_SYNC_TIMEOUT_MS=1200000
+SOURCE_SESSION_STORE_BACKEND=supabase
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SOURCE_SESSION_SECRET=
 
 TOKIN_ENABLED=true
 TOKIN_EMAIL=
@@ -88,7 +92,8 @@ Notas:
 - `TOKIN_EMAIL` y `TOKIN_PASSWORD` habilitan Aguiar/Tokin.
 - Yaguar puede usar `YAGUAR_EMAIL/YAGUAR_PASSWORD`; si no estan, toma las credenciales de Tokin.
 - Vea y Carrefour intentan sesion con sus credenciales propias; si no estan, usan las de Tokin como fallback.
-- Supabase es opcional para guardar historial/evolucion de corridas.
+- Supabase guarda historial/evolucion de corridas y, en produccion, sesiones/snapshots de fuentes privadas como Carrefour Comerciante.
+- `SOURCE_SESSION_STORE_BACKEND=supabase` fuerza que el worker guarde sesiones y snapshots en Supabase; usar `auto` o `file` solo para desarrollo.
 - `CATEGORY_SEARCH_MODE=catalog` hace que categorias consulte el catalogo precargado; usar `live` solo para diagnostico.
 - `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
 
@@ -366,13 +371,16 @@ Variables recomendadas en el worker:
 
 ```bash
 CARREFOUR_COMERCIANTE_ENABLED=true
+SOURCE_SESSION_STORE_BACKEND=supabase
+SUPABASE_URL=<url-del-proyecto>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 SOURCE_SESSION_SECRET=<clave-larga-aleatoria>
 CARREFOUR_COMERCIANTE_REGION=CHACO
 CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
 ```
 
-`SOURCE_SESSION_SECRET` cifra las cookies guardadas. Si no se configura, el MVP guarda en modo local sin cifrado fuerte, util solo para desarrollo. En produccion usar un worker con disco durable/volumen o mover `worker/data/source-sessions.json` y `worker/data/source-snapshots.json` a una base de datos.
+`SOURCE_SESSION_SECRET` cifra las cookies antes de guardarlas. Con Supabase activo, la sesion queda en `source_sessions` y el catalogo sincronizado queda en `source_catalog_snapshots`. Si Supabase no esta configurado, el worker cae a storage local solo para desarrollo.
 
 ## Matching con IA
 
@@ -392,4 +400,6 @@ AI_MATCHING_TIMEOUT_MS=6000
 - El catalogo vivo del worker se guarda como snapshot actual en `worker/data/catalog.json`.
 - No se debe editar a mano `worker/data/catalog.json`; se regenera desde las fuentes.
 - Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
+- Las sesiones privadas y snapshots por fuente usan Supabase desde el worker cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
+- Antes de usar Carrefour Comerciante en produccion, aplicar la migracion `supabase/migrations/20260701213000_source_sessions.sql`.
 - Los CSV reales de listas externas pueden cargarse en `worker/data/imports/*.csv`; los `.example.csv` no se cargan.

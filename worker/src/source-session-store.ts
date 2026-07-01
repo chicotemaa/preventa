@@ -8,6 +8,14 @@ import type {
   SourceSearchStatus,
   StoreType,
 } from "./types.js";
+import {
+  requiresSupabaseSourceStore,
+  selectSourceCatalogSnapshotsFromSupabase,
+  selectSourceSessionRecordsFromSupabase,
+  shouldUseSupabaseSourceStore,
+  upsertSourceCatalogSnapshotsToSupabase,
+  upsertSourceSessionRecordsToSupabase,
+} from "./supabase-source-store.js";
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
@@ -27,7 +35,9 @@ type EncodedSecret =
       value: string;
     };
 
-type StoredSessionRecord = {
+export type SourceStoreBackend = "supabase" | "file";
+
+export type StoredSessionRecord = {
   sourceId: string;
   storeName: string;
   storeType: StoreType;
@@ -42,6 +52,7 @@ type StoredSessionRecord = {
 type SessionStoreFile = {
   version: 1;
   sessions: Record<string, StoredSessionRecord>;
+  backend?: SourceStoreBackend;
 };
 
 export type SourceSessionValidationSummary = {
@@ -70,6 +81,7 @@ export type SourceSessionState = {
   savedAt: string | null;
   updatedAt: string | null;
   isEncrypted: boolean;
+  storageBackend: SourceStoreBackend;
   lastValidation?: SourceSessionValidationSummary;
   snapshot?: SourceCatalogSnapshotSummary;
 };
@@ -117,6 +129,7 @@ export type SourceCatalogSnapshotSummary = Omit<
 type SnapshotStoreFile = {
   version: 1;
   snapshots: Record<string, SourceCatalogSnapshot>;
+  backend?: SourceStoreBackend;
 };
 
 function resolveSourceStoreDir() {
@@ -210,6 +223,7 @@ export async function getSourceSessionState(
     savedAt: session.savedAt,
     updatedAt: session.updatedAt,
     isEncrypted: session.cookie.encoding === "aes-256-gcm",
+    storageBackend: store.backend ?? "file",
     lastValidation: session.lastValidation,
     snapshot: (await getSourceCatalogSnapshotSummary(sourceId)) ?? undefined,
   };
@@ -295,39 +309,146 @@ export async function getStoredSourceCatalogStatuses(): Promise<
 }
 
 async function readSessionStore(): Promise<SessionStoreFile> {
+  const supabaseStore = await readSupabaseSessionStore();
+
+  if (supabaseStore) {
+    return supabaseStore;
+  }
+
   try {
     const raw = await readFile(sessionsPath, "utf8");
     const parsed = JSON.parse(raw) as SessionStoreFile;
     return {
       version: 1,
       sessions: parsed.sessions ?? {},
+      backend: "file",
     };
   } catch {
-    return { version: 1, sessions: {} };
+    return { version: 1, sessions: {}, backend: "file" };
   }
 }
 
 async function writeSessionStore(store: SessionStoreFile) {
+  const wroteToSupabase = await writeSupabaseSessionStore(store);
+
+  if (wroteToSupabase) {
+    return;
+  }
+
   await mkdir(dataDir, { recursive: true });
   await writeFile(sessionsPath, JSON.stringify(store, null, 2), "utf8");
 }
 
 async function readSnapshotStore(): Promise<SnapshotStoreFile> {
+  const supabaseStore = await readSupabaseSnapshotStore();
+
+  if (supabaseStore) {
+    return supabaseStore;
+  }
+
   try {
     const raw = await readFile(snapshotsPath, "utf8");
     const parsed = JSON.parse(raw) as SnapshotStoreFile;
     return {
       version: 1,
       snapshots: parsed.snapshots ?? {},
+      backend: "file",
     };
   } catch {
-    return { version: 1, snapshots: {} };
+    return { version: 1, snapshots: {}, backend: "file" };
   }
 }
 
 async function writeSnapshotStore(store: SnapshotStoreFile) {
+  const wroteToSupabase = await writeSupabaseSnapshotStore(store);
+
+  if (wroteToSupabase) {
+    return;
+  }
+
   await mkdir(dataDir, { recursive: true });
   await writeFile(snapshotsPath, JSON.stringify(store, null, 2), "utf8");
+}
+
+async function readSupabaseSessionStore(): Promise<SessionStoreFile | null> {
+  if (!shouldUseSupabaseSourceStore()) {
+    return null;
+  }
+
+  try {
+    const records = await selectSourceSessionRecordsFromSupabase();
+    return {
+      version: 1,
+      backend: "supabase",
+      sessions: Object.fromEntries(
+        records.map((record) => [record.sourceId, record]),
+      ),
+    };
+  } catch (error) {
+    handleSupabaseStoreError("leer sesiones", error);
+    return null;
+  }
+}
+
+async function writeSupabaseSessionStore(store: SessionStoreFile) {
+  if (!shouldUseSupabaseSourceStore()) {
+    return false;
+  }
+
+  try {
+    await upsertSourceSessionRecordsToSupabase(Object.values(store.sessions));
+    return true;
+  } catch (error) {
+    handleSupabaseStoreError("guardar sesiones", error);
+    return false;
+  }
+}
+
+async function readSupabaseSnapshotStore(): Promise<SnapshotStoreFile | null> {
+  if (!shouldUseSupabaseSourceStore()) {
+    return null;
+  }
+
+  try {
+    const snapshots = await selectSourceCatalogSnapshotsFromSupabase();
+    return {
+      version: 1,
+      backend: "supabase",
+      snapshots: Object.fromEntries(
+        snapshots.map((snapshot) => [snapshot.sourceId, snapshot]),
+      ),
+    };
+  } catch (error) {
+    handleSupabaseStoreError("leer snapshots", error);
+    return null;
+  }
+}
+
+async function writeSupabaseSnapshotStore(store: SnapshotStoreFile) {
+  if (!shouldUseSupabaseSourceStore()) {
+    return false;
+  }
+
+  try {
+    await upsertSourceCatalogSnapshotsToSupabase(
+      Object.values(store.snapshots),
+    );
+    return true;
+  } catch (error) {
+    handleSupabaseStoreError("guardar snapshots", error);
+    return false;
+  }
+}
+
+function handleSupabaseStoreError(operation: string, error: unknown) {
+  if (requiresSupabaseSourceStore()) {
+    throw error instanceof Error ? error : new Error(String(error));
+  }
+
+  console.warn(
+    `[source-session-store] No se pudo ${operation} en Supabase; se usa storage local.`,
+    error,
+  );
 }
 
 function encodeSecret(value: string): EncodedSecret {

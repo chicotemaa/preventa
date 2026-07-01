@@ -573,7 +573,7 @@ function SessionStatus({
           Estado guardado
         </h2>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <Metric
             label="Sesión"
             value={sessionState?.hasSession ? "Guardada" : "Sin guardar"}
@@ -587,8 +587,18 @@ function SessionStatus({
             value={sessionState?.snapshot?.productsCount ?? 0}
           />
           <Metric
+            label="Storage"
+            value={
+              sessionState?.storageBackend === "supabase"
+                ? "Supabase"
+                : sessionState?.storageBackend === "file"
+                  ? "Local"
+                  : "-"
+            }
+          />
+          <Metric
             label="Cifrado"
-            value={sessionState?.isEncrypted ? "Sí" : "No / local"}
+            value={sessionState?.isEncrypted ? "Sí" : "No"}
           />
         </div>
 
@@ -626,11 +636,12 @@ function SessionStatus({
           Producción
         </h2>
         <p className="mt-1 text-sm leading-6 text-[#667789]">
-          Para que la sesión sobreviva deploys, usar worker con disco durable o
-          mover este storage a base de datos. Configuración mínima:
+          Para que la sesión y el catálogo sobrevivan deploys, el worker debe
+          tener Supabase configurado. Si no, cae a storage local de desarrollo.
         </p>
         <pre className="mt-4 overflow-auto rounded-md bg-[#17202a] p-3 text-xs leading-5 text-white">
           {envPreview.join("\n")}
+          {"\nSUPABASE_URL=<url>\nSUPABASE_SERVICE_ROLE_KEY=<service-role>\nSOURCE_SESSION_STORE_BACKEND=supabase\nSOURCE_SESSION_SECRET=<clave-larga>"}
         </pre>
       </aside>
     </section>
