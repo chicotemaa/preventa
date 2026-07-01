@@ -15,6 +15,47 @@ import {
   type SourcePriorityConfig,
 } from "@/lib/source-priority";
 
+const DECISION_BRAND_ALIASES = [
+  { label: "Bon o Bon", aliases: ["bon o bon", "bonobon", "bob", "b o b", "b-o-b"] },
+  { label: "Cofler", aliases: ["cofler", "cofler block"] },
+  { label: "Bagley", aliases: ["bagley"] },
+  { label: "Chocolinas", aliases: ["chocolinas", "chocotorta"] },
+  { label: "Tatin", aliases: ["tatin", "tatín"] },
+  { label: "Tofi", aliases: ["tofi"] },
+  { label: "Aguila", aliases: ["aguila", "águila"] },
+  { label: "Mogul", aliases: ["mogul"] },
+  { label: "Topline", aliases: ["topline", "top line"] },
+  { label: "Rocklets", aliases: ["rocklets"] },
+  { label: "Tortuguita", aliases: ["tortuguita"] },
+  { label: "Cabsha", aliases: ["cabsha"] },
+  { label: "Arcor", aliases: ["arcor"] },
+  { label: "Hamlet", aliases: ["hamlet"] },
+  { label: "Lia", aliases: ["lia"] },
+  { label: "Fulbito", aliases: ["fulbito"] },
+  { label: "Terrabusi", aliases: ["terrabusi"] },
+] as const;
+
+const DECISION_VARIANT_GROUPS = [
+  ["minitorta", ["minitorta", "mini torta"]],
+  ["triple", ["triple", "triples"]],
+  ["simple", ["simple", "simples"]],
+  ["mini", ["mini", "minis"]],
+  ["block", ["block", "bloc"]],
+  ["mousse", ["mousse"]],
+  ["chocotorta", ["chocotorta"]],
+  ["negro", ["negro", "black", "chocolate con leche"]],
+  ["blanco", ["blanco", "blanca"]],
+  ["clasico", ["clasico", "clasica", "clasico", "clásica"]],
+  ["brownie", ["brownie"]],
+  ["ddl", ["ddl", "dulce de leche"]],
+  ["mani", ["mani", "maní"]],
+  ["frutilla", ["frutilla", "frut"]],
+  ["frambuesa", ["frambuesa"]],
+  ["coco", ["coco"]],
+  ["goat", ["goat"]],
+  ["byn", ["byn", "b&n", "b n"]],
+] as const;
+
 export type MatchQuality =
   | "match_exact"
   | "match_probable"
@@ -824,9 +865,10 @@ function compareRows(
 }
 
 function buildClusterKey(product: ProductSearchResult, categoryName: string) {
-  const brand = normalizeDecisionText(product.brand ?? inferBrandFromName(product.rawName));
+  const brand = normalizeDecisionText(getDecisionBrand(product));
   const presentation = extractPresentation(product);
-  const coreName = buildCoreProductName(product, brand);
+  const variantSignature = buildVariantSignature(product, brand);
+  const coreName = variantSignature || buildCoreProductName(product, brand);
 
   return [normalizeDecisionText(categoryName), brand, presentation.key, coreName]
     .filter(Boolean)
@@ -853,7 +895,7 @@ function buildBrandLabel(products: ProductSearchResult[]) {
   const brands = Array.from(
     new Set(
       products
-        .map((product) => product.brand ?? inferBrandFromName(product.rawName))
+        .map(getDecisionBrand)
         .map((brand) => brand.trim())
         .filter(Boolean),
     ),
@@ -891,16 +933,23 @@ function extractPresentation(product: ProductSearchResult) {
   );
 
   if (packMatch?.[1] && packMatch[2] && packMatch[3]) {
+    const quantity = normalizePresentationNumber(packMatch[1], text);
+    const amount = normalizePresentationNumber(packMatch[2], text);
+    const unit = normalizeUnitLabel(packMatch[3]);
+
     return {
-      key: `${packMatch[1]}x${packMatch[2]}${packMatch[3]}`,
-      label: `${packMatch[1]} x ${packMatch[2]} ${normalizeUnitLabel(packMatch[3])}`,
+      key: `${quantity}x${amount}${unit}`,
+      label: `${quantity} x ${amount} ${unit}`,
     };
   }
 
   if (singleMatch?.[1] && singleMatch[2]) {
+    const amount = normalizePresentationNumber(singleMatch[1], text);
+    const unit = normalizeUnitLabel(singleMatch[2]);
+
     return {
-      key: `${singleMatch[1]}${singleMatch[2]}`,
-      label: `${singleMatch[1]} ${normalizeUnitLabel(singleMatch[2])}`,
+      key: `${amount}${unit}`,
+      label: `${amount} ${unit}`,
     };
   }
 
@@ -930,6 +979,31 @@ function normalizeUnitLabel(unit: string) {
   }
 
   return normalizedUnit;
+}
+
+function normalizePresentationNumber(rawValue: string, context: string) {
+  const normalizedValue = rawValue.replace(",", ".");
+  const parsed = Number(normalizedValue);
+
+  if (!Number.isFinite(parsed)) {
+    return normalizedValue;
+  }
+
+  const decimalFixes: Record<number, number> = {
+    294: 29.4,
+    345: 34.5,
+    407: 40.7,
+    715: 71.5,
+    735: 73.5,
+  };
+  const fixedValue =
+    /\balfajor(?:es)?\b/.test(context) && decimalFixes[Math.round(parsed)]
+      ? decimalFixes[Math.round(parsed)]
+      : parsed;
+
+  return Number.isInteger(fixedValue)
+    ? String(fixedValue)
+    : fixedValue.toFixed(1).replace(".", ",");
 }
 
 function findBestProductCell(products: ProductSearchResult[]) {
@@ -1073,6 +1147,67 @@ function inferBrandFromName(value: string) {
     .filter((token) => token.length > 2);
 
   return tokens[0] ?? "";
+}
+
+function getDecisionBrand(product: ProductSearchResult) {
+  const explicitBrand = findKnownBrand(product.rawName);
+
+  if (explicitBrand) {
+    return explicitBrand;
+  }
+
+  const productBrand = product.brand?.trim();
+
+  if (productBrand) {
+    return normalizeKnownBrandLabel(productBrand);
+  }
+
+  return inferBrandFromName(product.rawName);
+}
+
+function findKnownBrand(value: string) {
+  const text = normalizeAliasText(value);
+  const candidates = DECISION_BRAND_ALIASES.flatMap((brand) =>
+    brand.aliases.map((alias) => ({ label: brand.label, alias })),
+  ).sort((first, second) => second.alias.length - first.alias.length);
+
+  return candidates.find((candidate) => aliasMatches(text, candidate.alias))?.label ?? null;
+}
+
+function normalizeKnownBrandLabel(value: string) {
+  return findKnownBrand(value) ?? value;
+}
+
+function buildVariantSignature(product: ProductSearchResult, brand: string) {
+  const text = normalizeAliasText(
+    product.rawName
+      .replace(new RegExp(`\\b${escapeRegExp(brand)}\\b`, "gi"), " "),
+  );
+  const variants = DECISION_VARIANT_GROUPS.flatMap(([variant, aliases]) =>
+    aliases.some((alias) => aliasMatches(text, alias)) ? [variant] : [],
+  );
+
+  return Array.from(new Set(variants)).join("-");
+}
+
+function normalizeAliasText(value: string) {
+  return normalizeDecisionText(value).replace(/-/g, " ");
+}
+
+function aliasMatches(text: string, alias: string) {
+  const normalizedAlias = normalizeAliasText(alias);
+
+  if (!normalizedAlias) {
+    return false;
+  }
+
+  const pattern = normalizedAlias
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(escapeRegExp)
+    .join("[\\s-]+");
+
+  return new RegExp(`\\b${pattern}\\b`, "i").test(text);
 }
 
 function normalizeDecisionText(value: string) {
