@@ -126,7 +126,7 @@ function resolveSourceStoreDir() {
     return path.resolve(configuredDir);
   }
 
-  if (process.env.VERCEL) {
+  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
     return path.resolve(os.tmpdir(), "preventistas-worker-data");
   }
 
