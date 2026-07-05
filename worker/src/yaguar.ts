@@ -65,13 +65,11 @@ export async function extractProductsFromYaguarAuth(
           return results;
         }
 
-        return fetchYaguarProductsWithBrowser(
-          source,
-          query,
-          email,
-          password,
-          cookies,
-        );
+        // If the lightweight HTTP login authenticates but returns no products, do
+        // a clean browser login instead of reusing partial cookies. Yaguar can
+        // show the store shell with those cookies while still not exposing the
+        // searchable product grid.
+        return fetchYaguarProductsWithBrowser(source, query, email, password);
       })
       .catch((error) => {
         if (!config.yaguar.browserFallback) {
