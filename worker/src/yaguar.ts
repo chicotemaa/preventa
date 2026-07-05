@@ -152,6 +152,8 @@ async function fetchYaguarProductsWithBrowser(
       );
     }
 
+    await ensureYaguarChacoBranch(page);
+
     const directSearchUrl = buildSearchUrl(source.searchUrlTemplate, query);
 
     await page.goto(directSearchUrl, {
@@ -194,6 +196,7 @@ async function fetchYaguarProductsWithBrowser(
       waitUntil: "domcontentloaded",
       timeout: config.yaguar.sourceTimeoutMs,
     });
+    await ensureYaguarChacoBranch(page);
 
     await applyYaguarVisibleSearch(page, query);
     await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {
@@ -223,6 +226,43 @@ async function fetchYaguarProductsWithBrowser(
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
   }
+}
+
+async function ensureYaguarChacoBranch(page: Page) {
+  const selected = await page
+    .evaluate(() => {
+      const selects = Array.from(document.querySelectorAll("select"));
+
+      for (const select of selects) {
+        const options = Array.from(select.options);
+        const option = options.find((item) =>
+          /chaco|resistencia/i.test(
+            [item.textContent, item.label, item.value].filter(Boolean).join(" "),
+          ),
+        );
+
+        if (!option || select.value === option.value) {
+          continue;
+        }
+
+        select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      }
+
+      return false;
+    })
+    .catch(() => false);
+
+  if (!selected) {
+    return;
+  }
+
+  await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {
+    return undefined;
+  });
+  await page.waitForTimeout(1_000);
 }
 
 async function addYaguarCookiesToContext(
