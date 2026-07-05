@@ -16,6 +16,7 @@ import {
   upsertSourceCatalogSnapshotsToSupabase,
   upsertSourceSessionRecordsToSupabase,
 } from "./supabase-source-store.js";
+import { scrapingSources } from "./sources/argentina.js";
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
@@ -290,8 +291,7 @@ export async function getStoredSourceCatalogStatuses(): Promise<
   SourceSearchStatus[]
 > {
   const store = await readSnapshotStore();
-
-  return Object.values(store.snapshots).map((snapshot) => ({
+  const statuses = Object.values(store.snapshots).map((snapshot) => ({
     sourceId: snapshot.sourceId,
     storeName: snapshot.storeName,
     storeType: snapshot.storeType,
@@ -306,6 +306,38 @@ export async function getStoredSourceCatalogStatuses(): Promise<
         ? undefined
         : snapshot.errors[0] ?? "Snapshot sin productos utiles.",
   }));
+  const sourcesWithSnapshot = new Set(statuses.map((status) => status.sourceId));
+
+  return [
+    ...statuses,
+    ...scrapingSources
+      .filter((source) => source.enabled !== false)
+      .filter((source) => !sourcesWithSnapshot.has(source.id))
+      .map((source) => ({
+        sourceId: source.id,
+        storeName: source.storeName,
+        storeType: source.storeType,
+        sourceUrl: source.sourceUrl ?? null,
+        dataOrigin: source.dataOrigin,
+        sourceScope: source.sourceScope,
+        status: "no_results" as const,
+        resultsCount: 0,
+        durationMs: 0,
+        errorMessage: getMissingSourceSnapshotMessage(source.sourceKind),
+      })),
+  ];
+}
+
+function getMissingSourceSnapshotMessage(sourceKind: string | undefined) {
+  if (sourceKind === "yaguar_auth") {
+    return "Yaguar esta configurado, pero todavia no hay catalogo guardado para esta fuente. Ejecutar sincronizacion para verificar productos y precios.";
+  }
+
+  if (sourceKind === "carrefour_comerciante") {
+    return "Carrefour Comerciante esta configurado, pero todavia no hay catalogo guardado con una sesion autorizada.";
+  }
+
+  return "Fuente configurada; sin catalogo guardado para esta busqueda.";
 }
 
 async function readSessionStore(): Promise<SessionStoreFile> {
