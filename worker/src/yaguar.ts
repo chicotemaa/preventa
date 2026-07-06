@@ -240,7 +240,18 @@ async function fetchYaguarProductsWithBrowser(
       return textResults;
     }
 
-    return extractProductsFromStaticHtmlText(html, directSearchUrl, source, query);
+    const finalStaticResults = extractProductsFromStaticHtmlText(
+      html,
+      directSearchUrl,
+      source,
+      query,
+    );
+
+    if (finalStaticResults.length > 0) {
+      return finalStaticResults;
+    }
+
+    throw new Error(await buildYaguarNoResultsDiagnostic(page, query));
   } finally {
     await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
@@ -795,6 +806,104 @@ async function extractProductsFromYaguarVisibleText(
   }
 
   return results;
+}
+
+async function buildYaguarNoResultsDiagnostic(page: Page, query: string) {
+  const state = await page
+    .evaluate((searchTerm) => {
+      const text = document.body.innerText ?? "";
+      const lines = text
+        .split("\n")
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      const relevantLines = lines
+        .filter((line) => {
+          const normalizedLine = line.toLowerCase();
+          const normalizedSearch = searchTerm.toLowerCase();
+
+          return (
+            normalizedLine.includes(normalizedSearch) ||
+            /\bCod\.?\s*[A-Z0-9-]+/i.test(line) ||
+            /\$\s*\d[\d.,]*(?:\s*final)?/i.test(line) ||
+            /sucursal|seleccionar|filtros|sin resultados|no se encontraron/i.test(
+              line,
+            )
+          );
+        })
+        .slice(0, 24)
+        .map((line) => line.slice(0, 140));
+      const visibleInputs = Array.from(document.querySelectorAll("input"))
+        .filter((input) => {
+          const rect = input.getBoundingClientRect();
+          const style = window.getComputedStyle(input);
+          const type = input.getAttribute("type")?.toLowerCase() ?? "text";
+
+          return (
+            rect.width > 60 &&
+            rect.height > 12 &&
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            !["hidden", "password"].includes(type)
+          );
+        })
+        .slice(0, 8)
+        .map((input) => ({
+          type: input.getAttribute("type") ?? "text",
+          name: input.getAttribute("name"),
+          id: input.getAttribute("id"),
+          placeholder: input.getAttribute("placeholder"),
+          value: input.value?.slice(0, 80) ?? "",
+        }));
+      const selects = Array.from(document.querySelectorAll("select"))
+        .slice(0, 6)
+        .map((select) => ({
+          name: select.getAttribute("name"),
+          id: select.getAttribute("id"),
+          value: select.value,
+          selectedText:
+            select.selectedOptions[0]?.textContent
+              ?.replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 80) ?? "",
+          options: Array.from(select.options)
+            .slice(0, 8)
+            .map((option) =>
+              [option.value, option.textContent?.replace(/\s+/g, " ").trim()]
+                .filter(Boolean)
+                .join(":")
+                .slice(0, 80),
+            ),
+        }));
+
+      return {
+        url: window.location.href,
+        title: document.title,
+        textLength: text.length,
+        hasQuery: text.toLowerCase().includes(searchTerm.toLowerCase()),
+        hasPrice: /\$\s*\d[\d.,]*(?:\s*final)?/i.test(text),
+        hasCode: /\bCod\.?\s*[A-Z0-9-]+/i.test(text),
+        addToCartCount: Array.from(
+          document.querySelectorAll("button, a, input[type='submit']"),
+        ).filter((element) =>
+          /a(?:ñ|n)adir\s+al\s+carrito|agregar\s+al\s+carrito/i.test(
+            element.textContent ?? (element as HTMLInputElement).value ?? "",
+          ),
+        ).length,
+        productNodeCount: document.querySelectorAll(
+          ".product, .product-type-simple, li.product, .e-loop-item, .elementor-loop-item, [class*='product'], [data-product_id]",
+        ).length,
+        relevantLines,
+        visibleInputs,
+        selects,
+      };
+    }, query)
+    .catch((error) => ({
+      error: error instanceof Error ? error.message : String(error),
+    }));
+
+  return `Yaguar no expuso productos extraibles despues del login. Diagnostico: ${JSON.stringify(
+    state,
+  ).slice(0, 2200)}`;
 }
 
 async function readYaguarBrowserLoginError(
