@@ -44,6 +44,7 @@ type SearchSourceOptions = {
 };
 
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
+const YAGUAR_AUTH_SOURCE_ID = "yaguar-chaco-tienda-auth";
 
 export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const startedAt = Date.now();
@@ -67,9 +68,7 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
   const results = dedupeResults(
     sourceResults
       .flatMap((result) => result.results)
-      .filter(
-        (result) => result.confidenceScore >= config.minConfidenceScore,
-      ),
+      .filter(shouldKeepLiveResult),
   ).sort(compareLiveSearchResults);
 
   return {
@@ -80,6 +79,14 @@ export async function runLiveSearch(query: string): Promise<SearchResponse> {
     results,
     sources,
   };
+}
+
+function shouldKeepLiveResult(result: ProductSearchResult) {
+  if (result.sourceId === YAGUAR_AUTH_SOURCE_ID) {
+    return true;
+  }
+
+  return result.confidenceScore >= config.minConfidenceScore;
 }
 
 export function getActiveSources() {
