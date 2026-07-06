@@ -61,10 +61,13 @@ export async function extractProductsFromYaguarAuth(
   return withLocalTimeout(
     fetchAuthenticatedYaguarProducts(source, query, email, password)
       .then(({ results, cookies }) => {
-        if (results.length > 0 || !config.yaguar.browserFallback) {
+        if (results.length > 0) {
           return results;
         }
 
+        // Yaguar autentica por HTTP, pero el catalogo util suele quedar
+        // renderizado en la tienda. Si el HTML estatico viene vacio, se fuerza
+        // el navegador aunque YAGUAR_BROWSER_FALLBACK este desactivado.
         return fetchYaguarProductsWithBrowser(
           source,
           query,
