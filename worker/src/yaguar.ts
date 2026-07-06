@@ -2,7 +2,7 @@ import { extractProductsFromStaticHtmlText } from "./api-extractors.js";
 import { launchBrowser } from "./browser.js";
 import { config } from "./config.js";
 import { createProductResult } from "./extractors.js";
-import { normalizePrice } from "./normalizers.js";
+import { detectQueryType, normalizePrice } from "./normalizers.js";
 import type {
   BrowserContext,
   Page,
@@ -174,9 +174,8 @@ async function fetchYaguarProductsWithBrowser(
       throw new Error("Yaguar redirigio a login al consultar productos.");
     }
 
-    const directBrowserResults = await extractProductsFromYaguarVisibleGrid(
-      page,
-      source,
+    const directBrowserResults = filterYaguarResultsForQuery(
+      await extractProductsFromYaguarVisibleGrid(page, source, query),
       query,
     );
 
@@ -184,9 +183,8 @@ async function fetchYaguarProductsWithBrowser(
       return directBrowserResults;
     }
 
-    const directTextResults = await extractProductsFromYaguarVisibleText(
-      page,
-      source,
+    const directTextResults = filterYaguarResultsForQuery(
+      await extractProductsFromYaguarVisibleText(page, source, query),
       query,
     );
 
@@ -194,10 +192,8 @@ async function fetchYaguarProductsWithBrowser(
       return directTextResults;
     }
 
-    const directStaticResults = extractProductsFromStaticHtmlText(
-      html,
-      directSearchUrl,
-      source,
+    const directStaticResults = filterYaguarResultsForQuery(
+      extractProductsFromStaticHtmlText(html, directSearchUrl, source, query),
       query,
     );
 
@@ -223,9 +219,8 @@ async function fetchYaguarProductsWithBrowser(
       throw new Error("Yaguar redirigio a login al consultar productos.");
     }
 
-    const browserResults = await extractProductsFromYaguarVisibleGrid(
-      page,
-      source,
+    const browserResults = filterYaguarResultsForQuery(
+      await extractProductsFromYaguarVisibleGrid(page, source, query),
       query,
     );
 
@@ -233,9 +228,8 @@ async function fetchYaguarProductsWithBrowser(
       return browserResults;
     }
 
-    const textResults = await extractProductsFromYaguarVisibleText(
-      page,
-      source,
+    const textResults = filterYaguarResultsForQuery(
+      await extractProductsFromYaguarVisibleText(page, source, query),
       query,
     );
 
@@ -243,10 +237,8 @@ async function fetchYaguarProductsWithBrowser(
       return textResults;
     }
 
-    const finalStaticResults = extractProductsFromStaticHtmlText(
-      html,
-      directSearchUrl,
-      source,
+    const finalStaticResults = filterYaguarResultsForQuery(
+      extractProductsFromStaticHtmlText(html, directSearchUrl, source, query),
       query,
     );
 
@@ -316,6 +308,25 @@ async function addYaguarCookiesToContext(
   );
 }
 
+function filterYaguarResultsForQuery(
+  results: ProductSearchResult[],
+  query: string,
+) {
+  const queryType = detectQueryType(query);
+  const normalizedDigits = query.replace(/\D/g, "");
+
+  return results.filter((result) => {
+    if (queryType !== "text") {
+      return [
+        result.sku,
+        ...(result.barcodes ?? []),
+      ].some((value) => value?.replace(/\D/g, "").includes(normalizedDigits));
+    }
+
+    return result.confidenceScore >= 35;
+  });
+}
+
 async function loginYaguarWithBrowser(
   page: Page,
   email: string,
@@ -355,28 +366,25 @@ async function loginYaguarWithBrowser(
 
 async function applyYaguarVisibleSearch(page: Page, query: string) {
   try {
-    const filled = await page.evaluate((searchTerm) => {
-      const inputs = Array.from(document.querySelectorAll("input")).filter(
-        (input) => {
+    const inputIndex = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll("input"));
+      const scoredInputs = inputs
+        .map((input, index) => {
           const rect = input.getBoundingClientRect();
           const style = window.getComputedStyle(input);
           const type = input.getAttribute("type")?.toLowerCase() ?? "text";
 
-          return (
-            rect.width > 80 &&
-            rect.height > 16 &&
-            style.visibility !== "hidden" &&
-            style.display !== "none" &&
-            !["hidden", "password", "number", "checkbox", "radio", "submit"].includes(type)
-          );
-        },
-      );
+          if (
+            rect.width <= 80 ||
+            rect.height <= 16 ||
+            style.visibility === "hidden" ||
+            style.display === "none" ||
+            ["hidden", "password", "number", "checkbox", "radio", "submit"].includes(type)
+          ) {
+            return null;
+          }
 
-      const scoredInputs = inputs
-        .map((input) => {
-          const rect = input.getBoundingClientRect();
           const surroundingText = getSurroundingText(input);
-          const type = input.getAttribute("type")?.toLowerCase() ?? "text";
           const metadata = [
             input.getAttribute("name"),
             input.getAttribute("id"),
@@ -389,12 +397,12 @@ async function applyYaguarVisibleSearch(page: Page, query: string) {
             .join(" ");
           let score = 100;
 
-          if (/buscar|search|producto|marca|filtro/i.test(metadata)) {
-            score -= 45;
+          if (/filtros|limpiar filtros|almac[eé]n|kiosco|desayuno|bodega/i.test(surroundingText)) {
+            score -= 70;
           }
 
-          if (/filtros|limpiar filtros/i.test(surroundingText)) {
-            score -= 20;
+          if (/buscar|search|producto|marca|filtro/i.test(metadata)) {
+            score -= 45;
           }
 
           if (type === "search") {
@@ -405,25 +413,15 @@ async function applyYaguarVisibleSearch(page: Page, query: string) {
             score -= 5;
           }
 
-          return { input, score };
+          return { index, score };
         })
+        .filter(
+          (candidate): candidate is { index: number; score: number } =>
+            candidate !== null,
+        )
         .sort((first, second) => first.score - second.score);
 
-      const input = scoredInputs[0]?.input;
-
-      if (!input) {
-        return false;
-      }
-
-      input.focus();
-      input.value = searchTerm;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      input.dispatchEvent(
-        new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
-      );
-
-      return true;
+      return scoredInputs[0]?.index ?? -1;
 
       function getSurroundingText(input: HTMLInputElement) {
         let current: Element | null = input;
@@ -440,18 +438,26 @@ async function applyYaguarVisibleSearch(page: Page, query: string) {
 
         return "";
       }
-    }, query);
+    });
 
-    if (!filled) {
+    if (inputIndex < 0) {
       return undefined;
     }
 
+    const input = page.locator("input").nth(inputIndex);
+    await input.scrollIntoViewIfNeeded();
+    await input.click();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type(query, { delay: 45 });
     await page.keyboard.press("Enter").catch(() => undefined);
     await page
       .waitForFunction(
-        () =>
+        (searchTerm) =>
+          document.body.innerText.toLowerCase().includes(searchTerm.toLowerCase()) &&
           /\bCod\.?\s*[A-Z0-9-]+/i.test(document.body.innerText) &&
           /\$\s*\d[\d.,]*/.test(document.body.innerText),
+        query,
         { timeout: 10_000 },
       )
       .catch(() => undefined);
@@ -469,7 +475,7 @@ async function extractProductsFromYaguarVisibleGrid(
   const candidates = (await page.evaluate(() => {
     const addToCartPattern = /a(?:ñ|n)adir\s+al\s+carrito|agregar\s+al\s+carrito/i;
     const pricePattern = /\$\s*\d[\d.,]*(?:\s*final)?/i;
-    const codePattern = /\bCod\.?\s*[A-Z0-9-]+/i;
+    const codePattern = /\bCod\.?\s*([A-Z0-9-]+)/i;
     const addToCartElements = "button, a, input[type='submit'], input[type='button']";
     const productSelectors = [
       ".product",
