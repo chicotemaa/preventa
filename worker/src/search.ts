@@ -797,15 +797,8 @@ async function runYaguarAuthSourceSearch(
   options: SearchSourceOptions,
 ): Promise<SearchSourceResult> {
   const rawResults = await extractProductsFromYaguarAuth(source, query);
-  const shouldFilterByConfidence = options.filterByConfidence ?? true;
   const shouldLimitResults = options.limitResults ?? true;
-  const dedupedResults = dedupeResults(
-    rawResults.filter((result) =>
-      shouldFilterByConfidence
-        ? result.confidenceScore >= config.minConfidenceScore
-        : true,
-    ),
-  );
+  const dedupedResults = dedupeResults(rawResults);
   const results = shouldLimitResults
     ? dedupedResults.slice(0, config.maxResultsPerSource)
     : dedupedResults;
