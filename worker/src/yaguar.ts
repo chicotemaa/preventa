@@ -181,6 +181,16 @@ async function fetchYaguarProductsWithBrowser(
       return directBrowserResults;
     }
 
+    const directTextResults = await extractProductsFromYaguarVisibleText(
+      page,
+      source,
+      query,
+    );
+
+    if (directTextResults.length > 0) {
+      return directTextResults;
+    }
+
     const directStaticResults = extractProductsFromStaticHtmlText(
       html,
       directSearchUrl,
@@ -218,6 +228,16 @@ async function fetchYaguarProductsWithBrowser(
 
     if (browserResults.length > 0) {
       return browserResults;
+    }
+
+    const textResults = await extractProductsFromYaguarVisibleText(
+      page,
+      source,
+      query,
+    );
+
+    if (textResults.length > 0) {
+      return textResults;
     }
 
     return extractProductsFromStaticHtmlText(html, directSearchUrl, source, query);
@@ -599,6 +619,156 @@ async function extractProductsFromYaguarVisibleGrid(
       const label = element.getAttribute("aria-label")?.trim();
 
       return text || value || label || "";
+    }
+  })) as YaguarVisibleCandidate[];
+
+  const results: ProductSearchResult[] = [];
+
+  for (const candidate of candidates) {
+    const price = normalizePrice(candidate.priceText);
+
+    if (price === null) {
+      continue;
+    }
+
+    results.push({
+      ...createProductResult(
+        source,
+        query,
+        candidate.rawName,
+        price,
+        resolveYaguarUrl(candidate.productUrl),
+        resolveYaguarUrl(candidate.imageUrl),
+      ),
+      sku: candidate.sku,
+    });
+  }
+
+  return results;
+}
+
+async function extractProductsFromYaguarVisibleText(
+  page: Page,
+  source: ScrapingSource,
+  query: string,
+) {
+  const candidates = (await page.evaluate(() => {
+    const pricePattern = /\$\s*\d[\d.,]*(?:\s*final)?/i;
+    const codePattern = /\bCod\.?\s*([A-Z0-9-]+)/i;
+    const lines = (document.body.innerText ?? "")
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    const candidatesByKey = new Map<string, YaguarVisibleCandidate>();
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const priceText = lines[index]?.match(pricePattern)?.[0];
+
+      if (!priceText) {
+        continue;
+      }
+
+      const codeIndex = findCodeLineIndex(lines, index);
+      const nameEndIndex = codeIndex >= 0 ? codeIndex - 1 : index - 1;
+      const nameLines = collectNameLines(lines, nameEndIndex);
+      const rawName = nameLines.join(" ").replace(/\s+/g, " ").trim();
+
+      if (!rawName) {
+        continue;
+      }
+
+      const sku =
+        codeIndex >= 0 ? lines[codeIndex]?.match(codePattern)?.[1] ?? null : null;
+      const key = `${rawName.toLowerCase()}|${priceText}|${sku ?? ""}`;
+
+      candidatesByKey.set(key, {
+        rawName,
+        priceText,
+        sku,
+        imageUrl: null,
+        productUrl: null,
+      });
+    }
+
+    return Array.from(candidatesByKey.values()).slice(0, 80);
+
+    function findCodeLineIndex(linesToSearch: string[], priceLineIndex: number) {
+      const from = Math.max(0, priceLineIndex - 6);
+      const to = Math.min(linesToSearch.length - 1, priceLineIndex + 2);
+
+      for (let index = priceLineIndex - 1; index >= from; index -= 1) {
+        if (codePattern.test(linesToSearch[index] ?? "")) {
+          return index;
+        }
+      }
+
+      for (let index = priceLineIndex + 1; index <= to; index += 1) {
+        if (codePattern.test(linesToSearch[index] ?? "")) {
+          return index;
+        }
+      }
+
+      return -1;
+    }
+
+    function collectNameLines(linesToSearch: string[], nameEndIndex: number) {
+      const nameLines: string[] = [];
+
+      for (
+        let index = nameEndIndex;
+        index >= 0 && nameLines.length < 4;
+        index -= 1
+      ) {
+        const line = linesToSearch[index] ?? "";
+
+        if (isProductNameBoundary(line)) {
+          break;
+        }
+
+        if (isLikelyProductNameLine(line)) {
+          nameLines.unshift(line);
+          continue;
+        }
+
+        if (nameLines.length > 0) {
+          break;
+        }
+      }
+
+      return nameLines;
+    }
+
+    function isLikelyProductNameLine(line: string) {
+      return (
+        line.length >= 5 &&
+        line.length <= 120 &&
+        /[a-záéíóúñ]/i.test(line) &&
+        !pricePattern.test(line) &&
+        !codePattern.test(line) &&
+        !/^\d+$/.test(line) &&
+        !/^(x\s*)?\d+\s*$/i.test(line) &&
+        !/^(inicio|tienda online|cat[aá]logos y ofertas|marcas propias|promociones bancarias|gift cards|recetas|nosotros)$/i.test(
+          line,
+        ) &&
+        !/^(filtros|limpiar filtros|seleccionar sucursal|sucursal chaco|whatsapp oficial|hola,?\s*)/i.test(
+          line,
+        ) &&
+        !/^(almac[eé]n|bazar|bebidas|bodega|desayuno|frescos|kiosco|limpieza|mascotas|papeles|perfumer[ií]a|sin categorizar)\b/i.test(
+          line,
+        ) &&
+        !/^mayorista\s+yaguar$/i.test(line) &&
+        !/a(?:ñ|n)adir\s+al\s+carrito|agregar\s+al\s+carrito/i.test(line)
+      );
+    }
+
+    function isProductNameBoundary(line: string) {
+      return (
+        pricePattern.test(line) ||
+        codePattern.test(line) ||
+        /a(?:ñ|n)adir\s+al\s+carrito|agregar\s+al\s+carrito/i.test(line) ||
+        /^limpiar filtros$/i.test(line) ||
+        /^filtros$/i.test(line)
+      );
     }
   })) as YaguarVisibleCandidate[];
 
