@@ -1,0 +1,171 @@
+# Semillas de busqueda offline derivadas de "Lista de Articulos - HUMAN.xlsx".
+# Una por linea. El cron diario las usa para ampliar el catalogo sin consultar
+# online durante el uso normal de la app.
+Alfajores
+Chupetines
+Bombones
+Chocolinas
+Hamlet
+Criollitas
+Mana
+Top Line
+Traviata
+Rumba
+Serranitas
+Sonrisas
+Aguila
+Alfajor
+Arcor
+Bagley
+Bon O Bon
+Caramelos
+Chocolate
+Cofler
+Galletitas
+Hogarenas
+Jugo En Polvo
+La Campagnola
+Lia
+Mayonesa
+Mermelada
+Mogul
+Rocklets
+Saladix
+Tatin
+Tofi
+Caramelos De Goma
+Tabletas
+Mermeladas
+Nutricion
+Masticables
+Dulces Rellenas
+Linea Hogar
+Helados Hogar
+Extrudados
+Conservas De Tomate
+Caramelos Duros
+Helados Impulso
+Jugos En Polvo
+Galletas Dulces Secas
+Bocaditos Y Bombones
+Duros Agrupados
+Macizos
+Obleas Banadas
+Chicles Plegados
+Bebidas
+Dulces Solidos
+Premezclas Chicas
+Sabores
+Caramelos De Leche
+Conservas Vegetales
+Confites Y Mani Banado
+Linea Infantil
+Snacks De Copetin
+Conservas De Pescado
+Pastas Secas
+Snacks Horneados
+Inhalantes
+Mermeladas Frasco La Campagnol
+Chocolate Taza
+Impulso Joven Adulto
+Barras De Cereal
+Crackers Sandwich
+Jugo En Polvo Arcor
+Chicle Plegado Sin Azucar
+Hierbas Y Especias
+Jugo En Polvo Bc
+Premezclas Sin Gluten
+Ramen
+Mogul Granel Hogar
+Confitados
+Galletitas Cereales
+Chocolates Aireados
+Potes
+Aderezos
+Crackers Agua
+Mermelada Frasco Noel
+Polenta
+Barras Adultos
+Colados De Leche
+Mermeladas En Frasco
+Atun La Campagnola
+Bebida Bc
+Rellenos
+Agrupados
+Pastas Secas Arcor
+Pastas Secas La Campagnola
+Premezclas Horneables
+Salsas La Campagnola
+Masticables Confitados
+Candy Bar
+Mogul Granel Impulso
+Turron Oblea
+Chupetin Evolution
+Impulso Infantil
+Jugos En Polvo Noel
+Masticables De Valor
+Mogul Individual
+Cofler Aireado
+Bebidas De Jugo
+Colados Duros
+Duros
+Figuras De Chocolates
+Tabletas Rellenas
+Tomates La Campagnola
+Banos De Reposteria
+Chicles Confitados
+Mini Torta
+Porcionados
+Rellenos De Reposteria
+Tomates Masivos
+Formis
+Gelatinas
+Harina De Maiz Precocida
+Saladix Horneados
+Alfajor Bon O Bon
+Especias
+Top Line Seven
+Bizcochuelos
+Hogarenas Cereal
+Postres
+Postres Y Mousse
+Salsas
+Cereales Para Desayuno
+Cofler Macizo Hogar
+Colados Leche Arcor Impulso
+Frutas Con Chocolate
+Mogul Infantiles
+Salsas Noel
+Tomates Premium
+Obleas
+Dulce De Batata
+Nutricion Deportiva
+Otras Conserv Vegetales La Cam
+Palitos
+Papas Fritas
+Polvorita
+Pure De Tomate La Campagnola
+Rocklets Impulso
+Sapito
+Traviata Sabores
+Bombones Bon O Bon Hogar
+Cacao En Polvo
+Extrudados Impulso
+Formis Paquete
+Mast Mogul Valor Impulso
+Mermelada Frasco Bc
+Mermeladas Fco La Campagnola
+Palitos Indulgentes
+Alfajor Tofi
+Atun Noel
+Caballa La Campagnola
+Cereal Mix
+Cookies
+Galletas Banadas
+Inhalantes Alka
+Ketchup La Campagnola
+Masticables Paquete
+Surtidas
+Tostadas
+Arcor Cereal Mix Individual
+Extrudados Hogar

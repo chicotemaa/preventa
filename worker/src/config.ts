@@ -44,6 +44,7 @@ export const config = {
     getOptionalStringEnv("CATALOG_SYNC_SECRET") ??
     getOptionalStringEnv("CRON_SECRET"),
   catalogSyncTimeoutMs: getNumberEnv("CATALOG_SYNC_TIMEOUT_MS", 20 * 60 * 1000),
+  catalogSyncSeedMaxTerms: getNumberEnv("CATALOG_SYNC_SEED_MAX_TERMS", 160),
   maxiconsumo: {
     enabled: process.env.MAXICONSUMO_ENABLED !== "false",
     email: getOptionalStringEnv("MAXICONSUMO_EMAIL"),

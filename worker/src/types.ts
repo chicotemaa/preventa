@@ -257,6 +257,7 @@ export type CatalogSyncProgress = {
     | "full_page_sources"
     | "brands"
     | "categories"
+    | "seed_terms"
     | "imports"
     | "persisting";
   current: string;

@@ -37,10 +37,16 @@ import {
   getStoredSourceCatalogProducts,
   getStoredSourceCatalogStatuses,
 } from "./source-session-store.js";
+import {
+  selectCurrentCatalogSnapshotFromSupabase,
+  shouldUseSupabaseSourceStore,
+  upsertCurrentCatalogSnapshotToSupabase,
+} from "./supabase-source-store.js";
 import { scrapingSources } from "./sources/argentina.js";
 import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import { config } from "./config.js";
+import { loadCatalogSearchSeedTerms } from "./catalog-seeds.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
@@ -100,19 +106,17 @@ let currentCatalog: CatalogSnapshot = {
 let activeSync: Promise<CatalogSnapshot> | null = null;
 
 export async function loadCatalogFromDisk() {
+  const persistedCatalog = await loadCatalogFromSupabase();
+
+  if (persistedCatalog) {
+    currentCatalog = hydrateCatalogSnapshot(persistedCatalog);
+    await reloadStoredSourceCatalogs();
+    return currentCatalog;
+  }
+
   try {
     const raw = await readFile(catalogPath, "utf8");
-    currentCatalog = JSON.parse(raw) as CatalogSnapshot;
-    currentCatalog.products = currentCatalog.products
-      .filter(isActiveCatalogProduct)
-      .map((product) => withUnitPricing(product, getProductMatchText(product)));
-    currentCatalog.productsCount = currentCatalog.products.length;
-    currentCatalog.region = catalogRegion;
-    currentCatalog.pendingSources = getPendingSources();
-    currentCatalog.sources = hydrateSourceStatusStoreTypes(
-      currentCatalog.sources.filter(isActiveSourceStatus),
-      currentCatalog.products,
-    );
+    currentCatalog = hydrateCatalogSnapshot(JSON.parse(raw) as CatalogSnapshot);
 
     if (currentCatalog.productsCount > 0 && currentCatalog.status !== "ready") {
       currentCatalog.status = "ready";
@@ -248,7 +252,7 @@ export async function searchCategory(
   const liveCategorySources =
     mode === "live"
       ? activeSources
-      : activeSources.filter((source) => source.id === AGUIAR_TOKIN_SOURCE_ID);
+      : [];
   const sourceResults =
     liveCategorySources.length > 0
       ? await runCategorySourceSearches(
@@ -292,6 +296,7 @@ export async function searchCategory(
     })),
     ...visibleProductSourceStatuses,
     ...storedStatuses.filter(isActiveSourceStatus),
+    ...buildConfiguredSourceSearchStatuses(),
     ...buildDisabledSourceSearchStatuses(),
   ]);
 
@@ -334,6 +339,10 @@ async function matchPriceListItemWithDirectAguiar(
   const catalogResult = matchPriceListItem(item);
 
   if (normalizeOptionalPrice(catalogResult.input.currentPrice)) {
+    return catalogResult;
+  }
+
+  if (!config.priceList.directAguiarLookupEnabled) {
     return catalogResult;
   }
 
@@ -388,8 +397,13 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
   );
   const brandSearchTerms = buildUniqueBrandSearchTerms();
   const categorySearchTerms = buildUniqueCategorySearchTerms();
+  const seedSearchTerms = await loadCatalogSearchSeedTerms();
   const totalSteps =
-    fullPageSources.length + brandSearchTerms.length + categorySearchTerms.length + 2;
+    fullPageSources.length +
+    brandSearchTerms.length +
+    categorySearchTerms.length +
+    seedSearchTerms.length +
+    2;
   let completedSteps = 0;
 
   try {
@@ -408,7 +422,6 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
         limitResults: false,
       });
       const allowedProducts = result.results
-        .filter((product) => isAllowedBrandProduct(getProductMatchText(product)))
         .map((product) => decorateCatalogProduct(product));
 
       sourceStatuses.push({
@@ -436,14 +449,20 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
       const browserQuerySources = querySources.filter(sourceNeedsBrowser);
       const apiLikeSourceResults = await Promise.all(
         apiLikeQuerySources.map((source) =>
-          searchSource(source, searchTerm),
+          searchSource(source, searchTerm, undefined, {
+            filterByConfidence: false,
+            limitResults: false,
+          }),
         ),
       );
       const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
 
       for (const source of browserQuerySources) {
         browserSourceResults.push(
-          await searchSource(source, searchTerm),
+          await searchSource(source, searchTerm, undefined, {
+            filterByConfidence: false,
+            limitResults: false,
+          }),
         );
       }
 
@@ -484,12 +503,22 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
       );
       const browserQuerySources = querySources.filter(sourceNeedsBrowser);
       const apiLikeSourceResults = await Promise.all(
-        apiLikeQuerySources.map((source) => searchSource(source, searchTerm)),
+        apiLikeQuerySources.map((source) =>
+          searchSource(source, searchTerm, undefined, {
+            filterByConfidence: false,
+            limitResults: false,
+          }),
+        ),
       );
       const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
 
       for (const source of browserQuerySources) {
-        browserSourceResults.push(await searchSource(source, searchTerm));
+        browserSourceResults.push(
+          await searchSource(source, searchTerm, undefined, {
+            filterByConfidence: false,
+            limitResults: false,
+          }),
+        );
       }
 
       const sourceResults = [...apiLikeSourceResults, ...browserSourceResults];
@@ -503,12 +532,60 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
 
         products.push(
           ...result.results
-            .filter((product) =>
-              isAllowedBrandProduct(getProductMatchText(product)),
-            )
             .map((product) =>
               decorateCatalogProduct(product, undefined, fallbackCategory),
             ),
+        );
+      }
+      completedSteps += 1;
+    }
+
+    for (const { searchTerm, normalizedSearchTerm } of seedSearchTerms) {
+      throwIfCatalogSyncTimedOut(startedAt);
+      updateCatalogSyncProgress({
+        phase: "seed_terms",
+        current: searchTerm,
+        completedSteps,
+        totalSteps,
+        productsFound: products.length,
+      });
+
+      const apiLikeQuerySources = querySources.filter(
+        (source) => !sourceNeedsBrowser(source),
+      );
+      const browserQuerySources = querySources.filter(sourceNeedsBrowser);
+      const apiLikeSourceResults = await Promise.all(
+        apiLikeQuerySources.map((source) =>
+          searchSource(source, searchTerm, undefined, {
+            filterByConfidence: false,
+            limitResults: false,
+          }),
+        ),
+      );
+      const browserSourceResults: Awaited<ReturnType<typeof searchSource>>[] = [];
+
+      for (const source of browserQuerySources) {
+        browserSourceResults.push(
+          await searchSource(source, searchTerm, undefined, {
+            filterByConfidence: false,
+            limitResults: false,
+          }),
+        );
+      }
+
+      const sourceResults = [...apiLikeSourceResults, ...browserSourceResults];
+      const fallbackCategory = findCatalogCategory(searchTerm)?.name;
+
+      for (const result of sourceResults) {
+        sourceStatuses.push({
+          ...result.status,
+          sourceId: `${result.status.sourceId}:seed:${normalizedSearchTerm}`,
+        });
+
+        products.push(
+          ...result.results.map((product) =>
+            decorateCatalogProduct(product, undefined, fallbackCategory),
+          ),
         );
       }
       completedSteps += 1;
@@ -1046,6 +1123,35 @@ function buildDisabledSourceSearchStatuses(): SourceSearchStatus[] {
       errorMessage: source.disabledReason ?? "Fuente deshabilitada.",
       durationMs: 0,
     }));
+}
+
+function buildConfiguredSourceSearchStatuses(): SourceSearchStatus[] {
+  return scrapingSources
+    .filter((source) => source.enabled !== false)
+    .map((source) => ({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status: "no_results" as const,
+      resultsCount: 0,
+      errorMessage: getConfiguredSourceNoDataMessage(source),
+      durationMs: 0,
+    }));
+}
+
+function getConfiguredSourceNoDataMessage(source: ScrapingSource) {
+  if (source.sourceKind === "yaguar_auth") {
+    return "Yaguar esta configurado. En modo catalogo se muestra si la sincronizacion guardo productos; si queda sin datos, ejecutar sincronizacion o revisar credenciales/sesion de Yaguar.";
+  }
+
+  if (source.sourceKind === "carrefour_comerciante") {
+    return "Carrefour Comerciante esta configurado. En modo catalogo se muestra si la sincronizacion guardo productos con una sesion autorizada.";
+  }
+
+  return "Fuente configurada; sin productos guardados o visibles para esta busqueda.";
 }
 
 function mergeSourceStatus(
@@ -2464,6 +2570,8 @@ async function persistCatalog(snapshot: CatalogSnapshot) {
 }
 
 async function persistCatalogIfWritable(snapshot: CatalogSnapshot) {
+  await persistCatalogToSupabaseIfConfigured(snapshot);
+
   try {
     await persistCatalog(snapshot);
   } catch (error) {
@@ -2473,6 +2581,55 @@ async function persistCatalogIfWritable(snapshot: CatalogSnapshot) {
 
     throw error;
   }
+}
+
+async function loadCatalogFromSupabase() {
+  if (!shouldUseSupabaseSourceStore()) {
+    return null;
+  }
+
+  try {
+    return await selectCurrentCatalogSnapshotFromSupabase();
+  } catch (error) {
+    console.warn(
+      "No se pudo leer catalogo consolidado desde Supabase:",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
+async function persistCatalogToSupabaseIfConfigured(snapshot: CatalogSnapshot) {
+  if (!shouldUseSupabaseSourceStore()) {
+    return;
+  }
+
+  try {
+    await upsertCurrentCatalogSnapshotToSupabase(snapshot);
+  } catch (error) {
+    console.warn(
+      "No se pudo guardar catalogo consolidado en Supabase:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+function hydrateCatalogSnapshot(snapshot: CatalogSnapshot): CatalogSnapshot {
+  const products = snapshot.products
+    .filter(isActiveCatalogProduct)
+    .map((product) => withUnitPricing(product, getProductMatchText(product)));
+
+  return {
+    ...snapshot,
+    region: catalogRegion,
+    products,
+    productsCount: products.length,
+    pendingSources: getPendingSources(),
+    sources: hydrateSourceStatusStoreTypes(
+      snapshot.sources.filter(isActiveSourceStatus),
+      products,
+    ),
+  };
 }
 
 function isReadOnlyFilesystemError(error: unknown) {

@@ -101,6 +101,7 @@ Notas:
 - `ENABLE_LIVE_SEARCH=false` desactiva el endpoint de scraping online.
 - `AUTO_SYNC_ON_STARTUP=false` evita que el worker actualice listas al arrancar; la actualizacion queda a cargo del cron.
 - `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false` evita consultas directas a Tokin al evaluar listas importadas.
+- `CATALOG_SYNC_SEED_MAX_TERMS=160` limita cuantas semillas de `worker/data/catalog-search-seeds.txt` usa el cron diario.
 - `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
 
 ## Correr localmente
@@ -255,10 +256,14 @@ ENABLE_LIVE_SEARCH=false
 AUTO_SYNC_ON_STARTUP=false
 PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false
 CATALOG_SYNC_TIMEOUT_MS=1200000
+CATALOG_SYNC_SEED_MAX_TERMS=160
 ```
 
 Operacion recomendada: dejar categorias y busqueda general en modo `catalog`;
 revisar `/health` o `/catalog` para confirmar `lastSyncedAt` despues del cron.
+El archivo `worker/data/catalog-search-seeds.txt` agrega familias y lineas de la
+lista general de articulos para que el cron precargue mas productos y la
+importacion de Excel compare contra el snapshot, sin scraping por cada carga.
 
 ### Yaguar Chaco
 
@@ -387,7 +392,7 @@ CARREFOUR_COMERCIANTE_SELLER_ID=506
 CARREFOUR_COMERCIANTE_DELIVERY_TYPE=envio
 ```
 
-`SOURCE_SESSION_SECRET` cifra las cookies antes de guardarlas. Con Supabase activo, la sesion queda en `source_sessions` y el catalogo sincronizado queda en `source_catalog_snapshots`. Si Supabase no esta configurado, el worker cae a storage local solo para desarrollo.
+`SOURCE_SESSION_SECRET` cifra las cookies antes de guardarlas. Con Supabase activo, la sesion queda en `source_sessions`, los catalogos por fuente quedan en `source_catalog_snapshots` y el catalogo consolidado queda en `catalog_snapshots`. Si Supabase no esta configurado, el worker cae a storage local solo para desarrollo.
 
 ## Matching con IA
 
@@ -404,9 +409,9 @@ AI_MATCHING_TIMEOUT_MS=6000
 
 ## Datos y persistencia
 
-- El catalogo del worker se guarda como snapshot actual en `worker/data/catalog.json`.
-- No se debe editar a mano `worker/data/catalog.json`; se regenera desde las fuentes.
+- En produccion, el catalogo consolidado del worker se guarda en Supabase, tabla `catalog_snapshots`, cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
+- `worker/data/catalog.json` queda como fallback local/desarrollo; no se debe editar a mano porque se regenera desde las fuentes.
 - Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
 - Las sesiones privadas y snapshots por fuente usan Supabase desde el worker cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
-- Antes de usar Carrefour Comerciante en produccion, aplicar la migracion `supabase/migrations/20260701213000_source_sessions.sql`.
+- Antes de usar el modo offline persistido en produccion, aplicar las migraciones `supabase/migrations/20260701213000_source_sessions.sql` y `supabase/migrations/20260707123000_catalog_snapshots.sql`.
 - Los CSV reales de listas externas pueden cargarse en `worker/data/imports/*.csv`; los `.example.csv` no se cargan.

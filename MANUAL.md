@@ -270,8 +270,9 @@ flowchart LR
   Worker --> Tokin["Tokin / Aguiar"]
   Worker --> Mayoristas["Mayoristas"]
   Worker --> Minoristas["Minoristas"]
-  Worker --> Catalogo["Snapshot catalog.json"]
-  Worker --> Supabase["Supabase sesiones y snapshots"]
+  Worker --> Catalogo["Snapshot catalogo consolidado"]
+  Catalogo --> Supabase["Supabase catalog_snapshots"]
+  Worker --> SupabasePrivado["Supabase sesiones y snapshots por fuente"]
   Api --> Supabase2["Supabase historial/evolucion"]
 ```
 
@@ -377,6 +378,7 @@ CATEGORY_SEARCH_MODE=catalog
 PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false
 CATALOG_SYNC_SECRET=<misma-clave-que-CRON_SECRET-o-WORKER_CRON_SECRET>
 CATALOG_SYNC_TIMEOUT_MS=1200000
+CATALOG_SYNC_SEED_MAX_TERMS=160
 SOURCE_SESSION_STORE_BACKEND=supabase
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -413,9 +415,10 @@ Estados esperados:
 
 Si la conexion desde backend no valida por Cloudflare/reCAPTCHA, queda disponible el fallback de validar una cookie manual de una sesion con precios visibles. Esa cookie no se guarda en el navegador ni en el repositorio.
 
-Importante: en produccion las sesiones y snapshots privados deben guardarse en
-Supabase. Aplicar la migracion
-`supabase/migrations/20260701213000_source_sessions.sql` y cargar
+Importante: en produccion las sesiones, snapshots privados y el catalogo
+consolidado deben guardarse en Supabase. Aplicar las migraciones
+`supabase/migrations/20260701213000_source_sessions.sql` y
+`supabase/migrations/20260707123000_catalog_snapshots.sql`, y cargar
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SOURCE_SESSION_STORE_BACKEND=supabase`
 y `SOURCE_SESSION_SECRET` en el worker. El storage local queda solo como fallback
 de desarrollo.
@@ -431,7 +434,7 @@ Flujo:
 2. La ruta valida `CRON_SECRET`.
 3. La ruta llama al worker en `POST /catalog/sync/background`.
 4. El worker valida `CATALOG_SYNC_SECRET`.
-5. El worker sincroniza fuentes en background y actualiza `catalog.json`.
+5. El worker sincroniza fuentes en background y actualiza `catalog_snapshots`.
 6. Las paginas consultan categorias en modo `catalog`.
 
 Horario configurado:
@@ -446,9 +449,12 @@ Regla de uso:
 - `ENABLE_LIVE_SEARCH=false`: desactiva scraping online durante el uso normal.
 - `AUTO_SYNC_ON_STARTUP=false`: evita actualizaciones fuera del cron diario.
 - `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false`: evita consultas directas a Tokin al evaluar listas importadas.
+- `CATALOG_SYNC_SEED_MAX_TERMS=160`: controla cuantas semillas de `worker/data/catalog-search-seeds.txt` se usan en la actualizacion diaria.
 
 Despues del cron, validar `GET /health` o `GET /catalog` y revisar
 `lastSyncedAt`, `productsCount` y estados de fuentes.
+Las categorias y la importacion de Excel deben consultar ese snapshot; no deben
+disparar scraping online durante el uso normal.
 
 ## Fuentes y prioridad
 

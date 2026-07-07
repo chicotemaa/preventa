@@ -3,7 +3,7 @@ import type {
   SourceSessionValidationSummary,
   StoredSessionRecord,
 } from "./source-session-store.js";
-import type { SourceSearchStatus, StoreType } from "./types.js";
+import type { CatalogSnapshot, SourceSearchStatus, StoreType } from "./types.js";
 
 type SourceStoreMode = "auto" | "supabase" | "file";
 
@@ -35,6 +35,15 @@ type SupabaseSourceSnapshotRow = {
   visible_price_products_count: number;
   errors: string[];
   products: SourceCatalogSnapshot["products"];
+};
+
+type SupabaseCatalogSnapshotRow = {
+  id: string;
+  status: CatalogSnapshot["status"];
+  last_synced_at: string | null;
+  duration_ms: number | null;
+  products_count: number;
+  snapshot: CatalogSnapshot;
 };
 
 export function shouldUseSupabaseSourceStore() {
@@ -95,6 +104,42 @@ export async function upsertSourceCatalogSnapshotsToSupabase(
     searchParams: { on_conflict: "source_id" },
     prefer: "resolution=merge-duplicates,return=minimal",
     body: snapshots.map(mapSnapshotRecordToRow),
+  });
+}
+
+export async function selectCurrentCatalogSnapshotFromSupabase() {
+  const rows = await requestSupabase<SupabaseCatalogSnapshotRow[]>(
+    "catalog_snapshots",
+    {
+      method: "GET",
+      searchParams: {
+        id: "eq.current",
+        select: "snapshot",
+        limit: "1",
+      },
+    },
+  );
+
+  return rows[0]?.snapshot ?? null;
+}
+
+export async function upsertCurrentCatalogSnapshotToSupabase(
+  snapshot: CatalogSnapshot,
+) {
+  await requestSupabase("catalog_snapshots", {
+    method: "POST",
+    searchParams: { on_conflict: "id" },
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: [
+      {
+        id: "current",
+        status: snapshot.status,
+        last_synced_at: snapshot.lastSyncedAt,
+        duration_ms: snapshot.durationMs,
+        products_count: snapshot.productsCount,
+        snapshot,
+      },
+    ],
   });
 }
 
