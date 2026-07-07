@@ -347,7 +347,7 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `POST /sources/carrefour-comerciante/session/save`
 - `GET /sources/carrefour-comerciante/catalog`
 - `POST /sources/carrefour-comerciante/catalog/sync`
-- `POST /search`
+- `POST /search` (desactivado por defecto con `ENABLE_LIVE_SEARCH=false`)
 
 ## Variables tecnicas principales
 
@@ -371,8 +371,10 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
-AUTO_SYNC_ON_STARTUP=true
+AUTO_SYNC_ON_STARTUP=false
+ENABLE_LIVE_SEARCH=false
 CATEGORY_SEARCH_MODE=catalog
+PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false
 CATALOG_SYNC_SECRET=<misma-clave-que-CRON_SECRET-o-WORKER_CRON_SECRET>
 CATALOG_SYNC_TIMEOUT_MS=1200000
 SOURCE_SESSION_STORE_BACKEND=supabase
@@ -432,9 +434,8 @@ Flujo:
 5. El worker sincroniza fuentes en background y actualiza `catalog.json`.
 6. Las paginas consultan categorias en modo `catalog`.
 
-Horarios configurados:
+Horario configurado:
 
-- Lunes 9:00 Argentina: `0 12 * * 1` UTC.
 - Todos los dias 12:00 Argentina: `0 15 * * *` UTC.
 
 Regla de uso:
@@ -442,6 +443,9 @@ Regla de uso:
 - `CATEGORY_SEARCH_MODE=catalog`: uso normal, rapido, basado en snapshot.
 - `CATEGORY_SEARCH_MODE=live`: diagnostico puntual, mas lento, consulta fuentes
   en el momento.
+- `ENABLE_LIVE_SEARCH=false`: desactiva scraping online durante el uso normal.
+- `AUTO_SYNC_ON_STARTUP=false`: evita actualizaciones fuera del cron diario.
+- `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false`: evita consultas directas a Tokin al evaluar listas importadas.
 
 Despues del cron, validar `GET /health` o `GET /catalog` y revisar
 `lastSyncedAt`, `productsCount` y estados de fuentes.
