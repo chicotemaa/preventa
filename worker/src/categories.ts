@@ -77,8 +77,57 @@ export const catalogCategories: CatalogCategory[] = [
   },
 ];
 
+const extraCatalogSearchTerms = [
+  "alfajores",
+  "hamlet",
+  "lia",
+  "chupetines",
+  "bombones",
+  "caramelos",
+  "caramelos de goma",
+  "chocolinas",
+  "criollitas",
+  "traviata",
+  "rumba",
+  "serranitas",
+  "sonrisas",
+  "top line",
+  "jugo en polvo",
+  "mayonesa",
+  "mermelada",
+  "tabletas",
+  "masticables",
+  "dulces rellenas",
+  "helados",
+  "extrudados",
+  "conservas de tomate",
+  "galletas dulces",
+  "bocaditos",
+  "obleas",
+  "bebidas",
+  "premezclas",
+  "conservas vegetales",
+  "snacks",
+  "pastas secas",
+  "barras de cereal",
+  "hierbas y especias",
+  "ramen",
+  "aderezos",
+  "atun",
+  "salsas",
+  "ketchup",
+  "pure de tomate",
+  "dulce de batata",
+  "cereal mix",
+  "cookies",
+  "tostadas",
+];
+
 export function buildCatalogCategorySearchTerms() {
-  const terms = catalogCategories.flatMap((category) => category.searchTerms);
+  const terms = [
+    ...catalogCategories.flatMap((category) => category.searchTerms),
+    ...extraCatalogSearchTerms,
+  ];
 
   return Array.from(new Set(terms.map(normalizeCategoryText).filter(Boolean)));
 }
