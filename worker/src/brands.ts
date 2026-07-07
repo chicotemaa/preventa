@@ -122,7 +122,7 @@ export function productMatchesTargetBrand(
 }
 
 export function isAllowedBrandProduct(productName: string) {
-  return Boolean(findAllowedBrand(productName)) && !isExcludedProductName(productName);
+  return Boolean(productName.trim()) && !isExcludedProductName(productName);
 }
 
 function productNameMatchesAlias(
