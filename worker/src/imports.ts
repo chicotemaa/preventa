@@ -119,10 +119,6 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
     rawCategory ||
     findCatalogCategory(displayName)?.name;
 
-  if (!brand) {
-    return null;
-  }
-
   return withUnitPricing({
     sourceId,
     storeName,
@@ -138,7 +134,7 @@ function rowToProduct(row: ImportedRow): ProductSearchResult | null {
       .split(/[|;,]/)
       .map((value) => value.replace(/\D/g, ""))
       .filter((value) => /^\d{8,14}$/.test(value)),
-    brand: brand.name,
+    brand: brand?.name || brandName || undefined,
     category: category || undefined,
     rawName: displayName,
     normalizedName: normalizeProductName(displayName),
