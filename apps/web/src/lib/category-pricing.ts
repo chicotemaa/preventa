@@ -429,6 +429,10 @@ function buildSourceHealthMessage(
   source: SourceSearchStatus | undefined,
   config: SourcePriorityConfig | null,
 ) {
+  if (source?.errorMessage && status !== "ok") {
+    return source.errorMessage;
+  }
+
   if (source && status === "ok") {
     if (config?.fallbackStatus === "requires_login") {
       return "Fuente consultada con datos y credenciales configuradas.";
@@ -442,11 +446,7 @@ function buildSourceHealthMessage(
       return "Yaguar acepto las credenciales, pero la tienda no expuso productos para esta busqueda. Revisar que la cuenta tenga catalogo/precios habilitados para Chaco o que no requiera seleccion adicional de sucursal.";
     }
 
-    return "Fuente consultada, sin productos utiles para esta busqueda.";
-  }
-
-  if (source?.errorMessage) {
-    return source.errorMessage;
+    return config?.fallbackMessage ?? "Fuente consultada, sin productos utiles para esta busqueda.";
   }
 
   return config?.fallbackMessage ?? getSourceStatusLabel(status);
@@ -468,22 +468,26 @@ function classifySourceStatus(
     return "timeout";
   }
 
-  if (source.status === "no_results" || source.status === "success") {
-    return "sin_datos";
-  }
-
   const error = normalizeDecisionText(source.errorMessage ?? "");
 
   if (config?.fallbackStatus && source.durationMs === 0) {
     return config.fallbackStatus;
   }
 
-  if (/login|credencial|autentic|cuenta/.test(error)) {
+  if (
+    /login|credencial|autentic|cuenta|sesion|cookie|user[ -]?agent|autorizad|precios privados/.test(
+      error,
+    )
+  ) {
     return "requires_login";
   }
 
   if (/no expone|sin catalogo|sin precio|precios publicos/.test(error)) {
     return "no_public_prices";
+  }
+
+  if (source.status === "no_results" || source.status === "success") {
+    return "sin_datos";
   }
 
   return "failed";
