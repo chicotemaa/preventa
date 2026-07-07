@@ -79,13 +79,15 @@ export const catalogCategories: CatalogCategory[] = [
 
 const extraCatalogSearchTerms = [
   "alfajores",
+  "hamlet",
+  "lia",
   "chupetines",
   "bombones",
+  "caramelos",
+  "caramelos de goma",
   "chocolinas",
-  "hamlet",
   "criollitas",
   "mana",
-  "top line",
   "traviata",
   "rumba",
   "serranitas",
@@ -246,6 +248,14 @@ const extraCatalogSearchTerms = [
   "tostadas",
   "arcor cereal mix individual",
   "extrudados hogar",
+  "helados",
+  "galletas dulces",
+  "bocaditos",
+  "premezclas",
+  "snacks",
+  "atun",
+  "ketchup",
+  "pure de tomate",
 ];
 
 export function buildCatalogCategorySearchTerms() {
