@@ -6,10 +6,6 @@
   "crons": [
     {
       "path": "/api/cron/catalog-sync",
-      "schedule": "0 12 * * 1"
-    },
-    {
-      "path": "/api/cron/catalog-sync",
       "schedule": "0 15 * * *"
     }
   ]
