@@ -24,6 +24,14 @@ const dataDir = resolveSourceStoreDir();
 const sessionsPath = path.resolve(dataDir, "source-sessions.json");
 const snapshotsPath = path.resolve(dataDir, "source-snapshots.json");
 
+type SourceStoreDiagnostic = {
+  operation: string;
+  message: string;
+  checkedAt: string;
+};
+
+let lastSupabaseStoreError: SourceStoreDiagnostic | null = null;
+
 type EncodedSecret =
   | {
       encoding: "aes-256-gcm";
@@ -329,6 +337,12 @@ export async function getStoredSourceCatalogStatuses(): Promise<
 }
 
 function getMissingSourceSnapshotMessage(sourceKind: string | undefined) {
+  const storageErrorMessage = getSourceStoreUnavailableMessage();
+
+  if (storageErrorMessage) {
+    return storageErrorMessage;
+  }
+
   if (sourceKind === "yaguar_auth") {
     return "Yaguar esta configurado, pero todavia no hay catalogo guardado para esta fuente. Ejecutar sincronizacion para verificar productos y precios.";
   }
@@ -409,6 +423,7 @@ async function readSupabaseSessionStore(): Promise<SessionStoreFile | null> {
 
   try {
     const records = await selectSourceSessionRecordsFromSupabase();
+    clearSupabaseStoreError("leer sesiones");
     return {
       version: 1,
       backend: "supabase",
@@ -429,6 +444,7 @@ async function writeSupabaseSessionStore(store: SessionStoreFile) {
 
   try {
     await upsertSourceSessionRecordsToSupabase(Object.values(store.sessions));
+    clearSupabaseStoreError("guardar sesiones");
     return true;
   } catch (error) {
     handleSupabaseStoreError("guardar sesiones", error);
@@ -443,6 +459,7 @@ async function readSupabaseSnapshotStore(): Promise<SnapshotStoreFile | null> {
 
   try {
     const snapshots = await selectSourceCatalogSnapshotsFromSupabase();
+    clearSupabaseStoreError("leer snapshots");
     return {
       version: 1,
       backend: "supabase",
@@ -465,6 +482,7 @@ async function writeSupabaseSnapshotStore(store: SnapshotStoreFile) {
     await upsertSourceCatalogSnapshotsToSupabase(
       Object.values(store.snapshots),
     );
+    clearSupabaseStoreError("guardar snapshots");
     return true;
   } catch (error) {
     handleSupabaseStoreError("guardar snapshots", error);
@@ -473,6 +491,12 @@ async function writeSupabaseSnapshotStore(store: SnapshotStoreFile) {
 }
 
 function handleSupabaseStoreError(operation: string, error: unknown) {
+  lastSupabaseStoreError = {
+    operation,
+    message: formatSupabaseStoreError(error),
+    checkedAt: new Date().toISOString(),
+  };
+
   if (requiresSupabaseSourceStore()) {
     throw error instanceof Error ? error : new Error(String(error));
   }
@@ -481,6 +505,38 @@ function handleSupabaseStoreError(operation: string, error: unknown) {
     `[source-session-store] No se pudo ${operation} en Supabase; se usa storage local.`,
     error,
   );
+}
+
+function clearSupabaseStoreError(operation: string) {
+  if (lastSupabaseStoreError?.operation === operation) {
+    lastSupabaseStoreError = null;
+  }
+}
+
+function getSourceStoreUnavailableMessage() {
+  if (!lastSupabaseStoreError) {
+    return null;
+  }
+
+  return `No se pudo leer el storage de fuentes en Supabase (${lastSupabaseStoreError.message}). Revisar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY del worker; mientras falle, no se recuperan sesiones ni catalogos guardados.`;
+}
+
+function formatSupabaseStoreError(error: unknown) {
+  const cause = (error as { cause?: { code?: string } })?.cause;
+
+  if (cause?.code === "ENOTFOUND") {
+    return "SUPABASE_URL no resuelve DNS";
+  }
+
+  if (cause?.code) {
+    return `conexion Supabase fallo con ${cause.code}`;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "conexion Supabase fallida";
 }
 
 function encodeSecret(value: string): EncodedSecret {
