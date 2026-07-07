@@ -33,8 +33,11 @@ Crear `apps/web/.env.local`:
 ```bash
 WORKER_URL=http://127.0.0.1:4000
 CATEGORY_SEARCH_MODE=catalog
+ENABLE_LIVE_SEARCH=false
 CRON_SECRET=
 WORKER_CRON_SECRET=
+AUTO_SYNC_ON_STARTUP=false
+PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -48,8 +51,10 @@ PORT=4000
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
-AUTO_SYNC_ON_STARTUP=true
+AUTO_SYNC_ON_STARTUP=false
+ENABLE_LIVE_SEARCH=false
 CATEGORY_SEARCH_MODE=catalog
+PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false
 CATALOG_SYNC_SECRET=
 CATALOG_SYNC_TIMEOUT_MS=1200000
 SOURCE_SESSION_STORE_BACKEND=supabase
@@ -95,6 +100,9 @@ Notas:
 - Supabase guarda historial/evolucion de corridas y, en produccion, sesiones/snapshots de fuentes privadas como Carrefour Comerciante.
 - `SOURCE_SESSION_STORE_BACKEND=supabase` fuerza que el worker guarde sesiones y snapshots en Supabase; usar `auto` o `file` solo para desarrollo.
 - `CATEGORY_SEARCH_MODE=catalog` hace que categorias consulte el catalogo precargado; usar `live` solo para diagnostico.
+- `ENABLE_LIVE_SEARCH=false` desactiva el endpoint de scraping online.
+- `AUTO_SYNC_ON_STARTUP=false` evita que el worker actualice listas al arrancar; la actualizacion queda a cargo del cron.
+- `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false` evita consultas directas a Tokin al evaluar listas importadas.
 - `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
 
 ## Correr localmente
@@ -146,7 +154,7 @@ npm run dev:worker
 - `POST /sources/carrefour-comerciante/session/login`: intenta crear y guardar una sesion desde el backend con datos del comercio.
 - `GET /sources/carrefour-comerciante/catalog`: lee el snapshot guardado de Carrefour Comerciante.
 - `POST /sources/carrefour-comerciante/catalog/sync`: sincroniza productos de Carrefour Comerciante usando la sesion guardada.
-- `POST /search`: busqueda viva directa.
+- `POST /search`: busqueda viva directa; queda desactivada por defecto con `ENABLE_LIVE_SEARCH=false`.
 
 ## Fuentes configuradas
 
@@ -226,10 +234,9 @@ Si faltan resultados mayoristas, subir primero
 
 El frontend incluye un cron de Vercel en `apps/web/vercel.json`:
 
-- Lunes 9:00 Argentina: `0 12 * * 1` UTC.
 - Todos los dias 12:00 Argentina: `0 15 * * *` UTC.
 
-Ambos llaman `GET /api/cron/catalog-sync`, que valida `CRON_SECRET` y dispara
+El cron llama `GET /api/cron/catalog-sync`, que valida `CRON_SECRET` y dispara
 `POST /catalog/sync/background` en el worker. El endpoint del worker responde
 rapido y la sincronizacion sigue en background, por eso no bloquea la funcion de
 Vercel.
@@ -241,17 +248,19 @@ Variables necesarias en produccion:
 CRON_SECRET=<clave-larga-aleatoria>
 WORKER_CRON_SECRET=<misma-clave-si-el-worker-usa-CATALOG_SYNC_SECRET>
 CATEGORY_SEARCH_MODE=catalog
+ENABLE_LIVE_SEARCH=false
 
 # Worker
 CATALOG_SYNC_SECRET=<misma-clave>
 CATEGORY_SEARCH_MODE=catalog
-AUTO_SYNC_ON_STARTUP=true
+ENABLE_LIVE_SEARCH=false
+AUTO_SYNC_ON_STARTUP=false
+PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false
 CATALOG_SYNC_TIMEOUT_MS=1200000
 ```
 
-Operacion recomendada: dejar categorias en modo `catalog`, usar
-`/busqueda-general` para consultas vivas puntuales y revisar `/health` o
-`/catalog` para confirmar `lastSyncedAt` despues del cron.
+Operacion recomendada: dejar categorias y busqueda general en modo `catalog`;
+revisar `/health` o `/catalog` para confirmar `lastSyncedAt` despues del cron.
 
 ### Yaguar Chaco
 
@@ -397,7 +406,7 @@ AI_MATCHING_TIMEOUT_MS=6000
 
 ## Datos y persistencia
 
-- El catalogo vivo del worker se guarda como snapshot actual en `worker/data/catalog.json`.
+- El catalogo del worker se guarda como snapshot actual en `worker/data/catalog.json`.
 - No se debe editar a mano `worker/data/catalog.json`; se regenera desde las fuentes.
 - Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
 - Las sesiones privadas y snapshots por fuente usan Supabase desde el worker cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
