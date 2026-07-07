@@ -30,6 +30,7 @@ import {
 import { scrapingSources } from "./sources/argentina.js";
 
 const CARREFOUR_COMERCIANTE_SOURCE_ID = "carrefour-comerciante-maxi";
+const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
@@ -156,7 +157,9 @@ const server = http.createServer(async (request, response) => {
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         catalogSyncBackground: "POST /catalog/sync/background",
-        liveSearch: "POST /search",
+        liveSearch: config.liveSearchEnabled
+          ? "POST /search"
+          : "disabled; set ENABLE_LIVE_SEARCH=true to enable",
       },
       catalog: getCatalogMetadata(),
     });
@@ -310,6 +313,14 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (!config.liveSearchEnabled) {
+      sendJson(response, 410, {
+        error:
+          "La busqueda online esta desactivada. Consultar /catalog/search o actualizar el catalogo con el cron diario.",
+      });
+      return;
+    }
+
     const result = await runLiveSearch(parsed.data.query);
     sendJson(response, 200, result);
   } catch (error) {
@@ -374,11 +385,15 @@ async function handleCatalogCategorySearch(
       return;
     }
 
-    sendJson(
-      response,
-      200,
-      await searchCategory(parsed.data.query, { mode: parsed.data.mode }),
-    );
+    const mode = parsed.data.mode ?? config.categorySearch.mode;
+    const result =
+      mode === "live"
+        ? await searchCategory(parsed.data.query, { mode })
+        : await withSourceTemporarilyDisabled(AGUIAR_TOKIN_SOURCE_ID, () =>
+            searchCategory(parsed.data.query, { mode: "catalog" }),
+          );
+
+    sendJson(response, 200, result);
   } catch (error) {
     sendJson(response, 500, {
       error:
@@ -391,7 +406,7 @@ async function handleCatalogCategorySearch(
 
 function isAuthorizedCatalogSyncRequest(request: http.IncomingMessage) {
   if (!config.catalogSyncSecret) {
-    return true;
+    return process.env.NODE_ENV !== "production";
   }
 
   return request.headers.authorization === `Bearer ${config.catalogSyncSecret}`;
@@ -412,7 +427,12 @@ async function handleCatalogPriceList(
       return;
     }
 
-    sendJson(response, 200, await matchPriceListItems(parsed.data.items));
+    const result = await withSourceTemporarilyDisabled(
+      AGUIAR_TOKIN_SOURCE_ID,
+      () => matchPriceListItems(parsed.data.items),
+    );
+
+    sendJson(response, 200, result);
   } catch (error) {
     sendJson(response, 500, {
       error:
@@ -677,6 +697,26 @@ function getCarrefourComercianteSource() {
   }
 
   return source;
+}
+
+async function withSourceTemporarilyDisabled<T>(
+  sourceId: string,
+  callback: () => Promise<T>,
+) {
+  const source = scrapingSources.find((candidate) => candidate.id === sourceId);
+
+  if (!source) {
+    return callback();
+  }
+
+  const previousEnabled = source.enabled;
+  source.enabled = false;
+
+  try {
+    return await callback();
+  } finally {
+    source.enabled = previousEnabled;
+  }
 }
 
 function toSourceSessionValidationSummary(
