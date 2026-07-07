@@ -17,7 +17,8 @@ export const config = {
   sourceTimeoutMs: getNumberEnv("SOURCE_TIMEOUT_MS", 20_000),
   minConfidenceScore: getNumberEnv("MIN_CONFIDENCE_SCORE", 60),
   maxResultsPerSource: 10,
-  autoSyncOnStartup: process.env.AUTO_SYNC_ON_STARTUP !== "false",
+  autoSyncOnStartup: process.env.AUTO_SYNC_ON_STARTUP === "true",
+  liveSearchEnabled: process.env.ENABLE_LIVE_SEARCH === "true",
   aiMatching: {
     enabled: process.env.AI_MATCHING_ENABLED === "true",
     apiKey: getOptionalStringEnv("OPENAI_API_KEY"),
@@ -34,6 +35,10 @@ export const config = {
     maxQueriesMinorista: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_MINORISTA", 5),
     maxQueriesYaguar: getNumberEnv("CATEGORY_SEARCH_MAX_QUERIES_YAGUAR", 2),
     concurrency: getNumberEnv("CATEGORY_SEARCH_CONCURRENCY", 8),
+  },
+  priceList: {
+    directAguiarLookupEnabled:
+      process.env.PRICE_LIST_DIRECT_AGUIAR_LOOKUP === "true",
   },
   catalogSyncSecret:
     getOptionalStringEnv("CATALOG_SYNC_SECRET") ??
