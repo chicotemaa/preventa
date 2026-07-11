@@ -34,8 +34,10 @@ import { catalogRegion } from "./region.js";
 import { searchSource, sourceNeedsBrowser } from "./search.js";
 import { compareSourcePriority } from "./source-priority.js";
 import {
+  getSourceCatalogSnapshot,
   getStoredSourceCatalogProducts,
   getStoredSourceCatalogStatuses,
+  saveSourceCatalogSnapshot,
 } from "./source-session-store.js";
 import {
   selectCurrentCatalogSnapshotFromSupabase,
@@ -105,6 +107,13 @@ let currentCatalog: CatalogSnapshot = {
 };
 let activeSync: Promise<CatalogSnapshot> | null = null;
 
+export type CatalogSourceSyncResult = {
+  sourceId: string;
+  snapshot: Awaited<ReturnType<typeof saveSourceCatalogSnapshot>>;
+  status: SourceSearchStatus;
+  productsCount: number;
+};
+
 export async function loadCatalogFromDisk() {
   const persistedCatalog = await loadCatalogFromSupabase();
 
@@ -166,6 +175,234 @@ export function syncCatalogInBackground() {
     alreadyRunning,
     started: !alreadyRunning,
   };
+}
+
+export async function syncCatalogSource(
+  sourceId: string,
+  options: { maxTerms?: number } = {},
+): Promise<CatalogSourceSyncResult> {
+  const source = scrapingSources.find((candidate) => candidate.id === sourceId);
+
+  if (!source) {
+    throw new Error(`Fuente no configurada: ${sourceId}.`);
+  }
+
+  const startedAt = Date.now();
+  const syncedAt = new Date(startedAt).toISOString();
+
+  if (source.enabled === false) {
+    const status: SourceSearchStatus = {
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status: "no_results",
+      resultsCount: 0,
+      durationMs: 0,
+      errorMessage:
+        source.disabledReason ?? "Fuente deshabilitada para sincronizacion.",
+    };
+    const snapshot = await saveSourceCatalogSnapshot({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status: status.status,
+      syncedAt,
+      durationMs: 0,
+      queries: [],
+      productsCount: 0,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: 0,
+      errors: status.errorMessage ? [status.errorMessage] : [],
+      products: [],
+    });
+
+    await reloadStoredSourceCatalogs();
+
+    return {
+      sourceId: source.id,
+      snapshot,
+      status,
+      productsCount: 0,
+    };
+  }
+
+  const products: ProductSearchResult[] = [];
+  const sourceStatuses: SourceSearchStatus[] = [];
+  const errors: string[] = [];
+  const queriesUsed: string[] = [];
+
+  try {
+    const fullPageMode = source.catalogSearchMode === "full_page";
+    const allSearchJobs = fullPageMode
+      ? [{ kind: "full_page" as const, searchTerm: "", normalizedSearchTerm: "" }]
+      : await buildSourceCatalogSearchJobs();
+    const searchJobs =
+      options.maxTerms && options.maxTerms > 0
+        ? allSearchJobs.slice(0, options.maxTerms)
+        : allSearchJobs;
+
+    for (const job of searchJobs) {
+      throwIfCatalogSourceSyncTimedOut(startedAt);
+      queriesUsed.push(job.searchTerm);
+
+      const result = await searchSource(source, job.searchTerm, undefined, {
+        filterByConfidence: false,
+        limitResults: false,
+      });
+
+      sourceStatuses.push(result.status);
+
+      if (result.status.errorMessage) {
+        errors.push(`${job.searchTerm || "catalogo"}: ${result.status.errorMessage}`);
+      }
+
+      products.push(
+        ...result.results
+          .filter((product) =>
+            job.kind === "brand"
+              ? isAllowedBrandProduct(getProductMatchText(product))
+              : true,
+          )
+          .map((product) =>
+            decorateCatalogProduct(
+              product,
+              job.kind === "brand" ? job.brand.name : undefined,
+              job.kind === "category" || job.kind === "seed"
+                ? findCatalogCategory(job.searchTerm)?.name
+                : undefined,
+            ),
+          ),
+      );
+    }
+
+    const dedupedProducts = dedupeCatalogProducts(products).sort(
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
+    );
+    const summarizedStatus = summarizeSingleSourceStatus(
+      source,
+      sourceStatuses,
+      dedupedProducts.length,
+      Date.now() - startedAt,
+      errors,
+    );
+
+    const previousSnapshot = await getSourceCatalogSnapshot(source.id);
+    const mergedProducts = dedupeCatalogProducts([
+      ...(previousSnapshot?.products ?? []),
+      ...dedupedProducts,
+    ]).sort(
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
+    );
+    const mergedQueries = [
+      ...new Set([
+        ...(previousSnapshot?.queries ?? []),
+        ...queriesUsed.filter(Boolean),
+      ]),
+    ];
+    const mergedStatus = toMergedSourceStatus(
+      summarizedStatus,
+      mergedProducts.length,
+    );
+    const snapshot = await saveSourceCatalogSnapshot({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status: mergedStatus.status,
+      syncedAt: new Date().toISOString(),
+      durationMs: summarizedStatus.durationMs,
+      queries: mergedQueries,
+      productsCount: mergedProducts.length,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: mergedProducts.length,
+      errors: mergedStatus.errorMessage ? [mergedStatus.errorMessage] : [],
+      products: mergedProducts,
+    });
+
+    await reloadStoredSourceCatalogs();
+    markCatalogUpdatedFromSourceSync(startedAt);
+    await persistCatalogIfWritable(currentCatalog);
+
+    return {
+      sourceId: source.id,
+      snapshot,
+      status: mergedStatus,
+      productsCount: mergedProducts.length,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Error sincronizando fuente.";
+    const dedupedProducts = dedupeCatalogProducts(products).sort(
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
+    );
+    const status: SourceSearchStatus = {
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status:
+        dedupedProducts.length > 0
+          ? "success"
+          : errorMessage.toLowerCase().includes("timeout")
+            ? "timeout"
+            : "failed",
+      resultsCount: dedupedProducts.length,
+      durationMs: Date.now() - startedAt,
+      errorMessage,
+    };
+    const previousSnapshot = await getSourceCatalogSnapshot(source.id);
+    const mergedProducts = dedupeCatalogProducts([
+      ...(previousSnapshot?.products ?? []),
+      ...dedupedProducts,
+    ]).sort(
+      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
+    );
+    const mergedQueries = [
+      ...new Set([
+        ...(previousSnapshot?.queries ?? []),
+        ...queriesUsed.filter(Boolean),
+      ]),
+    ];
+    const mergedStatus = toMergedSourceStatus(status, mergedProducts.length);
+    const snapshot = await saveSourceCatalogSnapshot({
+      sourceId: source.id,
+      storeName: source.storeName,
+      storeType: source.storeType,
+      sourceUrl: source.sourceUrl ?? null,
+      dataOrigin: source.dataOrigin,
+      sourceScope: source.sourceScope,
+      status: mergedStatus.status,
+      syncedAt: new Date().toISOString(),
+      durationMs: status.durationMs,
+      queries: mergedQueries,
+      productsCount: mergedProducts.length,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: mergedProducts.length,
+      errors: [errorMessage],
+      products: mergedProducts,
+    });
+
+    await reloadStoredSourceCatalogs();
+    markCatalogUpdatedFromSourceSync(startedAt);
+    await persistCatalogIfWritable(currentCatalog);
+
+    return {
+      sourceId: source.id,
+      snapshot,
+      status: mergedStatus,
+      productsCount: mergedProducts.length,
+    };
+  }
 }
 
 export async function searchCatalog(query: string) {
@@ -661,6 +898,54 @@ function buildUniqueBrandSearchTerms() {
   });
 }
 
+type SourceCatalogSearchJob =
+  | {
+      kind: "full_page";
+      searchTerm: string;
+      normalizedSearchTerm: string;
+    }
+  | {
+      kind: "brand";
+      brand: TargetBrand;
+      searchTerm: string;
+      normalizedSearchTerm: string;
+    }
+  | {
+      kind: "category" | "seed";
+      searchTerm: string;
+      normalizedSearchTerm: string;
+    };
+
+async function buildSourceCatalogSearchJobs(): Promise<SourceCatalogSearchJob[]> {
+  const seedSearchTerms = await loadCatalogSearchSeedTerms();
+  const seenSearchTerms = new Set<string>();
+  const jobs: SourceCatalogSearchJob[] = [];
+
+  for (const job of [
+    ...buildUniqueBrandSearchTerms().map((term) => ({
+      kind: "brand" as const,
+      ...term,
+    })),
+    ...buildUniqueCategorySearchTerms().map((term) => ({
+      kind: "category" as const,
+      ...term,
+    })),
+    ...seedSearchTerms.map((term) => ({
+      kind: "seed" as const,
+      ...term,
+    })),
+  ]) {
+    if (!job.normalizedSearchTerm || seenSearchTerms.has(job.normalizedSearchTerm)) {
+      continue;
+    }
+
+    seenSearchTerms.add(job.normalizedSearchTerm);
+    jobs.push(job);
+  }
+
+  return jobs;
+}
+
 function buildUniqueCategorySearchTerms() {
   const seenCategorySearchTerms = new Set<string>();
 
@@ -674,6 +959,70 @@ function buildUniqueCategorySearchTerms() {
     seenCategorySearchTerms.add(normalizedSearchTerm);
     return [{ searchTerm, normalizedSearchTerm }];
   });
+}
+
+function summarizeSingleSourceStatus(
+  source: ScrapingSource,
+  statuses: SourceSearchStatus[],
+  productsCount: number,
+  durationMs: number,
+  errors: string[],
+): SourceSearchStatus {
+  const failedStatus = statuses.find(
+    (status) => status.status === "failed" || status.status === "timeout",
+  );
+  const noResults =
+    productsCount === 0 &&
+    statuses.length > 0 &&
+    statuses.every((status) => status.status === "no_results");
+  const firstError =
+    failedStatus?.errorMessage ??
+    errors.find((error) => error.trim().length > 0) ??
+    (noResults ? "Fuente consultada, sin productos utiles para el catalogo." : undefined);
+
+  return {
+    sourceId: source.id,
+    storeName: source.storeName,
+    storeType: source.storeType,
+    sourceUrl: source.sourceUrl ?? null,
+    dataOrigin: source.dataOrigin,
+    sourceScope: source.sourceScope,
+    status:
+      productsCount > 0
+        ? "success"
+        : failedStatus?.status ?? "no_results",
+    resultsCount: productsCount,
+    durationMs,
+    errorMessage: productsCount > 0 ? undefined : firstError,
+  };
+}
+
+function toMergedSourceStatus(
+  status: SourceSearchStatus,
+  mergedProductsCount: number,
+): SourceSearchStatus {
+  if (mergedProductsCount === 0) {
+    return status;
+  }
+
+  return {
+    ...status,
+    status: "success",
+    resultsCount: mergedProductsCount,
+    errorMessage: undefined,
+  };
+}
+
+function markCatalogUpdatedFromSourceSync(startedAt: number) {
+  currentCatalog = {
+    ...currentCatalog,
+    status: currentCatalog.productsCount > 0 ? "ready" : currentCatalog.status,
+    lastSyncedAt: new Date().toISOString(),
+    syncStartedAt: null,
+    syncProgress: null,
+    durationMs: Date.now() - startedAt,
+    errorMessage: undefined,
+  };
 }
 
 function updateCatalogSyncProgress(progress: Omit<CatalogSyncProgress, "updatedAt">) {
@@ -698,6 +1047,21 @@ function throwIfCatalogSyncTimedOut(startedAt: number) {
     `La sincronizacion supero el limite de ${Math.round(
       config.catalogSyncTimeoutMs / 1000,
     )} segundos.`,
+  );
+}
+
+function throwIfCatalogSourceSyncTimedOut(startedAt: number) {
+  const elapsedMs = Date.now() - startedAt;
+  const maxSourceSyncMs = Math.min(config.catalogSyncTimeoutMs, 260_000);
+
+  if (elapsedMs <= maxSourceSyncMs) {
+    return;
+  }
+
+  throw new Error(
+    `La sincronizacion de la fuente supero el limite de ${Math.round(
+      maxSourceSyncMs / 1000,
+    )} segundos; se guarda el avance parcial.`,
   );
 }
 

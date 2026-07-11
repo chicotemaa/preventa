@@ -16,6 +16,7 @@ import {
   searchCatalog,
   syncCatalog,
   syncCatalogInBackground,
+  syncCatalogSource,
 } from "./catalog.js";
 import { config } from "./config.js";
 import { runLiveSearch } from "./search.js";
@@ -38,6 +39,11 @@ const searchRequestSchema = z.object({
 
 const categorySearchRequestSchema = searchRequestSchema.extend({
   mode: z.enum(["catalog", "live"]).optional(),
+});
+
+const catalogSourceSyncRequestSchema = z.object({
+  sourceId: z.string().trim().min(2).max(120),
+  maxTerms: z.number().int().positive().max(240).optional(),
 });
 
 const carrefourComercianteSessionValidationSchema = z.object({
@@ -157,6 +163,7 @@ const server = http.createServer(async (request, response) => {
         priceList: "POST /catalog/price-list",
         catalogSync: "POST /catalog/sync",
         catalogSyncBackground: "POST /catalog/sync/background",
+        catalogSourceSync: "POST /catalog/sync/source",
         liveSearch: config.liveSearchEnabled
           ? "POST /search"
           : "disabled; set ENABLE_LIVE_SEARCH=true to enable",
@@ -219,6 +226,28 @@ const server = http.createServer(async (request, response) => {
       ...syncState,
       catalog: getCatalogMetadata(),
     });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/catalog/sync/source") {
+    if (!isAuthorizedCatalogSyncRequest(request)) {
+      sendJson(response, 401, { error: "No autorizado." });
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(request);
+      const { sourceId, maxTerms } = catalogSourceSyncRequestSchema.parse(body);
+      const result = await syncCatalogSource(sourceId, { maxTerms });
+      sendJson(response, 200, { ok: true, ...result });
+    } catch (error) {
+      sendJson(response, 400, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "No se pudo sincronizar la fuente.",
+      });
+    }
     return;
   }
 
@@ -291,6 +320,7 @@ const server = http.createServer(async (request, response) => {
         "POST /catalog/price-list",
         "POST /catalog/sync",
         "POST /catalog/sync/background",
+        "POST /catalog/sync/source",
         "POST /sources/carrefour-comerciante/session/validate",
         "POST /sources/carrefour-comerciante/session/save",
         "POST /sources/carrefour-comerciante/session/login",
