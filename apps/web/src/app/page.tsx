@@ -1099,7 +1099,7 @@ function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
                         </div>
                         <div>
                           <span className="font-semibold text-[#526170]">
-                            Mejor mercado:
+                            Referencia:
                           </span>{" "}
                           {formatCurrencyValue(result.bestPrice)}
                         </div>
@@ -1948,7 +1948,7 @@ function PriceListCards({
             {result.bestSource ? (
               <div className="mt-3 rounded-md bg-[#f6f7f9] p-3">
                 <div className="text-xs font-medium uppercase tracking-[0.04em] text-[#667789]">
-                  Mejor unitario
+                  Referencia unitaria
                 </div>
                 <div className="mt-1 text-lg font-semibold text-[#173d2f] sm:text-xl">
                   {formatComparableCurrency(result.bestSource)}
@@ -2487,7 +2487,7 @@ function filterPriceListResultBySourceType(
       (sourcePrice) =>
         sourceFilter === "all" || sourcePrice.storeType === sourceFilter,
     )
-    .sort((first, second) => getComparablePrice(first) - getComparablePrice(second));
+    .sort(comparePriceListSourcePrices);
   const bestSource = sourcePrices[0] ?? null;
   const hasAguiarPrice =
     normalizeOptionalNumber(result.input.currentPrice) !== null;
@@ -2500,6 +2500,30 @@ function filterPriceListResultBySourceType(
     sourcePrices,
     matchedCount: sourcePrices.length + (hasAguiarPrice ? 1 : 0),
   };
+}
+
+function comparePriceListSourcePrices(
+  first: PriceListSourcePrice,
+  second: PriceListSourcePrice,
+) {
+  const storeTypeRank = getPriceListSourceStoreTypeRank(first) -
+    getPriceListSourceStoreTypeRank(second);
+
+  if (storeTypeRank !== 0) {
+    return storeTypeRank;
+  }
+
+  const priceDifference = getComparablePrice(first) - getComparablePrice(second);
+
+  if (priceDifference !== 0) {
+    return priceDifference;
+  }
+
+  return compareSourcePriority(first, second);
+}
+
+function getPriceListSourceStoreTypeRank(sourcePrice: PriceListSourcePrice) {
+  return sourcePrice.storeType === "mayorista" ? 0 : 1;
 }
 
 function filterPriceListItems(
@@ -3222,8 +3246,8 @@ function downloadPriceListCsv(
     "EAN 13 BU",
     "Precio Aguiar",
     "Estado",
-    "Mejor unitario",
-    "Mejor fuente",
+    "Referencia unitaria",
+    "Fuente referencia",
     "Producto encontrado",
     "Link producto",
     ...sourceHeaders,
@@ -3272,7 +3296,7 @@ function downloadMatchingLogCsv(response: PriceListResponse) {
     "EAN 13 BU",
     "Estado",
     "Precio Aguiar",
-    "Mejor fuente",
+    "Fuente referencia",
     "Query usada",
     "Marca esperada",
     "Origen diagnostico",

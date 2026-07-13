@@ -1714,9 +1714,10 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
     const comparableSourcePrices = filterComparableSourcePrices(
       sourcePrices.filter((sourcePrice) => !isAguiarTokinSourcePrice(sourcePrice)),
     );
-    const bestSource = [...comparableSourcePrices].sort(
-      (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
-    )[0] ?? null;
+    const sortedComparableSourcePrices = sortPriceListSourcePrices(
+      comparableSourcePrices,
+    );
+    const bestSource = sortedComparableSourcePrices[0] ?? null;
     const fallbackAguiarSourcePrice = getFallbackAguiarSourcePrice(
       aguiarOnlyFallback,
       bestSource,
@@ -1769,8 +1770,9 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
       status: bestSource || hasAguiarPrice ? "matched" : "not_found",
       bestPrice: bestSource ? getComparisonPrice(bestSource) : null,
       bestSource,
-      sourcePrices: comparableSourcePrices,
-      matchedCount: comparableSourcePrices.length + (aguiarSourcePrice ? 1 : 0),
+      sourcePrices: sortedComparableSourcePrices,
+      matchedCount:
+        sortedComparableSourcePrices.length + (aguiarSourcePrice ? 1 : 0),
       diagnostics: {
         ...resultDiagnostics,
         matchedQuery: query,
@@ -2461,6 +2463,34 @@ function filterComparableSourcePrices(sourcePrices: PriceListSourcePrice[]) {
   }
 
   return sourcePrices;
+}
+
+function sortPriceListSourcePrices(sourcePrices: PriceListSourcePrice[]) {
+  return [...sourcePrices].sort(comparePriceListSourcePrices);
+}
+
+function comparePriceListSourcePrices(
+  first: PriceListSourcePrice,
+  second: PriceListSourcePrice,
+) {
+  const channelRank = getPriceListSourceChannelRank(first) -
+    getPriceListSourceChannelRank(second);
+
+  if (channelRank !== 0) {
+    return channelRank;
+  }
+
+  const priceDifference = getComparisonPrice(first) - getComparisonPrice(second);
+
+  if (priceDifference !== 0) {
+    return priceDifference;
+  }
+
+  return compareSourcePriority(first, second);
+}
+
+function getPriceListSourceChannelRank(sourcePrice: PriceListSourcePrice) {
+  return sourcePrice.storeType === "mayorista" ? 0 : 1;
 }
 
 function buildPriceListQueries(item: PriceListInputItem) {

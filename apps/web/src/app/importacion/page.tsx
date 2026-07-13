@@ -6,6 +6,7 @@ import {
   evaluatePriceListInBatches,
   type PriceListBatchProgress,
 } from "@/lib/price-list-batches";
+import { compareSourcePriority } from "@/lib/source-priority";
 import type {
   PendingSourceStatus,
   PriceListInputItem,
@@ -243,8 +244,8 @@ function ImportResults({ response }: { response: PriceListResponse }) {
           Resultado de importación
         </h2>
         <p className="text-sm text-[#667789]">
-          Artículos ordenados por estado. Descargá el XLSX para entregar la
-          tabla con el formato HUMAN, diagnóstico y comparaciones separadas.
+          Artículos en el orden del Excel. La referencia prioritaria usa
+          mayoristas primero y minoristas solo si no hay mayorista comparable.
         </p>
       </div>
 
@@ -297,7 +298,7 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Mejor precio
+            Referencia prioritaria
           </div>
           <div className="mt-1 text-lg font-extrabold text-[#173d2f]">
             {formatCurrency(result.bestPrice)}
@@ -499,14 +500,14 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     "Ean 13 Dispaly",
     "Estado",
     "Accion sugerida",
-    "Mejor precio general",
-    "Mejor fuente general",
-    "Canal ganador",
+    "Referencia prioritaria",
+    "Fuente referencia",
+    "Canal referencia",
     "Mejor mayorista",
     "Fuente mayorista",
     "Mejor minorista",
     "Fuente minorista",
-    "Brecha vs mejor general %",
+    "Brecha vs referencia %",
     "Producto encontrado",
     "Link producto",
     "Confianza",
@@ -645,9 +646,7 @@ function downloadCsv(name: string, rows: Array<Array<string | number>>) {
 }
 
 function sortResultPrices(result: PriceListItemResult): PriceListItemResult {
-  const sourcePrices = [...result.sourcePrices].sort(
-    (first, second) => getComparablePrice(first) - getComparablePrice(second),
-  );
+  const sourcePrices = [...result.sourcePrices].sort(comparePriceListSourcePrices);
   const bestSource = sourcePrices[0] ?? null;
 
   return {
@@ -660,6 +659,29 @@ function sortResultPrices(result: PriceListItemResult): PriceListItemResult {
         ? "matched"
         : "not_found",
   };
+}
+
+function comparePriceListSourcePrices(
+  first: PriceListSourcePrice,
+  second: PriceListSourcePrice,
+) {
+  const storeTypeRank = getStoreTypeRank(first) - getStoreTypeRank(second);
+
+  if (storeTypeRank !== 0) {
+    return storeTypeRank;
+  }
+
+  const priceDifference = getComparablePrice(first) - getComparablePrice(second);
+
+  if (priceDifference !== 0) {
+    return priceDifference;
+  }
+
+  return compareSourcePriority(first, second);
+}
+
+function getStoreTypeRank(sourcePrice: PriceListSourcePrice) {
+  return sourcePrice.storeType === "mayorista" ? 0 : 1;
 }
 
 function getComparablePrice(price: PriceListSourcePrice) {
