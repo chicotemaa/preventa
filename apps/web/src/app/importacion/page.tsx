@@ -2,6 +2,10 @@
 
 import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { ChangeEvent, useMemo, useState } from "react";
+import {
+  evaluatePriceListInBatches,
+  type PriceListBatchProgress,
+} from "@/lib/price-list-batches";
 import type {
   PendingSourceStatus,
   PriceListInputItem,
@@ -36,6 +40,8 @@ export default function ImportacionPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [persistForEvolution, setPersistForEvolution] = useState(false);
+  const [batchProgress, setBatchProgress] =
+    useState<PriceListBatchProgress | null>(null);
 
   const summary = useMemo(() => {
     if (!response) {
@@ -65,6 +71,7 @@ export default function ImportacionPage() {
     setFileName(file.name);
     setResponse(null);
     setError(null);
+    setBatchProgress(null);
     setIsLoading(true);
 
     try {
@@ -75,20 +82,13 @@ export default function ImportacionPage() {
       }
 
       setItemsCount(items.length);
-      const result = await fetch("/api/price-list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ items, persist: persistForEvolution }),
+      const payload = await evaluatePriceListInBatches({
+        items,
+        persist: persistForEvolution,
+        onProgress: setBatchProgress,
       });
-      const payload = await result.json();
 
-      if (!result.ok) {
-        throw new Error(payload.error ?? "No se pudo evaluar la lista.");
-      }
-
-      setResponse(payload as PriceListResponse);
+      setResponse(payload);
     } catch (caughtError) {
       setItemsCount(0);
       setError(
@@ -98,6 +98,7 @@ export default function ImportacionPage() {
       );
     } finally {
       setIsLoading(false);
+      setBatchProgress(null);
     }
   }
 
@@ -197,7 +198,7 @@ export default function ImportacionPage() {
           {isLoading ? (
             <div className="mt-4 flex items-center gap-2 rounded-md border border-[#eadbd3] bg-[#fffdfa] px-4 py-3 text-sm text-[#6f625d]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Evaluando precios...
+              {formatBatchProgress(batchProgress)}
             </div>
           ) : null}
 
@@ -257,6 +258,14 @@ function ImportResults({ response }: { response: PriceListResponse }) {
       </div>
     </section>
   );
+}
+
+function formatBatchProgress(progress: PriceListBatchProgress | null) {
+  if (!progress) {
+    return "Preparando evaluacion por lotes...";
+  }
+
+  return `Evaluando lote ${progress.completedBatches}/${progress.totalBatches} · ${progress.processedItems}/${progress.totalItems} articulos`;
 }
 
 function ImportResultCard({ result }: { result: PriceListItemResult }) {

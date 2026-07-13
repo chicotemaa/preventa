@@ -106,6 +106,12 @@ let currentCatalog: CatalogSnapshot = {
   products: [],
 };
 let activeSync: Promise<CatalogSnapshot> | null = null;
+let catalogIdentifierIndex:
+  | {
+      products: ProductSearchResult[];
+      byIdentifier: Map<string, ProductSearchResult[]>;
+    }
+  | null = null;
 
 export type CatalogSourceSyncResult = {
   sourceId: string;
@@ -2546,12 +2552,13 @@ function analyzeProductMatches(
     ? [item.description, item.rubro].filter(Boolean).join(" ")
     : null;
   const queryIdentifier = cleanIdentifier(query);
+  const searchableProducts = getSearchableProductsForQuery(query, products);
   const matches: ProductSearchResult[] = [];
   const rejected: PriceListRejectedCandidate[] = [];
   let candidatesCount = 0;
   let rejectedCount = 0;
 
-  for (const product of products) {
+  for (const product of searchableProducts) {
     const exactIdentifierMatch =
       Boolean(queryIdentifier) &&
       getProductIdentifiers(product).some(
@@ -2913,6 +2920,75 @@ function calculateCatalogProductScore(
   }
 
   return calculateConfidenceScore(query, getProductMatchText(product));
+}
+
+function getSearchableProductsForQuery(
+  query: string,
+  products: ProductSearchResult[],
+) {
+  if (!isIdentifierQuery(query)) {
+    return products;
+  }
+
+  const queryIdentifier = cleanIdentifier(query);
+
+  if (!queryIdentifier) {
+    return products;
+  }
+
+  const indexedProducts = getCatalogProductsByIdentifier(
+    queryIdentifier,
+    products,
+  );
+
+  return indexedProducts.length > 0 ? indexedProducts : products;
+}
+
+function isIdentifierQuery(query: string) {
+  const trimmedQuery = query.trim();
+  const clean = cleanIdentifier(trimmedQuery);
+
+  if (!clean || clean.length < 4) {
+    return false;
+  }
+
+  return /^[a-z]{0,4}[-\s]?\d+$/i.test(trimmedQuery);
+}
+
+function getCatalogProductsByIdentifier(
+  identifier: string,
+  products: ProductSearchResult[],
+) {
+  const clean = cleanIdentifier(identifier);
+
+  if (!clean) {
+    return [];
+  }
+
+  return getCatalogIdentifierIndex(products).get(clean) ?? [];
+}
+
+function getCatalogIdentifierIndex(products: ProductSearchResult[]) {
+  if (catalogIdentifierIndex?.products === products) {
+    return catalogIdentifierIndex.byIdentifier;
+  }
+
+  const byIdentifier = new Map<string, ProductSearchResult[]>();
+
+  for (const product of products) {
+    for (const identifier of getProductIdentifiers(product)) {
+      const clean = cleanIdentifier(identifier);
+
+      if (!clean) {
+        continue;
+      }
+
+      byIdentifier.set(clean, [...(byIdentifier.get(clean) ?? []), product]);
+    }
+  }
+
+  catalogIdentifierIndex = { products, byIdentifier };
+  return byIdentifier;
 }
 
 function getProductIdentifiers(product: ProductSearchResult) {

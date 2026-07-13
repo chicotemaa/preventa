@@ -10,6 +10,9 @@ const DEFAULT_WORKER_URL =
     ? "https://preventa-worker.vercel.app"
     : "http://127.0.0.1:4000";
 const MAX_ITEMS = 1500;
+const WORKER_REQUEST_TIMEOUT_MS = 55_000;
+
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   let body: Partial<PriceListRequest>;
@@ -37,6 +40,8 @@ export async function POST(request: Request) {
   }
 
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WORKER_REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(
@@ -48,6 +53,7 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({ items }),
         cache: "no-store",
+        signal: controller.signal,
       },
     );
 
@@ -69,10 +75,26 @@ export async function POST(request: Request) {
         ? await savePriceListRun(data)
         : { enabled: false, requested: false, saved: false };
     return NextResponse.json({ ...data, persistence });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      return NextResponse.json(
+        {
+          error:
+            "La evaluacion del lote tardo demasiado. La app procesa listas grandes en lotes; si vuelve a pasar, reduci el tamaño del Excel o reintenta.",
+        },
+        { status: 504 },
+      );
+    }
+
     return NextResponse.json(
       { error: "No se pudo conectar con el worker de busqueda." },
       { status: 502 },
     );
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }

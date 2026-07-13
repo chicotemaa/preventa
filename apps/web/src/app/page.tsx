@@ -12,6 +12,10 @@ import {
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { CategoryPricingDashboard } from "@/components/category-pricing/CategoryPricingDashboard";
+import {
+  evaluatePriceListInBatches,
+  type PriceListBatchProgress,
+} from "@/lib/price-list-batches";
 import { compareSourcePriority } from "@/lib/source-priority";
 import type {
   CategorySearchGroup,
@@ -415,6 +419,8 @@ function PriceListImport() {
   const [isSavingForEvolution, setIsSavingForEvolution] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
   const [persistForEvolution, setPersistForEvolution] = useState(false);
+  const [batchProgress, setBatchProgress] =
+    useState<PriceListBatchProgress | null>(null);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -427,6 +433,7 @@ function PriceListImport() {
     setFileName(file.name);
     setResponse(null);
     setError(null);
+    setBatchProgress(null);
     setIsLoading(true);
 
     try {
@@ -437,20 +444,12 @@ function PriceListImport() {
       }
 
       setItemsCount(items.length);
-      const result = await fetch("/api/price-list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ items, persist: persistForEvolution }),
+      const priceListResponse = await evaluatePriceListInBatches({
+        items,
+        persist: persistForEvolution,
+        onProgress: setBatchProgress,
       });
-      const payload = await result.json();
 
-      if (!result.ok) {
-        throw new Error(payload.error ?? "No se pudo evaluar la lista.");
-      }
-
-      const priceListResponse = payload as PriceListResponse;
       setResponse(priceListResponse);
       logPriceListDebugToConsole(priceListResponse);
     } catch (caughtError) {
@@ -462,6 +461,7 @@ function PriceListImport() {
       );
     } finally {
       setIsLoading(false);
+      setBatchProgress(null);
     }
   }
 
@@ -628,7 +628,7 @@ function PriceListImport() {
       {isLoading ? (
         <div className="mt-4 flex items-center gap-2 rounded-md border border-[#eadbd3] bg-[#fffdfa] px-4 py-3 text-sm text-[#6f625d]">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Evaluando precios...
+          {formatBatchProgress(batchProgress)}
         </div>
       ) : null}
 
@@ -889,6 +889,14 @@ function PriceListResults({
       <MatchingDiagnostics response={response} />
     </div>
   );
+}
+
+function formatBatchProgress(progress: PriceListBatchProgress | null) {
+  if (!progress) {
+    return "Preparando evaluacion por lotes...";
+  }
+
+  return `Evaluando lote ${progress.completedBatches}/${progress.totalBatches} · ${progress.processedItems}/${progress.totalItems} articulos`;
 }
 
 function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
