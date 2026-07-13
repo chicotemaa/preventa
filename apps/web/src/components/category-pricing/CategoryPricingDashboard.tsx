@@ -175,8 +175,25 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
 
       <div className="grid gap-px bg-[#e5e9ef] sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         <SummaryMetric label="Total productos" value={dashboard.totalProducts} />
-        <SummaryMetric label="Aguiar / Tokin" value={dashboard.aguiarProductsCount} />
-        <SummaryMetric label="Competencia" value={dashboard.competitorProductsCount} />
+        <SummaryMetric
+          label="Aguiar / Tokin"
+          value={dashboard.aguiarProductsCount}
+          helper={
+            dashboard.visibleAguiarProductsCount < dashboard.aguiarProductsCount
+              ? `${dashboard.visibleAguiarProductsCount} visibles`
+              : undefined
+          }
+        />
+        <SummaryMetric
+          label="Competencia"
+          value={dashboard.competitorProductsCount}
+          helper={
+            dashboard.visibleCompetitorProductsCount <
+            dashboard.competitorProductsCount
+              ? `${dashboard.visibleCompetitorProductsCount} visibles`
+              : undefined
+          }
+        />
         <SummaryMetric label="Fuentes consultadas" value={dashboard.sourceHealth.total} />
         <SummaryMetric label="Fuentes con datos" value={dashboard.sourceHealth.withData} />
         <SummaryMetric label="Fuentes sin datos" value={dashboard.sourceHealth.withoutData} />
@@ -220,10 +237,12 @@ function RecommendationPanel({
 function SummaryMetric({
   label,
   value,
+  helper,
   tone = "neutral",
 }: {
   label: string;
   value: number | string;
+  helper?: string;
   tone?: "neutral" | "danger";
 }) {
   return (
@@ -232,6 +251,11 @@ function SummaryMetric({
         {label}
       </div>
       <div className="mt-1 truncate text-lg font-black text-[#17202a]">{value}</div>
+      {helper ? (
+        <div className="mt-0.5 truncate text-[11px] font-semibold text-[#667789]">
+          {helper}
+        </div>
+      ) : null}
     </div>
   );
 }

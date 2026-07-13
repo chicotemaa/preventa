@@ -94,6 +94,8 @@ export type CategorySearchGroup = {
   matchedTerms: string[];
   confidenceScore: number;
   totalProducts: number;
+  tokinProductsCount?: number;
+  competitorProductsCount?: number;
   tokinProducts: ProductSearchResult[];
   competitorProducts: ProductSearchResult[];
   tokinBrands: CategoryBrandSummary[];

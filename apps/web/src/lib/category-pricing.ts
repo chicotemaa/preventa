@@ -150,6 +150,8 @@ export type CategoryPricingDashboard = {
   totalProducts: number;
   aguiarProductsCount: number;
   competitorProductsCount: number;
+  visibleAguiarProductsCount: number;
+  visibleCompetitorProductsCount: number;
   sourceHealth: SourceHealthSummary;
   rows: CategoryDecisionRow[];
   bestWholesalePrice: CompetitorPriceCell | null;
@@ -211,8 +213,11 @@ export function buildCategoryPricingDashboard({
     familyName: group.categoryName,
     searchedAt,
     totalProducts: group.totalProducts,
-    aguiarProductsCount: group.tokinProducts.length,
-    competitorProductsCount: group.competitorProducts.length,
+    aguiarProductsCount: group.tokinProductsCount ?? group.tokinProducts.length,
+    competitorProductsCount:
+      group.competitorProductsCount ?? group.competitorProducts.length,
+    visibleAguiarProductsCount: group.tokinProducts.length,
+    visibleCompetitorProductsCount: group.competitorProducts.length,
     sourceHealth,
     rows,
     bestWholesalePrice,
@@ -378,17 +383,23 @@ function buildSourceHealthSummary(sources: SourceSearchStatus[]): SourceHealthSu
 
   const sortedItems = items.sort(compareSourceHealthItems);
   const withData = sortedItems.filter((item) => item.status === "ok").length;
+  const pendingStatuses: ExpectedSourceStatus[] = [
+    "pending",
+    "requires_login",
+    "not_configured",
+  ];
   const pending = sortedItems.filter((item) =>
-    ["pending", "requires_login", "not_configured", "no_public_prices"].includes(
-      item.status,
-    ),
+    pendingStatuses.includes(item.status),
+  ).length;
+  const withoutData = sortedItems.filter(
+    (item) => item.status !== "ok" && !pendingStatuses.includes(item.status),
   ).length;
 
   return {
     items: sortedItems,
     total: sortedItems.length,
     withData,
-    withoutData: Math.max(0, sortedItems.length - withData),
+    withoutData,
     pending,
     criticalMissing: sortedItems.filter(
       (item) =>
@@ -429,16 +440,20 @@ function buildSourceHealthMessage(
   source: SourceSearchStatus | undefined,
   config: SourcePriorityConfig | null,
 ) {
-  if (source?.errorMessage && status !== "ok") {
-    return source.errorMessage;
-  }
-
   if (source && status === "ok") {
+    if (source.errorMessage) {
+      return `Datos guardados disponibles. Ultima actualizacion: ${source.errorMessage}`;
+    }
+
     if (config?.fallbackStatus === "requires_login") {
       return "Fuente consultada con datos y credenciales configuradas.";
     }
 
     return "Fuente consultada con datos.";
+  }
+
+  if (source?.errorMessage) {
+    return source.errorMessage;
   }
 
   if (source && status === "sin_datos") {

@@ -94,7 +94,8 @@ function SourceHealthCard({ item }: { item: SourceHealthItem }) {
         <span className={sourceStatusClassName(item.status)}>{item.statusLabel}</span>
       </div>
       <div className="mt-2 text-xs text-[#667789]">
-        {item.resultsCount} resultados · {item.durationMs} ms
+        {item.resultsCount} productos guardados
+        {item.durationMs > 0 ? ` · ultimo intento ${item.durationMs} ms` : ""}
       </div>
       {item.status !== "ok" || item.message ? (
         <p className="mt-1 line-clamp-2 text-xs leading-4 text-[#73510b]">{item.message}</p>

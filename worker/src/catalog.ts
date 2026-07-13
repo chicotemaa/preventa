@@ -1332,12 +1332,14 @@ function buildCategorySearchGroup(
     return null;
   }
 
-  const tokinProducts = uniqueProducts
-    .filter((product) => product.sourceId === AGUIAR_TOKIN_SOURCE_ID)
-    .slice(0, 40);
-  const competitorProducts = uniqueProducts
-    .filter((product) => product.sourceId !== AGUIAR_TOKIN_SOURCE_ID)
-    .slice(0, 80);
+  const allTokinProducts = uniqueProducts.filter(
+    (product) => product.sourceId === AGUIAR_TOKIN_SOURCE_ID,
+  );
+  const allCompetitorProducts = uniqueProducts.filter(
+    (product) => product.sourceId !== AGUIAR_TOKIN_SOURCE_ID,
+  );
+  const tokinProducts = allTokinProducts.slice(0, 40);
+  const competitorProducts = allCompetitorProducts.slice(0, 80);
 
   return {
     id: slugifyCategoryName(category.name),
@@ -1350,6 +1352,8 @@ function buildCategorySearchGroup(
       ...uniqueProducts.map((product) => product.confidenceScore),
     ),
     totalProducts: uniqueProducts.length,
+    tokinProductsCount: allTokinProducts.length,
+    competitorProductsCount: allCompetitorProducts.length,
     tokinProducts,
     competitorProducts,
     tokinBrands: summarizeCategoryBrands(tokinProducts),
