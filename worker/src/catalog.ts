@@ -49,6 +49,7 @@ import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import { config } from "./config.js";
 import { loadCatalogSearchSeedTerms } from "./catalog-seeds.js";
+import { buildPriceListOwnPrice } from "./price-list-own-price.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
@@ -636,7 +637,7 @@ async function matchPriceListItemWithDirectAguiar(
 ): Promise<PriceListItemResult> {
   const catalogResult = matchPriceListItem(item);
 
-  if (normalizeOptionalPrice(catalogResult.input.currentPrice)) {
+  if (normalizeOptionalPrice(catalogResult.ownPrice?.tokinPrice)) {
     return catalogResult;
   }
 
@@ -1697,6 +1698,7 @@ function slugifyCategoryName(value: string) {
 function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   const expectedBrand = getExpectedBrandForPriceListItem(item);
   const diagnostics = createPriceListDiagnostics(expectedBrand);
+  const excelPrice = normalizeOptionalPrice(item.currentPrice);
   let aguiarOnlyFallback: AguiarOnlyFallback | null = null;
 
   for (const query of buildPriceListQueries(item)) {
@@ -1738,11 +1740,13 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
           aguiarPriceNormalization: aguiarValidation.diagnostic,
         }
       : diagnostics;
+    const ownPrice = buildPriceListOwnPrice(
+      excelPrice,
+      aguiarSourcePrice ? getComparisonPrice(aguiarSourcePrice) : null,
+    );
     const input = {
       ...item,
-      currentPrice: aguiarSourcePrice
-        ? getComparisonPrice(aguiarSourcePrice)
-        : item.currentPrice,
+      currentPrice: ownPrice.selectedPrice ?? undefined,
       currentCost: undefined,
     };
 
@@ -1766,6 +1770,7 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
 
     return {
       input,
+      ownPrice,
       queryUsed: query,
       status: bestSource || hasAguiarPrice ? "matched" : "not_found",
       bestPrice: bestSource ? getComparisonPrice(bestSource) : null,
@@ -1781,9 +1786,13 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   }
 
   if (aguiarOnlyFallback) {
+    const ownPrice = buildPriceListOwnPrice(
+      excelPrice,
+      getComparisonPrice(aguiarOnlyFallback.sourcePrice),
+    );
     const input = {
       ...item,
-      currentPrice: getComparisonPrice(aguiarOnlyFallback.sourcePrice),
+      currentPrice: ownPrice.selectedPrice ?? undefined,
       currentCost: undefined,
     };
 
@@ -1793,6 +1802,7 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
 
     return {
       input,
+      ownPrice,
       queryUsed: aguiarOnlyFallback.query,
       status: "matched",
       bestPrice: null,
@@ -1808,7 +1818,11 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
   }
 
   return {
-    input: item,
+    input: {
+      ...item,
+      currentPrice: excelPrice ?? undefined,
+    },
+    ownPrice: buildPriceListOwnPrice(excelPrice, null),
     queryUsed: null,
     status: "not_found",
     bestPrice: null,
@@ -1983,15 +1997,20 @@ function applyAguiarSourcePrice(
     };
   }
 
+  const ownPrice = buildPriceListOwnPrice(
+    result.ownPrice?.excelPrice ?? normalizeOptionalPrice(result.input.currentPrice),
+    getComparisonPrice(aguiarValidation.sourcePrice),
+  );
   const input = {
     ...result.input,
-    currentPrice: getComparisonPrice(aguiarValidation.sourcePrice),
+    currentPrice: ownPrice.selectedPrice ?? undefined,
   };
   const hasAnyPrice = result.bestSource !== null || Boolean(input.currentPrice);
 
   return {
     ...result,
     input,
+    ownPrice,
     queryUsed: result.queryUsed ?? aguiarMatch.query,
     status: hasAnyPrice ? "matched" : "not_found",
     matchedCount: result.matchedCount + 1,

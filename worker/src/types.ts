@@ -218,8 +218,17 @@ export type PriceListMatchDiagnostics = {
   directAguiar?: PriceListDirectSourceDiagnostics;
 };
 
+export type PriceListOwnPrice = {
+  excelPrice: number | null;
+  tokinPrice: number | null;
+  selectedPrice: number | null;
+  selectedSource: "tokin" | "excel" | null;
+  excelVsTokinGapRatio: number | null;
+};
+
 export type PriceListItemResult = {
   input: PriceListInputItem;
+  ownPrice?: PriceListOwnPrice;
   queryUsed: string | null;
   status: "matched" | "not_found";
   bestPrice: number | null;

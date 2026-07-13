@@ -12,7 +12,10 @@ import {
   getBestPriceListSourceByType,
   getOwnPriceSourceLabel,
   getPriceListComparablePrice,
+  getPriceListExcelPrice,
+  getPriceListOwnPrice,
   getPriceListSuggestedAction,
+  getPriceListTokinPrice,
   sortPriceListResultPrices,
   summarizePriceListDecisions,
   type PriceListDecisionTone,
@@ -155,7 +158,8 @@ export default function ImportacionPage() {
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#667789]">
                 El archivo debe incluir Rubro, Descripción, Código y EAN. Si
-                trae Precio Aguiar, se usa como referencia propia.
+                trae Precio Aguiar, se conserva; cuando Tokin/Arcor aporta un
+                match válido, ese valor se prioriza y ambos quedan visibles.
               </p>
             </div>
 
@@ -331,6 +335,19 @@ function formatDecisionGap(
   return `${prefix}${percentFormatter.format(gapRatio)} vs ${referenceChannelLabel}`;
 }
 
+function formatOwnPriceDifference(gapRatio: number | null | undefined) {
+  if (gapRatio === null || gapRatio === undefined) {
+    return "Sin ambos precios para comparar";
+  }
+
+  if (Math.abs(gapRatio) < 0.001) {
+    return "Coincide con el Excel";
+  }
+
+  const prefix = gapRatio > 0 ? "+" : "";
+  return `Excel ${prefix}${percentFormatter.format(gapRatio)} vs Tokin`;
+}
+
 function ImportResults({ response }: { response: PriceListResponse }) {
   return (
     <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
@@ -368,6 +385,9 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
   const comparisons = result.sourcePrices.slice(0, 5);
   const decision = analyzePriceListDecision(result);
   const ownPriceLabel = getOwnPriceSourceLabel(result);
+  const excelPrice = getPriceListExcelPrice(result);
+  const tokinPrice = getPriceListTokinPrice(result);
+  const selectedOwnPrice = getPriceListOwnPrice(result);
 
   return (
     <article className="rounded-md border border-[#d9dee7] bg-white p-3">
@@ -401,7 +421,7 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 lg:grid-cols-3">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
             Referencia prioritaria
@@ -414,15 +434,37 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
             {result.bestSource ? `· ${formatStoreType(result.bestSource.storeType)}` : ""}
           </div>
         </div>
-        <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
+        <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Precio propio
+            Precio Excel
           </div>
-          <div className="mt-1 text-lg font-extrabold text-[#7a4a16]">
-            {formatCurrency(normalizeOptionalNumber(result.input.currentPrice))}
+          <div className="mt-1 text-lg font-extrabold text-[#17202a]">
+            {formatCurrency(excelPrice)}
           </div>
           <div className="mt-1 text-xs text-[#667789]">
-            {ownPriceLabel}
+            Valor recibido en la planilla
+          </div>
+        </div>
+        <div className="rounded-md border border-[#cddcf2] bg-[#f5f8ff] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+            Precio Tokin/Arcor
+          </div>
+          <div className="mt-1 text-lg font-extrabold text-[#153d7b]">
+            {formatCurrency(tokinPrice)}
+          </div>
+          <div className="mt-1 text-xs text-[#667789]">
+            {formatOwnPriceDifference(result.ownPrice?.excelVsTokinGapRatio)}
+          </div>
+        </div>
+        <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+            Precio usado
+          </div>
+          <div className="mt-1 text-lg font-extrabold text-[#7a4a16]">
+            {formatCurrency(selectedOwnPrice)}
+          </div>
+          <div className="mt-1 text-xs text-[#667789]">
+            Origen: {ownPriceLabel}
           </div>
         </div>
         <div className={`rounded-md border px-3 py-2 ${decisionCardClassName(decision.tone)}`}>
@@ -627,7 +669,11 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     "Articulo",
     "Descripcion ARTICULOS",
     "UxB",
-    "Precio x Unid",
+    "Precio Excel",
+    "Precio Tokin/Arcor",
+    "Precio propio usado",
+    "Origen precio propio",
+    "Diferencia Excel vs Tokin %",
     "Ean 13 Unidad",
     "Ean 13 Dispaly",
     "Estado",
@@ -646,7 +692,9 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     ...buildComparisonHeaders(),
   ];
   const rows = sortedResults.map((sortedResult) => {
-    const currentPrice = normalizeOptionalNumber(sortedResult.input.currentPrice);
+    const currentPrice = getPriceListOwnPrice(sortedResult);
+    const excelPrice = getPriceListExcelPrice(sortedResult);
+    const tokinPrice = getPriceListTokinPrice(sortedResult);
     const decision = analyzePriceListDecision(sortedResult);
     const bestMayorista = getBestPriceListSourceByType(sortedResult, "mayorista");
     const bestMinorista = getBestPriceListSourceByType(sortedResult, "minorista");
@@ -678,7 +726,11 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
       sortedResult.input.code ?? "",
       sortedResult.input.description ?? "",
       parseNumberOrText(sortedResult.input.uxb),
+      excelPrice ?? "",
+      tokinPrice ?? "",
       currentPrice ?? "",
+      getOwnPriceSourceLabel(sortedResult),
+      sortedResult.ownPrice?.excelVsTokinGapRatio ?? "",
       sortedResult.input.ean13Di ?? "",
       sortedResult.input.ean13Bu ?? "",
       sortedResult.status === "matched" ? "Con precio" : "Sin precio",
@@ -764,7 +816,7 @@ function downloadAguiarCsv(response: PriceListResponse) {
     result.input.ean13Bu ?? "",
     result.input.description ?? "",
     result.input.rubro ?? "",
-    formatCsvAmount(normalizeOptionalNumber(result.input.currentPrice)),
+    formatCsvAmount(getPriceListOwnPrice(result)),
   ]);
 
   downloadCsv("aguiar-precios", [headers, ...rows]);
@@ -836,8 +888,8 @@ function formatStoreType(storeType: PriceListSourcePrice["storeType"]) {
 
 function buildHumanOutputColumnWidths(columnsCount: number) {
   const widths = [
-    16, 18, 22, 22, 30, 10, 34, 10, 14, 16, 16, 14, 20, 16, 22, 14, 16, 22,
-    16, 22, 18, 34, 28, 11,
+    16, 18, 22, 22, 30, 10, 34, 10, 14, 14, 14, 16, 18, 16, 16, 14, 20, 16,
+    22, 14, 16, 22, 16, 22, 18, 34, 28, 11,
   ];
 
   return Array.from({ length: columnsCount }, (_, index) => ({
@@ -849,14 +901,14 @@ function applyHumanOutputFormats(
   worksheet: Record<string, unknown>,
   rowsCount: number,
 ) {
-  const comparisonStartColumn = 25;
+  const comparisonStartColumn = 29;
   const comparisonCurrencyColumns = Array.from(
     { length: COMPARISON_SLOTS },
     (_, index) => comparisonStartColumn + index * COMPARISON_FIELD_LABELS.length,
   ).flatMap((startColumn) => [startColumn + 2, startColumn + 3]);
-  const currencyColumns = [9, 14, 17, 19, ...comparisonCurrencyColumns];
-  const percentColumns = [21];
-  const integerColumns = [8, 24];
+  const currencyColumns = [9, 10, 11, 18, 21, 23, ...comparisonCurrencyColumns];
+  const percentColumns = [13, 25];
+  const integerColumns = [8, 28];
 
   for (let rowIndex = 2; rowIndex <= rowsCount + 1; rowIndex += 1) {
     for (const columnIndex of currencyColumns) {
@@ -1019,7 +1071,7 @@ function shouldSendToNoMatch(result: PriceListItemResult) {
     return true;
   }
 
-  if (!normalizeOptionalNumber(result.input.currentPrice)) {
+  if (!getPriceListOwnPrice(result)) {
     return true;
   }
 
@@ -1032,7 +1084,7 @@ function getNoMatchReason(result: PriceListItemResult) {
     return "No se encontraron precios comparables";
   }
 
-  if (!normalizeOptionalNumber(result.input.currentPrice)) {
+  if (!getPriceListOwnPrice(result)) {
     return "Falta precio Aguiar en la lista";
   }
 

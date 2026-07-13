@@ -238,12 +238,17 @@ El frontend incluye un cron de Vercel en `apps/web/vercel.json`:
 El cron llama `GET /api/cron/catalog-sync`, que valida `CRON_SECRET` y dispara
 `POST /catalog/sync/background` en el worker. El endpoint del worker responde
 rapido y la sincronizacion sigue en background, por eso no bloquea la funcion de
-Vercel.
+Vercel. El cron no recorre fuentes dentro de la funcion serverless: el worker
+persistente ejecuta la sincronizacion completa, evita corridas superpuestas y
+expone `syncStartedAt` y `syncProgress` en `GET /catalog`.
+`WORKER_URL` es obligatorio en produccion; no se usa un worker publico de
+respaldo porque podria ocultar una configuracion incorrecta.
 
 Variables necesarias en produccion:
 
 ```bash
 # Vercel / frontend
+WORKER_URL=https://URL-DEL-WORKER-PERSISTENTE
 CRON_SECRET=<clave-larga-aleatoria>
 WORKER_CRON_SECRET=<misma-clave-si-el-worker-usa-CATALOG_SYNC_SECRET>
 CATEGORY_SEARCH_MODE=catalog
@@ -264,6 +269,11 @@ revisar `/health` o `/catalog` para confirmar `lastSyncedAt` despues del cron.
 El archivo `worker/data/catalog-search-seeds.txt` agrega familias y lineas de la
 lista general de articulos para que el cron precargue mas productos y la
 importacion de Excel compare contra el snapshot, sin scraping por cada carga.
+
+La importacion conserva por separado el precio recibido en el Excel y el precio
+obtenido de Tokin/Arcor. Cuando Tokin aporta un match valido se usa como precio
+propio prioritario, pero ambos valores y su diferencia quedan visibles en la UI
+y en el XLSX exportado.
 
 ### Yaguar Chaco
 

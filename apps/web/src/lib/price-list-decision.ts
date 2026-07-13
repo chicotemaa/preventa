@@ -55,7 +55,7 @@ export function sortPriceListResultPrices(
     bestSource,
     bestPrice: bestSource ? getPriceListComparablePrice(bestSource) : null,
     status:
-      bestSource || normalizeOptionalNumber(result.input.currentPrice)
+      bestSource || getPriceListOwnPrice(result)
         ? "matched"
         : "not_found",
   };
@@ -111,7 +111,7 @@ export function calculatePriceListGapRatio(
 export function analyzePriceListDecision(
   result: PriceListItemResult,
 ): PriceListDecisionAnalysis {
-  const currentPrice = normalizeOptionalNumber(result.input.currentPrice);
+  const currentPrice = getPriceListOwnPrice(result);
   const bestWholesale = getBestPriceListSourceByType(result, "mayorista") ?? null;
   const referenceSource = bestWholesale ?? result.bestSource;
   const referencePrice = referenceSource
@@ -303,6 +303,14 @@ export function summarizePriceListDecisions(
 }
 
 export function getOwnPriceSourceLabel(result: PriceListItemResult) {
+  if (result.ownPrice?.selectedSource === "tokin") {
+    return "Tokin/Arcor";
+  }
+
+  if (result.ownPrice?.selectedSource === "excel") {
+    return "Excel";
+  }
+
   if (
     result.diagnostics?.aguiarPriceNormalization?.status === "normalized" ||
     result.diagnostics?.directAguiar?.status === "matched"
@@ -311,10 +319,25 @@ export function getOwnPriceSourceLabel(result: PriceListItemResult) {
   }
 
   if (normalizeOptionalNumber(result.input.currentPrice)) {
-    return "Excel o Tokin/Arcor";
+    return "Excel";
   }
 
   return "pendiente";
+}
+
+export function getPriceListOwnPrice(result: PriceListItemResult) {
+  return (
+    normalizeOptionalNumber(result.ownPrice?.selectedPrice) ??
+    normalizeOptionalNumber(result.input.currentPrice)
+  );
+}
+
+export function getPriceListExcelPrice(result: PriceListItemResult) {
+  return normalizeOptionalNumber(result.ownPrice?.excelPrice);
+}
+
+export function getPriceListTokinPrice(result: PriceListItemResult) {
+  return normalizeOptionalNumber(result.ownPrice?.tokinPrice);
 }
 
 function getStoreTypeRank(sourcePrice: PriceListSourcePrice) {

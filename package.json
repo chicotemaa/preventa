@@ -11,6 +11,7 @@
     "dev:web": "npm run dev --workspace apps/web",
     "dev:worker": "npm run dev --workspace worker",
     "build": "npm run build --workspace worker && npm run build --workspace apps/web",
+    "test": "npm run test --workspace worker && npm run test --workspace apps/web",
     "typecheck": "npm run typecheck --workspace worker && npm run typecheck --workspace apps/web"
   },
   "engines": {
