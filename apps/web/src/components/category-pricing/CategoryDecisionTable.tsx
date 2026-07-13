@@ -57,6 +57,7 @@ export function CategoryDecisionTable({
                     {row.clusterName}
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1">
+                    <CommercialPriorityChip row={row} />
                     {row.hasPromo ? <PromoChip /> : null}
                     {row.alerts.slice(0, 2).map((alert) => (
                       <span
@@ -139,6 +140,9 @@ export function CategoryDecisionTable({
                 </h4>
                 <div className="mt-1 text-xs text-[#667789]">
                   {row.brand} · {row.presentationLabel}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  <CommercialPriorityChip row={row} />
                 </div>
               </div>
               <span className={recommendationChipClassName(row.recommendation.tone)}>
@@ -232,6 +236,23 @@ function PromoChip() {
   return (
     <span className="inline-flex rounded bg-[#eaf2ff] px-2 py-0.5 text-[11px] font-bold text-[#153d7b]">
       Promo detectada
+    </span>
+  );
+}
+
+function CommercialPriorityChip({ row }: { row: CategoryDecisionRow }) {
+  if (row.commercialPriority === "market") {
+    return null;
+  }
+
+  const className =
+    row.commercialPriority === "tokin"
+      ? "bg-[#fee2dc] text-[#9b2f1c]"
+      : "bg-[#fff4e8] text-[#8a4b12]";
+
+  return (
+    <span className={`inline-flex rounded px-2 py-0.5 text-[11px] font-bold ${className}`}>
+      {row.commercialPriorityLabel}
     </span>
   );
 }

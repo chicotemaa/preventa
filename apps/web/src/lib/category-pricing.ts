@@ -64,6 +64,8 @@ export type MatchQuality =
 
 export type PricingTone = "danger" | "warning" | "success" | "info" | "neutral";
 
+export type CommercialPriority = "tokin" | "excel" | "market";
+
 export type PricingRecommendation = {
   kind:
     | "load_aguiar"
@@ -125,6 +127,8 @@ export type CategoryDecisionRow = {
   brand: string;
   presentationLabel: string;
   categoryName: string;
+  commercialPriority: CommercialPriority;
+  commercialPriorityLabel: string;
   aguiarPrice: CompetitorPriceCell | null;
   bestWholesale: CompetitorPriceCell | null;
   bestRetail: CompetitorPriceCell | null;
@@ -318,6 +322,7 @@ function buildDecisionRow(
   const bestOverall = findBestCell([aguiarPrice, bestWholesale, bestRetail]);
   const confidenceScore = Math.round(average(products.map((product) => product.confidenceScore)) ?? 0);
   const matchQuality = determineMatchQuality(products, aguiarPrice, bestMarket);
+  const commercialPriority = determineCommercialPriority(sortedProducts);
   const gapVsAguiarPercent =
     aguiarPrice && bestMarket
       ? calculateGapPercent(aguiarPrice.price, bestMarket.price)
@@ -328,6 +333,8 @@ function buildDecisionRow(
     brand: buildBrandLabel(sortedProducts),
     presentationLabel: buildPresentationLabel(sortedProducts),
     categoryName,
+    commercialPriority,
+    commercialPriorityLabel: getCommercialPriorityLabel(commercialPriority),
     aguiarPrice,
     bestWholesale,
     bestRetail,
@@ -850,6 +857,13 @@ function compareRows(
   second: CategoryDecisionRow,
   sort: CategoryDecisionSort,
 ) {
+  const commercialPriority =
+    getCommercialPriorityRank(first) - getCommercialPriorityRank(second);
+
+  if (commercialPriority !== 0) {
+    return commercialPriority;
+  }
+
   if (sort === "wholesale_price") {
     return nullableNumber(first.bestWholesale?.price) - nullableNumber(second.bestWholesale?.price);
   }
@@ -881,6 +895,69 @@ function compareRows(
     nullableNumber(second.gapVsAguiarPercent, -Infinity) -
     nullableNumber(first.gapVsAguiarPercent, -Infinity)
   );
+}
+
+function determineCommercialPriority(products: ProductSearchResult[]): CommercialPriority {
+  if (products.some(isTokinOrAguiarProduct)) {
+    return "tokin";
+  }
+
+  if (products.some(isExcelReferenceProduct)) {
+    return "excel";
+  }
+
+  return "market";
+}
+
+function isTokinOrAguiarProduct(product: ProductSearchResult) {
+  return getSourceChannel(product) === "own";
+}
+
+function isExcelReferenceProduct(product: ProductSearchResult) {
+  const text = normalizeDecisionText(
+    [
+      product.sourceId,
+      product.storeName,
+      product.sourceUrl,
+      product.sourceScope,
+      product.dataOrigin,
+      product.priceCondition,
+      product.category,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+
+  return (
+    /\b(excel|xlsx|xls|csv|human)\b/.test(text) ||
+    text.includes("lista importada") ||
+    text.includes("lista semanal") ||
+    text.includes("csv importado")
+  );
+}
+
+function getCommercialPriorityLabel(priority: CommercialPriority) {
+  if (priority === "tokin") {
+    return "Tokin/Aguiar";
+  }
+
+  if (priority === "excel") {
+    return "Lista Excel";
+  }
+
+  return "Mercado";
+}
+
+function getCommercialPriorityRank(row: CategoryDecisionRow) {
+  if (row.commercialPriority === "tokin") {
+    return 0;
+  }
+
+  if (row.commercialPriority === "excel") {
+    return 1;
+  }
+
+  return 2;
 }
 
 function buildClusterKey(product: ProductSearchResult, categoryName: string) {
