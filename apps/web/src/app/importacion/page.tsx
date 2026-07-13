@@ -6,7 +6,17 @@ import {
   evaluatePriceListInBatches,
   type PriceListBatchProgress,
 } from "@/lib/price-list-batches";
-import { compareSourcePriority } from "@/lib/source-priority";
+import {
+  analyzePriceListDecision,
+  calculatePriceListGapRatio,
+  getBestPriceListSourceByType,
+  getOwnPriceSourceLabel,
+  getPriceListComparablePrice,
+  getPriceListSuggestedAction,
+  sortPriceListResultPrices,
+  summarizePriceListDecisions,
+  type PriceListDecisionTone,
+} from "@/lib/price-list-decision";
 import type {
   PendingSourceStatus,
   PriceListInputItem,
@@ -20,6 +30,11 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
   maximumFractionDigits: 2,
+});
+const percentFormatter = new Intl.NumberFormat("es-AR", {
+  style: "percent",
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
 });
 const COMPARISON_SLOTS = 8;
 const COMPARISON_FIELD_LABELS = [
@@ -49,6 +64,9 @@ export default function ImportacionPage() {
       return null;
     }
 
+    const sortedResults = response.results.map(sortPriceListResultPrices);
+    const decisionSummary = summarizePriceListDecisions(sortedResults);
+
     return {
       total: response.itemsCount,
       withPrice: response.matchedCount,
@@ -58,6 +76,7 @@ export default function ImportacionPage() {
           result.sourcePrices.map((sourcePrice) => sourcePrice.sourceId),
         ),
       ).size,
+      ...decisionSummary,
     };
   }, [response]);
 
@@ -211,11 +230,31 @@ export default function ImportacionPage() {
         </section>
 
         {summary ? (
-          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
             <Metric label="Artículos" value={summary.total} />
             <Metric label="Con precio" value={summary.withPrice} />
             <Metric label="Sin precio" value={summary.withoutPrice} />
             <Metric label="Fuentes con datos" value={summary.sourcesWithData} />
+            <Metric
+              label="Arriba mayorista"
+              value={summary.aboveWholesale}
+              tone="danger"
+            />
+            <Metric
+              label="Competitivos"
+              value={summary.competitiveWholesale}
+              tone="success"
+            />
+            <Metric
+              label="Oportunidad"
+              value={summary.marginOpportunity}
+              tone="info"
+            />
+            <Metric
+              label="Sin ref. mayorista"
+              value={summary.withoutWholesaleReference}
+              tone="warning"
+            />
           </section>
         ) : null}
 
@@ -225,15 +264,71 @@ export default function ImportacionPage() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: number;
+  tone?: PriceListDecisionTone;
+}) {
   return (
-    <div className="rounded-md border border-[#d9dee7] bg-white px-4 py-3">
+    <div className={`rounded-md border px-4 py-3 ${metricToneClassName(tone)}`}>
       <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[#667789]">
         {label}
       </div>
       <div className="mt-1 text-2xl font-bold text-[#17202a]">{value}</div>
     </div>
   );
+}
+
+function metricToneClassName(tone: PriceListDecisionTone) {
+  const classes: Record<PriceListDecisionTone, string> = {
+    danger: "border-[#f1b3ad] bg-[#fff1ef]",
+    warning: "border-[#f0d2a2] bg-[#fff8e8]",
+    success: "border-[#bfe5cf] bg-[#f4fbf7]",
+    info: "border-[#bed4f4] bg-[#f5f8ff]",
+    neutral: "border-[#d9dee7] bg-white",
+  };
+
+  return classes[tone];
+}
+
+function decisionChipClassName(tone: PriceListDecisionTone) {
+  const classes: Record<PriceListDecisionTone, string> = {
+    danger: "bg-[#fff1ef] text-[#8f2d20]",
+    warning: "bg-[#fff8e8] text-[#8a5a0a]",
+    success: "bg-[#e4f6ed] text-[#16613c]",
+    info: "bg-[#eef4ff] text-[#153d7b]",
+    neutral: "bg-[#f1f5f9] text-[#526170]",
+  };
+
+  return classes[tone];
+}
+
+function decisionCardClassName(tone: PriceListDecisionTone) {
+  const classes: Record<PriceListDecisionTone, string> = {
+    danger: "border-[#f1b3ad] bg-[#fff1ef]",
+    warning: "border-[#f0d2a2] bg-[#fff8e8]",
+    success: "border-[#bfe5cf] bg-[#f4fbf7]",
+    info: "border-[#bed4f4] bg-[#f5f8ff]",
+    neutral: "border-[#d9dee7] bg-[#f8fafc]",
+  };
+
+  return classes[tone];
+}
+
+function formatDecisionGap(
+  gapRatio: number | null,
+  referenceChannelLabel: "mayorista" | "minorista" | "mercado",
+) {
+  if (gapRatio === null) {
+    return `sin diferencia vs ${referenceChannelLabel}`;
+  }
+
+  const prefix = gapRatio > 0 ? "+" : "";
+  return `${prefix}${percentFormatter.format(gapRatio)} vs ${referenceChannelLabel}`;
 }
 
 function ImportResults({ response }: { response: PriceListResponse }) {
@@ -253,7 +348,7 @@ function ImportResults({ response }: { response: PriceListResponse }) {
         {response.results.map((result) => (
           <ImportResultCard
             key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
-            result={sortResultPrices(result)}
+            result={sortPriceListResultPrices(result)}
           />
         ))}
       </div>
@@ -271,6 +366,8 @@ function formatBatchProgress(progress: PriceListBatchProgress | null) {
 
 function ImportResultCard({ result }: { result: PriceListItemResult }) {
   const comparisons = result.sourcePrices.slice(0, 5);
+  const decision = analyzePriceListDecision(result);
+  const ownPriceLabel = getOwnPriceSourceLabel(result);
 
   return (
     <article className="rounded-md border border-[#d9dee7] bg-white p-3">
@@ -284,18 +381,27 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
             {result.input.ean13Di || result.input.ean13Bu || "sin EAN"}
           </div>
         </div>
-        <span
-          className={`shrink-0 rounded px-2 py-1 text-xs font-semibold ${
-            result.status === "matched"
-              ? "bg-[#e4f6ed] text-[#16613c]"
-              : "bg-[#fff1ef] text-[#8f2d20]"
-          }`}
-        >
-          {result.status === "matched" ? "Con precio" : "Sin precio"}
-        </span>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <span
+            className={`rounded px-2 py-1 text-xs font-semibold ${
+              result.status === "matched"
+                ? "bg-[#e4f6ed] text-[#16613c]"
+                : "bg-[#fff1ef] text-[#8f2d20]"
+            }`}
+          >
+            {result.status === "matched" ? "Con precio" : "Sin precio"}
+          </span>
+          <span
+            className={`rounded px-2 py-1 text-xs font-semibold ${decisionChipClassName(
+              decision.tone,
+            )}`}
+          >
+            {decision.label}
+          </span>
+        </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-3 grid gap-2 lg:grid-cols-3">
         <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
             Referencia prioritaria
@@ -304,18 +410,33 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
             {formatCurrency(result.bestPrice)}
           </div>
           <div className="mt-1 text-xs text-[#667789]">
-            {result.bestSource?.storeName ?? "sin fuente"}
+            {result.bestSource?.storeName ?? "sin fuente"}{" "}
+            {result.bestSource ? `· ${formatStoreType(result.bestSource.storeType)}` : ""}
           </div>
         </div>
         <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Precio Aguiar
+            Precio propio
           </div>
           <div className="mt-1 text-lg font-extrabold text-[#7a4a16]">
             {formatCurrency(normalizeOptionalNumber(result.input.currentPrice))}
           </div>
           <div className="mt-1 text-xs text-[#667789]">
-            cargado en la lista
+            {ownPriceLabel}
+          </div>
+        </div>
+        <div className={`rounded-md border px-3 py-2 ${decisionCardClassName(decision.tone)}`}>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+            Lectura comercial
+          </div>
+          <div className="mt-1 text-sm font-extrabold text-[#17202a]">
+            {decision.action}
+          </div>
+          <div className="mt-1 text-xs font-semibold text-[#526170]">
+            {formatDecisionGap(decision.gapRatio, decision.referenceChannelLabel)}
+          </div>
+          <div className="mt-1 text-xs leading-4 text-[#667789]">
+            {decision.helper}
           </div>
         </div>
       </div>
@@ -345,11 +466,22 @@ function SourcePriceCard({
 }) {
   return (
     <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2">
-      <div className="text-sm font-semibold text-[#17202a]">
-        {sourcePrice.storeName}
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm font-semibold text-[#17202a]">
+          {sourcePrice.storeName}
+        </div>
+        <span
+          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+            sourcePrice.storeType === "mayorista"
+              ? "bg-[#e4f6ed] text-[#16613c]"
+              : "bg-[#eef4ff] text-[#153d7b]"
+          }`}
+        >
+          {formatStoreType(sourcePrice.storeType)}
+        </span>
       </div>
       <div className="mt-1 text-base font-bold text-[#173d2f]">
-        {formatCurrency(getComparablePrice(sourcePrice))}
+        {formatCurrency(getPriceListComparablePrice(sourcePrice))}
       </div>
       <div className="mt-1 line-clamp-2 text-xs text-[#667789]">
         {sourcePrice.productName}
@@ -485,7 +617,7 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
 
 async function downloadPriceListXlsx(response: PriceListResponse) {
   const XLSX = await import("xlsx");
-  const sortedResults = response.results.map(sortResultPrices);
+  const sortedResults = response.results.map(sortPriceListResultPrices);
   const headers = [
     "Negocio",
     "Rubro",
@@ -515,9 +647,13 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
   ];
   const rows = sortedResults.map((sortedResult) => {
     const currentPrice = normalizeOptionalNumber(sortedResult.input.currentPrice);
-    const bestMayorista = getBestSourceByType(sortedResult, "mayorista");
-    const bestMinorista = getBestSourceByType(sortedResult, "minorista");
-    const gap = calculateGapPercent(currentPrice, sortedResult.bestPrice);
+    const decision = analyzePriceListDecision(sortedResult);
+    const bestMayorista = getBestPriceListSourceByType(sortedResult, "mayorista");
+    const bestMinorista = getBestPriceListSourceByType(sortedResult, "minorista");
+    const gap = calculatePriceListGapRatio(
+      currentPrice,
+      decision.referencePrice,
+    );
     const comparisons = sortedResult.sourcePrices
       .slice(0, COMPARISON_SLOTS)
       .flatMap(formatSourceXlsxComparisonCells);
@@ -546,13 +682,13 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
       sortedResult.input.ean13Di ?? "",
       sortedResult.input.ean13Bu ?? "",
       sortedResult.status === "matched" ? "Con precio" : "Sin precio",
-      getSuggestedAction(currentPrice, sortedResult.bestPrice, sortedResult.bestSource),
+      getPriceListSuggestedAction(sortedResult),
       sortedResult.bestPrice ?? "",
       sortedResult.bestSource?.storeName ?? "",
       sortedResult.bestSource ? formatStoreType(sortedResult.bestSource.storeType) : "",
-      bestMayorista ? getComparablePrice(bestMayorista) : "",
+      bestMayorista ? getPriceListComparablePrice(bestMayorista) : "",
       bestMayorista?.storeName ?? "",
-      bestMinorista ? getComparablePrice(bestMinorista) : "",
+      bestMinorista ? getPriceListComparablePrice(bestMinorista) : "",
       bestMinorista?.storeName ?? "",
       gap ?? "",
       sortedResult.bestSource?.productName ?? "",
@@ -645,103 +781,6 @@ function downloadCsv(name: string, rows: Array<Array<string | number>>) {
   URL.revokeObjectURL(url);
 }
 
-function sortResultPrices(result: PriceListItemResult): PriceListItemResult {
-  const sourcePrices = [...result.sourcePrices].sort(comparePriceListSourcePrices);
-  const bestSource = sourcePrices[0] ?? null;
-
-  return {
-    ...result,
-    sourcePrices,
-    bestSource,
-    bestPrice: bestSource ? getComparablePrice(bestSource) : null,
-    status:
-      bestSource || normalizeOptionalNumber(result.input.currentPrice)
-        ? "matched"
-        : "not_found",
-  };
-}
-
-function comparePriceListSourcePrices(
-  first: PriceListSourcePrice,
-  second: PriceListSourcePrice,
-) {
-  const storeTypeRank = getStoreTypeRank(first) - getStoreTypeRank(second);
-
-  if (storeTypeRank !== 0) {
-    return storeTypeRank;
-  }
-
-  const priceDifference = getComparablePrice(first) - getComparablePrice(second);
-
-  if (priceDifference !== 0) {
-    return priceDifference;
-  }
-
-  return compareSourcePriority(first, second);
-}
-
-function getStoreTypeRank(sourcePrice: PriceListSourcePrice) {
-  return sourcePrice.storeType === "mayorista" ? 0 : 1;
-}
-
-function getComparablePrice(price: PriceListSourcePrice) {
-  return normalizeOptionalNumber(price.comparisonPrice) ?? price.price;
-}
-
-function getBestSourceByType(
-  result: PriceListItemResult,
-  storeType: PriceListSourcePrice["storeType"],
-) {
-  return result.sourcePrices
-    .filter((sourcePrice) => sourcePrice.storeType === storeType)
-    .sort((first, second) => getComparablePrice(first) - getComparablePrice(second))[0];
-}
-
-function calculateGapPercent(
-  currentPrice: number | null,
-  bestPrice: number | null,
-) {
-  if (!currentPrice || !bestPrice) {
-    return null;
-  }
-
-  return (currentPrice - bestPrice) / bestPrice;
-}
-
-function getSuggestedAction(
-  currentPrice: number | null,
-  bestPrice: number | null,
-  bestSource: PriceListSourcePrice | null,
-) {
-  if (!currentPrice && bestPrice) {
-    return "Cargar precio Aguiar";
-  }
-
-  if (!bestPrice || !bestSource) {
-    return "Sin referencia suficiente";
-  }
-
-  const gap = calculateGapPercent(currentPrice, bestPrice);
-
-  if (gap === null) {
-    return "Sin referencia suficiente";
-  }
-
-  if (gap > 0.1 && bestSource.storeType === "mayorista") {
-    return "Revisar baja o promo";
-  }
-
-  if (gap > 0.05) {
-    return "Monitorear / ajustar";
-  }
-
-  if (gap < -0.08) {
-    return "Oportunidad de margen";
-  }
-
-  return "Mantener";
-}
-
 function buildComparisonHeaders() {
   return Array.from({ length: COMPARISON_SLOTS }, (_, index) =>
     COMPARISON_FIELD_LABELS.map((label) => `Comp ${index + 1} ${label}`),
@@ -754,7 +793,7 @@ function formatSourceXlsxComparisonCells(
   return [
     sourcePrice.storeName,
     formatStoreType(sourcePrice.storeType),
-    getComparablePrice(sourcePrice),
+    getPriceListComparablePrice(sourcePrice),
     getPackageOrListPrice(sourcePrice) ?? "",
     buildPriceDetail(sourcePrice),
     sourcePrice.productName,
@@ -763,7 +802,7 @@ function formatSourceXlsxComparisonCells(
 }
 
 function getPackageOrListPrice(sourcePrice: PriceListSourcePrice) {
-  const comparablePrice = getComparablePrice(sourcePrice);
+  const comparablePrice = getPriceListComparablePrice(sourcePrice);
   const packageLikePrice =
     sourcePrice.packageQuantity && sourcePrice.packageQuantity > 1;
   const hasDifferentComparablePrice =
