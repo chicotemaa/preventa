@@ -446,6 +446,8 @@ export async function searchCatalog(query: string) {
 }
 
 export async function reloadStoredSourceCatalogs() {
+  await backfillSourceSnapshotsFromCurrentCatalog();
+
   const storedProducts = await getStoredSourceCatalogProducts();
   const storedStatuses = await getStoredSourceCatalogStatuses();
 
@@ -471,6 +473,59 @@ export async function reloadStoredSourceCatalogs() {
   };
 
   return currentCatalog;
+}
+
+async function backfillSourceSnapshotsFromCurrentCatalog() {
+  if (currentCatalog.products.length === 0) {
+    return;
+  }
+
+  const productsBySource = new Map<string, ProductSearchResult[]>();
+
+  for (const product of currentCatalog.products) {
+    if (!isActiveCatalogProduct(product) || !productIsInStock(product)) {
+      continue;
+    }
+
+    productsBySource.set(product.sourceId, [
+      ...(productsBySource.get(product.sourceId) ?? []),
+      product,
+    ]);
+  }
+
+  for (const [sourceId, products] of productsBySource.entries()) {
+    const currentSnapshot = await getSourceCatalogSnapshot(sourceId);
+
+    if (currentSnapshot && currentSnapshot.products.length > 0) {
+      continue;
+    }
+
+    const source = scrapingSources.find((candidate) => candidate.id === sourceId);
+    const firstProduct = products[0];
+    const dedupedProducts = dedupeCatalogProducts(products);
+
+    if (!firstProduct || dedupedProducts.length === 0) {
+      continue;
+    }
+
+    await saveSourceCatalogSnapshot({
+      sourceId,
+      storeName: source?.storeName ?? firstProduct.storeName,
+      storeType: source?.storeType ?? firstProduct.storeType,
+      sourceUrl: source?.sourceUrl ?? firstProduct.sourceUrl ?? null,
+      dataOrigin: source?.dataOrigin ?? firstProduct.dataOrigin,
+      sourceScope: source?.sourceScope ?? firstProduct.sourceScope,
+      status: "success",
+      syncedAt: currentCatalog.lastSyncedAt ?? new Date().toISOString(),
+      durationMs: 0,
+      queries: currentSnapshot?.queries ?? [],
+      productsCount: dedupedProducts.length,
+      privateProductsCount: 0,
+      visiblePriceProductsCount: dedupedProducts.length,
+      errors: [],
+      products: dedupedProducts,
+    });
+  }
 }
 
 export async function searchCategory(

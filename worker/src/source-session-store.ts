@@ -253,9 +253,57 @@ export async function saveSourceCatalogSnapshot(
   snapshot: SourceCatalogSnapshot,
 ) {
   const store = await readSnapshotStore();
-  store.snapshots[snapshot.sourceId] = snapshot;
+  store.snapshots[snapshot.sourceId] = preserveUsableSnapshotOnFailedRefresh(
+    store.snapshots[snapshot.sourceId],
+    snapshot,
+  );
   await writeSnapshotStore(store);
   return getSourceCatalogSnapshotSummary(snapshot.sourceId);
+}
+
+function preserveUsableSnapshotOnFailedRefresh(
+  current: SourceCatalogSnapshot | undefined,
+  incoming: SourceCatalogSnapshot,
+): SourceCatalogSnapshot {
+  const incomingHasProducts = incoming.products.length > 0;
+
+  if (
+    !current ||
+    current.products.length === 0 ||
+    incomingHasProducts ||
+    incoming.status === "success"
+  ) {
+    return incoming;
+  }
+
+  const errors = [
+    ...current.errors,
+    ...incoming.errors,
+    incoming.errors.length > 0
+      ? ""
+      : "Ultima sincronizacion no devolvio productos; se conserva el catalogo guardado anterior.",
+  ]
+    .filter(Boolean)
+    .slice(-20);
+
+  return {
+    ...current,
+    sourceUrl: incoming.sourceUrl ?? current.sourceUrl ?? null,
+    dataOrigin: incoming.dataOrigin ?? current.dataOrigin,
+    sourceScope: incoming.sourceScope ?? current.sourceScope,
+    syncedAt: current.syncedAt,
+    durationMs: incoming.durationMs,
+    queries: Array.from(
+      new Set([...current.queries, ...incoming.queries]),
+    ),
+    errors,
+    status: "success",
+    productsCount: current.products.length,
+    visiblePriceProductsCount:
+      current.visiblePriceProductsCount || current.products.length,
+    privateProductsCount: incoming.privateProductsCount,
+    products: current.products,
+  };
 }
 
 export async function getSourceCatalogSnapshot(sourceId: string) {

@@ -645,15 +645,21 @@ async function handleCarrefourComercianteCatalogSync(
     const source = getCarrefourComercianteSource();
     const snapshot = await syncCarrefourComercianteCatalog(source, parsed.data);
     const summary = await saveSourceCatalogSnapshot(snapshot);
+    const savedProductsCount = summary?.productsCount ?? snapshot.productsCount;
+    const hasSavedCatalog =
+      (summary?.status ?? snapshot.status) === "success" &&
+      savedProductsCount > 0;
 
     await reloadStoredSourceCatalogs();
 
     sendJson(response, 200, {
-      ok: snapshot.status === "success",
+      ok: hasSavedCatalog,
       snapshot: summary,
       message:
         snapshot.status === "success"
           ? "Catalogo Carrefour Comerciante sincronizado y guardado."
+          : hasSavedCatalog
+            ? "Carrefour no devolvio precios nuevos; se conserva el catalogo guardado anterior."
           : "La sincronizacion termino sin productos utiles guardados.",
     });
   } catch (error) {
