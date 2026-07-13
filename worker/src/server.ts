@@ -112,9 +112,14 @@ const priceListRequestSchema = z.object({
     .array(
       z.object({
         rowNumber: z.number().int().positive(),
+        business: z.string().optional(),
         rubro: z.string().optional(),
+        segment: z.string().optional(),
+        subrubro: z.string().optional(),
+        line: z.string().optional(),
         description: z.string().optional(),
         code: z.string().optional(),
+        uxb: z.string().optional(),
         ean13Di: z.string().optional(),
         ean13Bu: z.string().optional(),
         currentPrice: z.number().positive().optional(),

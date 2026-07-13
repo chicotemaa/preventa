@@ -3,10 +3,12 @@
 import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { ChangeEvent, useMemo, useState } from "react";
 import type {
+  PendingSourceStatus,
   PriceListInputItem,
   PriceListItemResult,
   PriceListResponse,
   PriceListSourcePrice,
+  SourceSearchStatus,
 } from "@/types/search";
 
 const currencyFormatter = new Intl.NumberFormat("es-AR", {
@@ -14,6 +16,18 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   currency: "ARS",
   maximumFractionDigits: 2,
 });
+const COMPARISON_SLOTS = 8;
+const COMPARISON_FIELD_LABELS = [
+  "Fuente",
+  "Canal",
+  "Precio unitario/equiv",
+  "Precio bulto/lista",
+  "Detalle precio",
+  "Producto",
+  "Link",
+] as const;
+type WorkbookCellValue = string | number;
+type WorkbookRow = WorkbookCellValue[];
 
 export default function ImportacionPage() {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -138,11 +152,11 @@ export default function ImportacionPage() {
               <button
                 type="button"
                 disabled={!response}
-                onClick={() => response && downloadPriceListCsv(response)}
+                onClick={() => response && downloadPriceListXlsx(response)}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#dec8bd] bg-white px-4 text-sm font-semibold text-[#17202a] transition hover:border-[#153d7b] hover:text-[#153d7b] disabled:cursor-not-allowed disabled:text-[#a99f99]"
               >
                 <Download className="h-4 w-4" />
-                Resultado
+                Resultado XLSX
               </button>
               <button
                 type="button"
@@ -228,8 +242,8 @@ function ImportResults({ response }: { response: PriceListResponse }) {
           Resultado de importación
         </h2>
         <p className="text-sm text-[#667789]">
-          Artículos ordenados por estado. Cada carta muestra el mejor precio y
-          hasta cinco comparaciones.
+          Artículos ordenados por estado. Descargá el XLSX para entregar la
+          tabla con el formato HUMAN, diagnóstico y comparaciones separadas.
         </p>
       </div>
 
@@ -387,13 +401,25 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   }
 
   const headers = rows[headerIndex].map((cell) => normalizeColumnName(cell));
+  const businessIndex = findColumn(headers, ["negocio"]);
   const rubroIndex = findColumn(headers, ["rubro"]);
+  const segmentIndex = findColumn(headers, ["segmento"]);
+  const subrubroIndex = findColumn(headers, ["subrubro"]);
+  const lineIndex = findColumn(headers, ["linea", "línea"]);
   const descriptionIndex = findColumn(headers, [
     "descripcion larga",
+    "descripcion articulos",
+    "descripcion articulo",
     "descripcion",
     "description",
   ]);
   const codeIndex = findColumn(headers, ["codigo", "code", "articulo"]);
+  const uxbIndex = findColumn(headers, [
+    "uxb",
+    "u x b",
+    "unidades por bulto",
+    "unidades x bulto",
+  ]);
   const eanDiIndex = findColumn(headers, [
     "ean 13 di",
     "ean13 di",
@@ -426,9 +452,14 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
     .slice(headerIndex + 1)
     .map((row, index) => ({
       rowNumber: headerIndex + index + 2,
+      business: readCell(row, businessIndex),
       rubro: readCell(row, rubroIndex),
+      segment: readCell(row, segmentIndex),
+      subrubro: readCell(row, subrubroIndex),
+      line: readCell(row, lineIndex),
       description: readCell(row, descriptionIndex),
       code: readCell(row, codeIndex),
+      uxb: readCell(row, uxbIndex),
       ean13Di: cleanSpreadsheetIdentifier(readCell(row, eanDiIndex)),
       ean13Bu: cleanSpreadsheetIdentifier(readCell(row, eanBuIndex)),
       currentPrice: parseSpreadsheetAmount(readCell(row, currentPriceIndex)),
@@ -442,38 +473,134 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
     );
 }
 
-function downloadPriceListCsv(response: PriceListResponse) {
+async function downloadPriceListXlsx(response: PriceListResponse) {
+  const XLSX = await import("xlsx");
+  const sortedResults = response.results.map(sortResultPrices);
   const headers = [
+    "Negocio",
     "Rubro",
-    "Descripcion",
-    "Codigo",
-    "EAN 13 DI",
-    "EAN 13 BU",
-    "Precio Aguiar",
+    "Segmento",
+    "Subrubro",
+    "Linea",
+    "Articulo",
+    "Descripcion ARTICULOS",
+    "UxB",
+    "Precio x Unid",
+    "Ean 13 Unidad",
+    "Ean 13 Dispaly",
     "Estado",
-    "Mejor precio",
-    "Mejor fuente",
+    "Accion sugerida",
+    "Mejor precio general",
+    "Mejor fuente general",
+    "Canal ganador",
+    "Mejor mayorista",
+    "Fuente mayorista",
+    "Mejor minorista",
+    "Fuente minorista",
+    "Brecha vs mejor general %",
     "Producto encontrado",
-    "Comparaciones",
+    "Link producto",
+    "Confianza",
+    ...buildComparisonHeaders(),
   ];
-  const rows = response.results.map((result) => {
-    const sortedResult = sortResultPrices(result);
+  const rows = sortedResults.map((sortedResult) => {
+    const currentPrice = normalizeOptionalNumber(sortedResult.input.currentPrice);
+    const bestMayorista = getBestSourceByType(sortedResult, "mayorista");
+    const bestMinorista = getBestSourceByType(sortedResult, "minorista");
+    const gap = calculateGapPercent(currentPrice, sortedResult.bestPrice);
+    const comparisons = sortedResult.sourcePrices
+      .slice(0, COMPARISON_SLOTS)
+      .flatMap(formatSourceXlsxComparisonCells);
+    const comparisonCells = [
+      ...comparisons,
+      ...Array.from(
+        {
+          length:
+            COMPARISON_SLOTS * COMPARISON_FIELD_LABELS.length -
+            comparisons.length,
+        },
+        () => "",
+      ),
+    ];
+
     return [
+      sortedResult.input.business ?? "",
       sortedResult.input.rubro ?? "",
-      sortedResult.input.description ?? "",
+      sortedResult.input.segment ?? "",
+      sortedResult.input.subrubro ?? "",
+      sortedResult.input.line ?? "",
       sortedResult.input.code ?? "",
+      sortedResult.input.description ?? "",
+      parseNumberOrText(sortedResult.input.uxb),
+      currentPrice ?? "",
       sortedResult.input.ean13Di ?? "",
       sortedResult.input.ean13Bu ?? "",
-      formatCsvAmount(normalizeOptionalNumber(sortedResult.input.currentPrice)),
       sortedResult.status === "matched" ? "Con precio" : "Sin precio",
-      formatCsvAmount(sortedResult.bestPrice),
+      getSuggestedAction(currentPrice, sortedResult.bestPrice, sortedResult.bestSource),
+      sortedResult.bestPrice ?? "",
       sortedResult.bestSource?.storeName ?? "",
+      sortedResult.bestSource ? formatStoreType(sortedResult.bestSource.storeType) : "",
+      bestMayorista ? getComparablePrice(bestMayorista) : "",
+      bestMayorista?.storeName ?? "",
+      bestMinorista ? getComparablePrice(bestMinorista) : "",
+      bestMinorista?.storeName ?? "",
+      gap ?? "",
       sortedResult.bestSource?.productName ?? "",
-      sortedResult.sourcePrices.map(formatSourceCsvPrice).join(" | "),
+      sortedResult.bestSource?.productUrl ?? "",
+      sortedResult.bestSource?.confidenceScore ?? "",
+      ...comparisonCells,
     ];
   });
 
-  downloadCsv("precios-lista", [headers, ...rows]);
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet["!cols"] = buildHumanOutputColumnWidths(headers.length);
+  worksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: rows.length, c: headers.length - 1 },
+    }),
+  };
+
+  applyHumanOutputFormats(worksheet as Record<string, unknown>, rows.length);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Comparacion precios");
+
+  const diagnosticRows = buildDiagnosticRows(response, sortedResults);
+  const diagnosticWorksheet = XLSX.utils.aoa_to_sheet(diagnosticRows);
+  diagnosticWorksheet["!cols"] = [
+    { wch: 24 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 42 },
+    { wch: 32 },
+    { wch: 42 },
+    { wch: 54 },
+  ];
+  XLSX.utils.book_append_sheet(workbook, diagnosticWorksheet, "Diagnostico");
+
+  const noMatchRows = buildNoMatchRows(sortedResults);
+  const noMatchWorksheet = XLSX.utils.aoa_to_sheet(noMatchRows);
+  noMatchWorksheet["!cols"] = [
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 34 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 26 },
+    { wch: 42 },
+    { wch: 60 },
+  ];
+  XLSX.utils.book_append_sheet(workbook, noMatchWorksheet, "Sin match");
+
+  XLSX.writeFile(
+    workbook,
+    `lista-human-comparada-${new Date().toISOString().slice(0, 10)}.xlsx`,
+  );
 }
 
 function downloadAguiarCsv(response: PriceListResponse) {
@@ -530,8 +657,374 @@ function getComparablePrice(price: PriceListSourcePrice) {
   return normalizeOptionalNumber(price.comparisonPrice) ?? price.price;
 }
 
-function formatSourceCsvPrice(sourcePrice: PriceListSourcePrice) {
-  return `${sourcePrice.storeName}: ${getComparablePrice(sourcePrice).toFixed(2)}`;
+function getBestSourceByType(
+  result: PriceListItemResult,
+  storeType: PriceListSourcePrice["storeType"],
+) {
+  return result.sourcePrices
+    .filter((sourcePrice) => sourcePrice.storeType === storeType)
+    .sort((first, second) => getComparablePrice(first) - getComparablePrice(second))[0];
+}
+
+function calculateGapPercent(
+  currentPrice: number | null,
+  bestPrice: number | null,
+) {
+  if (!currentPrice || !bestPrice) {
+    return null;
+  }
+
+  return (currentPrice - bestPrice) / bestPrice;
+}
+
+function getSuggestedAction(
+  currentPrice: number | null,
+  bestPrice: number | null,
+  bestSource: PriceListSourcePrice | null,
+) {
+  if (!currentPrice && bestPrice) {
+    return "Cargar precio Aguiar";
+  }
+
+  if (!bestPrice || !bestSource) {
+    return "Sin referencia suficiente";
+  }
+
+  const gap = calculateGapPercent(currentPrice, bestPrice);
+
+  if (gap === null) {
+    return "Sin referencia suficiente";
+  }
+
+  if (gap > 0.1 && bestSource.storeType === "mayorista") {
+    return "Revisar baja o promo";
+  }
+
+  if (gap > 0.05) {
+    return "Monitorear / ajustar";
+  }
+
+  if (gap < -0.08) {
+    return "Oportunidad de margen";
+  }
+
+  return "Mantener";
+}
+
+function buildComparisonHeaders() {
+  return Array.from({ length: COMPARISON_SLOTS }, (_, index) =>
+    COMPARISON_FIELD_LABELS.map((label) => `Comp ${index + 1} ${label}`),
+  ).flat();
+}
+
+function formatSourceXlsxComparisonCells(
+  sourcePrice: PriceListSourcePrice,
+): WorkbookRow {
+  return [
+    sourcePrice.storeName,
+    formatStoreType(sourcePrice.storeType),
+    getComparablePrice(sourcePrice),
+    getPackageOrListPrice(sourcePrice) ?? "",
+    buildPriceDetail(sourcePrice),
+    sourcePrice.productName,
+    sourcePrice.productUrl ?? "",
+  ];
+}
+
+function getPackageOrListPrice(sourcePrice: PriceListSourcePrice) {
+  const comparablePrice = getComparablePrice(sourcePrice);
+  const packageLikePrice =
+    sourcePrice.packageQuantity && sourcePrice.packageQuantity > 1;
+  const hasDifferentComparablePrice =
+    Math.abs(sourcePrice.price - comparablePrice) > 0.01;
+
+  return packageLikePrice || hasDifferentComparablePrice
+    ? sourcePrice.price
+    : null;
+}
+
+function buildPriceDetail(sourcePrice: PriceListSourcePrice) {
+  const details = [
+    sourcePrice.priceCondition,
+    sourcePrice.packageQuantity && sourcePrice.packageQuantity > 1
+      ? sourcePrice.packageLabel ?? `bulto x ${sourcePrice.packageQuantity}`
+      : null,
+    ...(sourcePrice.alternatePrices ?? []).map((alternatePrice) => {
+      const comparablePrice =
+        normalizeOptionalNumber(alternatePrice.comparisonPrice) ??
+        alternatePrice.price;
+      return `${alternatePrice.label}: ${currencyFormatter.format(comparablePrice)}`;
+    }),
+  ].filter(Boolean);
+
+  return details.join(" | ");
+}
+
+function formatStoreType(storeType: PriceListSourcePrice["storeType"]) {
+  return storeType === "mayorista" ? "Mayorista" : "Minorista";
+}
+
+function buildHumanOutputColumnWidths(columnsCount: number) {
+  const widths = [
+    16, 18, 22, 22, 30, 10, 34, 10, 14, 16, 16, 14, 20, 16, 22, 14, 16, 22,
+    16, 22, 18, 34, 28, 11,
+  ];
+
+  return Array.from({ length: columnsCount }, (_, index) => ({
+    wch: widths[index] ?? 42,
+  }));
+}
+
+function applyHumanOutputFormats(
+  worksheet: Record<string, unknown>,
+  rowsCount: number,
+) {
+  const comparisonStartColumn = 25;
+  const comparisonCurrencyColumns = Array.from(
+    { length: COMPARISON_SLOTS },
+    (_, index) => comparisonStartColumn + index * COMPARISON_FIELD_LABELS.length,
+  ).flatMap((startColumn) => [startColumn + 2, startColumn + 3]);
+  const currencyColumns = [9, 14, 17, 19, ...comparisonCurrencyColumns];
+  const percentColumns = [21];
+  const integerColumns = [8, 24];
+
+  for (let rowIndex = 2; rowIndex <= rowsCount + 1; rowIndex += 1) {
+    for (const columnIndex of currencyColumns) {
+      setCellFormat(worksheet, rowIndex, columnIndex, '"$"#,##0.00');
+    }
+
+    for (const columnIndex of percentColumns) {
+      setCellFormat(worksheet, rowIndex, columnIndex, '0.0%');
+    }
+
+    for (const columnIndex of integerColumns) {
+      setCellFormat(worksheet, rowIndex, columnIndex, '0');
+    }
+  }
+}
+
+function setCellFormat(
+  worksheet: Record<string, unknown>,
+  rowIndex: number,
+  columnIndex: number,
+  format: string,
+) {
+  const cellAddress = `${columnLetter(columnIndex)}${rowIndex}`;
+  const cell = worksheet[cellAddress] as { z?: string } | undefined;
+
+  if (cell) {
+    cell.z = format;
+  }
+}
+
+function columnLetter(columnIndex: number) {
+  let remaining = columnIndex;
+  let label = "";
+
+  while (remaining > 0) {
+    const modulo = (remaining - 1) % 26;
+    label = String.fromCharCode(65 + modulo) + label;
+    remaining = Math.floor((remaining - modulo) / 26);
+  }
+
+  return label;
+}
+
+function buildDiagnosticRows(
+  response: PriceListResponse,
+  results: PriceListItemResult[],
+): WorkbookRow[] {
+  const sourcesWithData = response.sources.filter(
+    (source) => source.resultsCount > 0,
+  ).length;
+  const mayoristaSourcesWithData = response.sources.filter(
+    (source) => source.storeType === "mayorista" && source.resultsCount > 0,
+  ).length;
+  const noMatchCount = results.filter((result) => shouldSendToNoMatch(result)).length;
+
+  return [
+    ["Resumen"],
+    ["Fecha busqueda", formatDateTime(response.searchedAt)],
+    ["Duracion ms", response.durationMs],
+    ["Articulos", response.itemsCount],
+    ["Con precio", response.matchedCount],
+    ["Sin precio", response.unmatchedCount],
+    ["A revisar", noMatchCount],
+    ["Fuentes consultadas", response.sources.length],
+    ["Fuentes con datos", sourcesWithData],
+    ["Mayoristas con datos", mayoristaSourcesWithData],
+    ["Catalogo estado", response.catalog.status],
+    ["Catalogo actualizado", response.catalog.lastSyncedAt ? formatDateTime(response.catalog.lastSyncedAt) : ""],
+    ["Productos en catalogo", response.catalog.productsCount],
+    [],
+    [
+      "Fuentes consultadas",
+      "Canal",
+      "Estado",
+      "Resultados",
+      "Duracion ms",
+      "Origen",
+      "Alcance",
+      "URL",
+      "Mensaje",
+    ],
+    ...response.sources.map(formatSourceStatusRow),
+    [],
+    [
+      "Fuentes esperadas / pendientes",
+      "Canal",
+      "Estado",
+      "Resultados",
+      "Duracion ms",
+      "Origen",
+      "Alcance",
+      "URL",
+      "Mensaje",
+    ],
+    ...response.catalog.pendingSources.map(formatPendingSourceRow),
+  ];
+}
+
+function formatSourceStatusRow(source: SourceSearchStatus): WorkbookRow {
+  return [
+    source.storeName,
+    formatStoreType(source.storeType),
+    formatSourceStatus(source.status),
+    source.resultsCount,
+    source.durationMs,
+    source.dataOrigin ?? "",
+    source.sourceScope ?? "",
+    source.sourceUrl ?? "",
+    source.errorMessage ?? "",
+  ];
+}
+
+function formatPendingSourceRow(source: PendingSourceStatus): WorkbookRow {
+  return [
+    source.storeName,
+    formatStoreType(source.storeType),
+    formatPendingStatus(source.status),
+    0,
+    0,
+    "",
+    "",
+    "",
+    source.message,
+  ];
+}
+
+function buildNoMatchRows(results: PriceListItemResult[]): WorkbookRow[] {
+  const headers = [
+    "Rubro",
+    "Segmento",
+    "Codigo",
+    "Descripcion",
+    "EAN unidad",
+    "EAN display",
+    "Estado",
+    "Motivo",
+    "Queries probadas",
+    "Candidatos rechazados",
+  ];
+  const rows = results.filter(shouldSendToNoMatch).map((result) => [
+    result.input.rubro ?? "",
+    result.input.segment ?? "",
+    result.input.code ?? "",
+    result.input.description ?? "",
+    result.input.ean13Di ?? "",
+    result.input.ean13Bu ?? "",
+    result.status === "matched" ? "Con precio/revisar" : "Sin precio",
+    getNoMatchReason(result),
+    (result.diagnostics?.queriesTried ?? []).slice(0, 20).join(" | "),
+    formatRejectedCandidates(result),
+  ]);
+
+  return rows.length > 0
+    ? [headers, ...rows]
+    : [headers, ["", "", "", "", "", "", "OK", "No quedaron productos para revisar", "", ""]];
+}
+
+function shouldSendToNoMatch(result: PriceListItemResult) {
+  if (result.sourcePrices.length === 0) {
+    return true;
+  }
+
+  if (!normalizeOptionalNumber(result.input.currentPrice)) {
+    return true;
+  }
+
+  const bestConfidence = result.bestSource?.confidenceScore ?? 0;
+  return bestConfidence > 0 && bestConfidence < 70;
+}
+
+function getNoMatchReason(result: PriceListItemResult) {
+  if (result.sourcePrices.length === 0) {
+    return "No se encontraron precios comparables";
+  }
+
+  if (!normalizeOptionalNumber(result.input.currentPrice)) {
+    return "Falta precio Aguiar en la lista";
+  }
+
+  const bestConfidence = result.bestSource?.confidenceScore ?? 0;
+  if (bestConfidence > 0 && bestConfidence < 70) {
+    return "Match débil: revisar equivalencia antes de decidir";
+  }
+
+  return "Revisar manualmente";
+}
+
+function formatRejectedCandidates(result: PriceListItemResult) {
+  return (result.diagnostics?.queryDiagnostics ?? [])
+    .flatMap((diagnostic) => diagnostic.topRejected)
+    .slice(0, 8)
+    .map(
+      (candidate) =>
+        `${candidate.storeName}: ${candidate.productName} (${formatRejectReason(candidate.reason)}, score ${candidate.finalScore})`,
+    )
+    .join(" | ");
+}
+
+function formatRejectReason(reason: string) {
+  const labels: Record<string, string> = {
+    brand_mismatch: "marca distinta",
+    score_below_threshold: "score bajo",
+    presentation_or_flavor_mismatch: "presentacion/sabor distinto",
+    no_candidates: "sin candidatos",
+  };
+
+  return labels[reason] ?? reason;
+}
+
+function formatSourceStatus(status: SourceSearchStatus["status"]) {
+  const labels: Record<SourceSearchStatus["status"], string> = {
+    success: "OK",
+    failed: "Error",
+    timeout: "Timeout",
+    no_results: "Sin datos",
+  };
+
+  return labels[status];
+}
+
+function formatPendingStatus(status: PendingSourceStatus["status"]) {
+  const labels: Record<PendingSourceStatus["status"], string> = {
+    pending: "Pendiente",
+    requires_login: "Requiere login",
+    not_configured: "No configurada",
+    no_public_catalog: "Sin catalogo publico",
+    no_public_prices: "Sin precios publicos",
+    out_of_scope: "Fuera de alcance",
+  };
+
+  return labels[status];
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function normalizeColumnName(value: string | number | null) {
@@ -610,6 +1103,15 @@ function formatCurrency(value: number | null | undefined) {
 
 function formatCsvAmount(value: number | null) {
   return value === null ? "" : value.toFixed(2);
+}
+
+function parseNumberOrText(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = Number(value.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : value;
 }
 
 function csvEscape(value: string | number) {

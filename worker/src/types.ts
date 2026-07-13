@@ -115,9 +115,14 @@ export type CategoryBrandSummary = {
 
 export type PriceListInputItem = {
   rowNumber: number;
+  business?: string;
   rubro?: string;
+  segment?: string;
+  subrubro?: string;
+  line?: string;
   description?: string;
   code?: string;
+  uxb?: string;
   ean13Di?: string;
   ean13Bu?: string;
   currentPrice?: number;
