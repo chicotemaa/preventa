@@ -13,6 +13,12 @@ export type PriceListBatchProgress = {
   totalItems: number;
 };
 
+type PriceListApiPayload =
+  | PriceListResponse
+  | { persistence?: PriceListPersistenceResult; error?: string }
+  | { error?: string; rawText?: string }
+  | null;
+
 export async function evaluatePriceListInBatches({
   items,
   persist,
@@ -42,12 +48,26 @@ export async function evaluatePriceListInBatches({
       },
       body: JSON.stringify({ items: batch, persist: false }),
     });
-    const payload = await response.json().catch(() => null);
+    const payload = await readJsonResponse(response);
 
     if (!response.ok) {
       throw new Error(
-        payload?.error ??
-          `No se pudo evaluar el lote ${index + 1} de ${batches.length}.`,
+        getPayloadError(payload) ??
+          buildInvalidResponseMessage(
+            index + 1,
+            batches.length,
+            getRawResponseText(payload),
+          ),
+      );
+    }
+
+    if (!isPriceListResponse(payload)) {
+      throw new Error(
+        buildInvalidResponseMessage(
+          index + 1,
+          batches.length,
+          getRawResponseText(payload),
+        ),
       );
     }
 
@@ -133,25 +153,98 @@ async function saveMergedPriceList(response: PriceListResponse) {
     },
     body: JSON.stringify({ response }),
   });
-  const payload = (await saveResponse.json().catch(() => null)) as
-    | { persistence?: PriceListPersistenceResult; error?: string }
-    | null;
+  const payload = await readJsonResponse(saveResponse);
 
   if (!saveResponse.ok) {
     return {
       enabled: true,
       requested: true,
       saved: false,
-      errorMessage: payload?.error ?? "No se pudo guardar la lista para evolución.",
+      errorMessage:
+        getPayloadError(payload) ?? "No se pudo guardar la lista para evolución.",
     };
   }
 
   return (
-    payload?.persistence ?? {
+    getPayloadPersistence(payload) ?? {
       enabled: true,
       requested: true,
       saved: false,
       errorMessage: "El guardado no devolvio estado.",
     }
   );
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as PriceListApiPayload;
+  } catch {
+    return { rawText: text };
+  }
+}
+
+function getPayloadError(payload: PriceListApiPayload) {
+  return payload &&
+    typeof payload === "object" &&
+    "error" in payload &&
+    typeof payload.error === "string"
+    ? payload.error
+    : null;
+}
+
+function getRawResponseText(payload: PriceListApiPayload) {
+  return payload &&
+    typeof payload === "object" &&
+    "rawText" in payload &&
+    typeof payload.rawText === "string"
+    ? payload.rawText
+    : undefined;
+}
+
+function getPayloadPersistence(payload: PriceListApiPayload) {
+  return payload &&
+    typeof payload === "object" &&
+    "persistence" in payload
+    ? payload.persistence
+    : null;
+}
+
+function isPriceListResponse(value: unknown): value is PriceListResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const response = value as Partial<PriceListResponse>;
+  return (
+    typeof response.searchedAt === "string" &&
+    typeof response.durationMs === "number" &&
+    typeof response.itemsCount === "number" &&
+    typeof response.matchedCount === "number" &&
+    typeof response.unmatchedCount === "number" &&
+    Array.isArray(response.sources) &&
+    Array.isArray(response.results) &&
+    Boolean(response.catalog)
+  );
+}
+
+function buildInvalidResponseMessage(
+  batchNumber: number,
+  totalBatches: number,
+  rawText?: string,
+) {
+  const preview = rawText?.replace(/\s+/g, " ").trim().slice(0, 120);
+
+  return [
+    `El servidor devolvio una respuesta no valida en el lote ${batchNumber}/${totalBatches}.`,
+    preview ? `Respuesta recibida: ${preview}` : null,
+    "Reintentá la importación; si se repite, el worker o Vercel está cortando ese lote.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
