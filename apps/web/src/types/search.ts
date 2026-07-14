@@ -392,12 +392,18 @@ export type PriceListRunSource = {
 export type PriceListRunItem = {
   id: string;
   rowNumber: number;
+  business: string | null;
   rubro: string | null;
+  segment: string | null;
+  subrubro: string | null;
+  line: string | null;
+  uxb: string | null;
   description: string | null;
   code: string | null;
   ean13Di: string | null;
   ean13Bu: string | null;
   currentPrice: number | null;
+  ownPrice: PriceListOwnPrice | null;
   currentCost: number | null;
   matchStatus: "matched" | "not_found";
   bestPrice: number | null;
@@ -438,6 +444,7 @@ export type PriceEvolutionPoint = {
   searchedAt: string;
   createdAt: string;
   araPrice: number | null;
+  ownPrice: PriceListOwnPrice | null;
   referencePrice: number | null;
   suggestedPrice: number | null;
   bestSourceName: string | null;
@@ -449,7 +456,11 @@ export type PriceEvolutionPoint = {
 export type PriceEvolutionProduct = {
   productKey: string;
   description: string;
+  business: string | null;
   rubro: string | null;
+  segment: string | null;
+  subrubro: string | null;
+  line: string | null;
   code: string | null;
   ean13Di: string | null;
   ean13Bu: string | null;

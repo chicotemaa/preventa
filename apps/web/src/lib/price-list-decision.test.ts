@@ -37,19 +37,19 @@ test("prioriza un mayorista aunque el minorista tenga menor precio", () => {
   );
 });
 
-test("usa Tokin como precio propio y conserva el precio del Excel", () => {
+test("usa Excel como precio propio y conserva Tokin por separado", () => {
   const ownPrice: PriceListOwnPrice = {
     excelPrice: 1_100,
     tokinPrice: 1_000,
-    selectedPrice: 1_000,
-    selectedSource: "tokin",
+    selectedPrice: 1_100,
+    selectedSource: "excel",
     excelVsTokinGapRatio: 0.1,
   };
-  const result = createResult({ ownPrice, currentPrice: 1_000 });
+  const result = createResult({ ownPrice, currentPrice: 1_100 });
 
-  assert.equal(getPriceListOwnPrice(result), 1_000);
-  assert.equal(getOwnPriceSourceLabel(result), "Tokin/Arcor");
-  assert.equal(result.ownPrice?.excelPrice, 1_100);
+  assert.equal(getPriceListOwnPrice(result), 1_100);
+  assert.equal(getOwnPriceSourceLabel(result), "Excel");
+  assert.equal(result.ownPrice?.tokinPrice, 1_000);
 });
 
 test("bloquea una recomendacion fuerte cuando el match es debil", () => {

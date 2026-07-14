@@ -209,8 +209,9 @@ export default function Home() {
             Explorador de categorías
           </h1>
           <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
-            Elegí una familia para ver primero el surtido de Aguiar/Tokin y
-            después productos equivalentes de la competencia.
+            Elegí una categoría o subcategoría para ver primero el surtido
+            completo disponible de Aguiar/Tokin y después los productos
+            equivalentes de la competencia.
           </p>
         </div>
       </section>
@@ -294,8 +295,8 @@ function LiveProductSearch() {
           Buscar individual
         </h2>
         <p className="text-sm text-[#5d6b7a]">
-          Escribí o elegí una familia para ver productos de Tokin/Aguiar y
-          compararlos contra la competencia.
+          Escribí o elegí una categoría o subcategoría para ver el surtido de
+          Tokin/Aguiar y compararlo contra la competencia.
         </p>
       </div>
 

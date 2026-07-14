@@ -1,7 +1,17 @@
 "use client";
 
-import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
-import { ChangeEvent, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CircleCheck,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  Search,
+  TrendingDown,
+  TrendingUp,
+  Upload,
+} from "lucide-react";
+import { type ChangeEvent, type ReactNode, useMemo, useState } from "react";
 import {
   evaluatePriceListInBatches,
   type PriceListBatchProgress,
@@ -17,7 +27,6 @@ import {
   getPriceListSuggestedAction,
   getPriceListTokinPrice,
   sortPriceListResultPrices,
-  summarizePriceListDecisions,
   type PriceListDecisionTone,
 } from "@/lib/price-list-decision";
 import type {
@@ -51,6 +60,14 @@ const COMPARISON_FIELD_LABELS = [
 ] as const;
 type WorkbookCellValue = string | number;
 type WorkbookRow = WorkbookCellValue[];
+type ImportDecisionFilter =
+  | "all"
+  | "attention"
+  | "above_wholesale"
+  | "competitive"
+  | "opportunity"
+  | "missing_own"
+  | "without_wholesale";
 
 export default function ImportacionPage() {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -67,9 +84,6 @@ export default function ImportacionPage() {
       return null;
     }
 
-    const sortedResults = response.results.map(sortPriceListResultPrices);
-    const decisionSummary = summarizePriceListDecisions(sortedResults);
-
     return {
       total: response.itemsCount,
       withPrice: response.matchedCount,
@@ -79,7 +93,6 @@ export default function ImportacionPage() {
           result.sourcePrices.map((sourcePrice) => sourcePrice.sourceId),
         ),
       ).size,
-      ...decisionSummary,
     };
   }, [response]);
 
@@ -158,8 +171,9 @@ export default function ImportacionPage() {
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#667789]">
                 El archivo debe incluir Rubro, Descripción, Código y EAN. Si
-                trae Precio Aguiar, se conserva; cuando Tokin/Arcor aporta un
-                match válido, ese valor se prioriza y ambos quedan visibles.
+                trae Precio Aguiar, ese valor se usa para la comparación.
+                Tokin/Arcor queda visible como control y se usa solo cuando el
+                Excel no trae precio.
               </p>
             </div>
 
@@ -234,31 +248,11 @@ export default function ImportacionPage() {
         </section>
 
         {summary ? (
-          <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+          <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="Artículos" value={summary.total} />
             <Metric label="Con precio" value={summary.withPrice} />
             <Metric label="Sin precio" value={summary.withoutPrice} />
             <Metric label="Fuentes con datos" value={summary.sourcesWithData} />
-            <Metric
-              label="Arriba mayorista"
-              value={summary.aboveWholesale}
-              tone="danger"
-            />
-            <Metric
-              label="Competitivos"
-              value={summary.competitiveWholesale}
-              tone="success"
-            />
-            <Metric
-              label="Oportunidad"
-              value={summary.marginOpportunity}
-              tone="info"
-            />
-            <Metric
-              label="Sin ref. mayorista"
-              value={summary.withoutWholesaleReference}
-              tone="warning"
-            />
           </section>
         ) : null}
 
@@ -349,6 +343,69 @@ function formatOwnPriceDifference(gapRatio: number | null | undefined) {
 }
 
 function ImportResults({ response }: { response: PriceListResponse }) {
+  const [filter, setFilter] = useState<ImportDecisionFilter>("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const analyzedResults = useMemo(
+    () =>
+      response.results.map((result) => {
+        const sortedResult = sortPriceListResultPrices(result);
+
+        return {
+          result: sortedResult,
+          decision: analyzePriceListDecision(sortedResult),
+        };
+      }),
+    [response.results],
+  );
+  const counts = useMemo(
+    () => ({
+      total: analyzedResults.length,
+      attention: analyzedResults.filter(({ decision }) =>
+        isImportDecisionAttention(decision.kind),
+      ).length,
+      aboveWholesale: analyzedResults.filter(({ decision }) =>
+        decision.kind.startsWith("above_wholesale"),
+      ).length,
+      competitive: analyzedResults.filter(
+        ({ decision }) => decision.kind === "competitive",
+      ).length,
+      opportunities: analyzedResults.filter(
+        ({ decision }) => decision.kind === "margin_opportunity",
+      ).length,
+      missingOwn: analyzedResults.filter(
+        ({ decision }) => decision.kind === "missing_own_price",
+      ).length,
+      withoutWholesale: analyzedResults.filter(
+        ({ decision }) => !decision.hasWholesaleReference,
+      ).length,
+    }),
+    [analyzedResults],
+  );
+  const visibleResults = useMemo(() => {
+    const normalizedSearch = normalizeText(searchTerm);
+
+    return analyzedResults
+      .filter(({ decision }) => matchesImportFilter(decision, filter))
+      .filter(({ result }) => {
+        if (!normalizedSearch) {
+          return true;
+        }
+
+        return [
+          result.input.description,
+          result.input.code,
+          result.input.ean13Di,
+          result.input.ean13Bu,
+          result.input.rubro,
+          result.input.subrubro,
+          result.input.segment,
+        ]
+          .filter(Boolean)
+          .some((value) => normalizeText(String(value)).includes(normalizedSearch));
+      })
+      .sort(compareImportDecisionRows);
+  }, [analyzedResults, filter, searchTerm]);
+
   return (
     <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-1">
@@ -361,16 +418,205 @@ function ImportResults({ response }: { response: PriceListResponse }) {
         </p>
       </div>
 
+      <section aria-label="Semáforo de la importación" className="mt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-[#17202a]">Cosas para ver</h3>
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className="text-xs font-semibold text-[#153d7b] hover:underline"
+          >
+            Ver todos ({counts.total})
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <ImportSignalButton
+            label="Revisar"
+            value={counts.attention}
+            tone="danger"
+            active={filter === "attention"}
+            onClick={() => setFilter("attention")}
+            icon={<AlertTriangle className="h-4 w-4" />}
+          />
+          <ImportSignalButton
+            label="Mayorista más barato"
+            value={counts.aboveWholesale}
+            tone="warning"
+            active={filter === "above_wholesale"}
+            onClick={() => setFilter("above_wholesale")}
+            icon={<TrendingUp className="h-4 w-4" />}
+          />
+          <ImportSignalButton
+            label="Competitivos"
+            value={counts.competitive}
+            tone="success"
+            active={filter === "competitive"}
+            onClick={() => setFilter("competitive")}
+            icon={<CircleCheck className="h-4 w-4" />}
+          />
+          <ImportSignalButton
+            label="Precio propio mejor"
+            value={counts.opportunities}
+            tone="info"
+            active={filter === "opportunity"}
+            onClick={() => setFilter("opportunity")}
+            icon={<TrendingDown className="h-4 w-4" />}
+          />
+          <ImportSignalButton
+            label="Falta propio"
+            value={counts.missingOwn}
+            tone="neutral"
+            active={filter === "missing_own"}
+            onClick={() => setFilter("missing_own")}
+            icon={<AlertTriangle className="h-4 w-4" />}
+          />
+          <ImportSignalButton
+            label="Sin mayorista"
+            value={counts.withoutWholesale}
+            tone="neutral"
+            active={filter === "without_wholesale"}
+            onClick={() => setFilter("without_wholesale")}
+            icon={<AlertTriangle className="h-4 w-4" />}
+          />
+        </div>
+      </section>
+
+      <div className="mt-4 grid gap-2 border-y border-[#e5e9ef] bg-[#f8fafc] py-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-center">
+        <label className="relative">
+          <span className="sr-only">Buscar dentro de la importación</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a96a3]" />
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Buscar artículo, código, EAN o rubro"
+            className="h-10 w-full rounded-md border border-[#cfd8e3] bg-white pl-9 pr-3 text-sm text-[#17202a] outline-none focus:border-[#153d7b]"
+          />
+        </label>
+        <div className="text-sm font-semibold text-[#526170]">
+          {visibleResults.length} artículos visibles
+        </div>
+      </div>
+
       <div className="mt-4 grid gap-3 xl:grid-cols-2">
-        {response.results.map((result) => (
+        {visibleResults.map(({ result }) => (
           <ImportResultCard
             key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
-            result={sortPriceListResultPrices(result)}
+            result={result}
           />
         ))}
       </div>
+
+      {visibleResults.length === 0 ? (
+        <div className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-8 text-center text-sm text-[#667789]">
+          No hay artículos para los filtros seleccionados.
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function ImportSignalButton({
+  label,
+  value,
+  tone,
+  active,
+  onClick,
+  icon,
+}: {
+  label: string;
+  value: number;
+  tone: PriceListDecisionTone;
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex min-h-16 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition ${metricToneClassName(
+        tone,
+      )} ${active ? "ring-2 ring-[#153d7b] ring-offset-1" : "hover:border-[#153d7b]"}`}
+    >
+      <span>
+        <span className="block text-[11px] font-bold uppercase text-[#667789]">
+          {label}
+        </span>
+        <span className="mt-1 block text-xl font-extrabold text-[#17202a]">
+          {value}
+        </span>
+      </span>
+      {icon}
+    </button>
+  );
+}
+
+function matchesImportFilter(
+  decision: ReturnType<typeof analyzePriceListDecision>,
+  filter: ImportDecisionFilter,
+) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "attention") {
+    return isImportDecisionAttention(decision.kind);
+  }
+
+  if (filter === "above_wholesale") {
+    return decision.kind.startsWith("above_wholesale");
+  }
+
+  if (filter === "competitive") {
+    return decision.kind === "competitive";
+  }
+
+  if (filter === "opportunity") {
+    return decision.kind === "margin_opportunity";
+  }
+
+  if (filter === "missing_own") {
+    return decision.kind === "missing_own_price";
+  }
+
+  return !decision.hasWholesaleReference;
+}
+
+function isImportDecisionAttention(
+  kind: ReturnType<typeof analyzePriceListDecision>["kind"],
+) {
+  return kind !== "competitive" && kind !== "margin_opportunity";
+}
+
+function compareImportDecisionRows(
+  first: {
+    result: PriceListItemResult;
+    decision: ReturnType<typeof analyzePriceListDecision>;
+  },
+  second: {
+    result: PriceListItemResult;
+    decision: ReturnType<typeof analyzePriceListDecision>;
+  },
+) {
+  const rank = {
+    above_wholesale_critical: 0,
+    above_wholesale_warning: 1,
+    weak_match: 2,
+    missing_own_price: 3,
+    no_reference: 4,
+    retail_only: 5,
+    competitive: 6,
+    margin_opportunity: 7,
+  } as const;
+  const rankDifference =
+    rank[first.decision.kind] - rank[second.decision.kind];
+
+  if (rankDifference !== 0) {
+    return rankDifference;
+  }
+
+  return first.result.input.rowNumber - second.result.input.rowNumber;
 }
 
 function formatBatchProgress(progress: PriceListBatchProgress | null) {
@@ -1151,6 +1397,15 @@ function formatDateTime(value: string) {
 
 function normalizeColumnName(value: string | number | null) {
   return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeText(value: string) {
+  return value
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

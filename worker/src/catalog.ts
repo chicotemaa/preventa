@@ -1345,8 +1345,8 @@ function buildCategorySearchGroup(
   const allCompetitorProducts = uniqueProducts.filter(
     (product) => product.sourceId !== AGUIAR_TOKIN_SOURCE_ID,
   );
-  const tokinProducts = allTokinProducts.slice(0, 40);
-  const competitorProducts = allCompetitorProducts.slice(0, 80);
+  const tokinProducts = allTokinProducts;
+  const competitorProducts = allCompetitorProducts;
 
   return {
     id: slugifyCategoryName(category.name),

@@ -3,9 +3,9 @@ import type {
   PriceEvolutionProduct,
   PriceEvolutionResponse,
   PriceListRunSummary,
-  PriceListSourcePrice,
 } from "@/types/search";
 import { isSupabaseConfigured, selectSupabaseRows } from "./supabase-admin";
+import { parseStoredPriceListDetail } from "./price-list-storage";
 
 const RUNS_LIMIT = 30;
 
@@ -102,22 +102,28 @@ function buildProducts(
     }
 
     const productKey = buildProductKey(row);
+    const storedDetail = parseStoredPriceListDetail(row.source_prices);
     const product = products.get(productKey) ?? {
       productKey,
       description: row.description || "Articulo sin descripcion",
+      business: storedDetail.dimensions.business ?? null,
       rubro: row.rubro,
+      segment: storedDetail.dimensions.segment ?? null,
+      subrubro: storedDetail.dimensions.subrubro ?? null,
+      line: storedDetail.dimensions.line ?? null,
       code: row.code,
       ean13Di: row.ean13_di,
       ean13Bu: row.ean13_bu,
       points: [],
       sourceNames: [],
     };
-    const sourcePrices = parseSourcePrices(row.source_prices);
+    const sourcePrices = storedDetail.sourcePrices;
     const point: PriceEvolutionPoint = {
       runId: row.run_id,
       searchedAt: run.searchedAt,
       createdAt: run.createdAt,
       araPrice: parseDatabaseNumber(row.current_price),
+      ownPrice: storedDetail.ownPrice,
       referencePrice: parseDatabaseNumber(row.best_price),
       suggestedPrice: parseDatabaseNumber(row.suggested_price),
       bestSourceName: row.best_source_name,
@@ -197,106 +203,6 @@ function mapRunRow(row: RunRow): PriceListRunSummary {
     matchedCount: row.matched_count ?? 0,
     unmatchedCount: row.unmatched_count ?? 0,
   };
-}
-
-function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") {
-      return [];
-    }
-
-    const sourcePrice = item as Partial<PriceListSourcePrice>;
-
-    if (
-      !sourcePrice.sourceId ||
-      !sourcePrice.storeName ||
-      !sourcePrice.productName ||
-      typeof sourcePrice.price !== "number"
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        sourceId: sourcePrice.sourceId,
-        storeName: sourcePrice.storeName,
-        storeType: sourcePrice.storeType === "minorista" ? "minorista" : "mayorista",
-        sourceUrl: sourcePrice.sourceUrl ?? null,
-        dataOrigin: sourcePrice.dataOrigin,
-        sourceScope: sourcePrice.sourceScope,
-        price: sourcePrice.price,
-        comparisonPrice:
-          typeof sourcePrice.comparisonPrice === "number"
-            ? sourcePrice.comparisonPrice
-            : sourcePrice.price,
-        priceCondition:
-          typeof sourcePrice.priceCondition === "string"
-            ? sourcePrice.priceCondition
-            : null,
-        alternatePrices: parseAlternatePrices(sourcePrice.alternatePrices),
-        packageQuantity:
-          typeof sourcePrice.packageQuantity === "number"
-            ? sourcePrice.packageQuantity
-            : null,
-        packageLabel:
-          typeof sourcePrice.packageLabel === "string"
-            ? sourcePrice.packageLabel
-            : null,
-        category:
-          typeof sourcePrice.category === "string"
-            ? sourcePrice.category
-            : undefined,
-        currency: "ARS",
-        productName: sourcePrice.productName,
-        productUrl: sourcePrice.productUrl ?? null,
-        confidenceScore:
-          typeof sourcePrice.confidenceScore === "number"
-            ? sourcePrice.confidenceScore
-            : 0,
-      },
-    ];
-  });
-}
-
-function parseAlternatePrices(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") {
-      return [];
-    }
-
-    const alternatePrice = item as {
-      label?: unknown;
-      price?: unknown;
-      comparisonPrice?: unknown;
-    };
-
-    if (
-      typeof alternatePrice.label !== "string" ||
-      typeof alternatePrice.price !== "number" ||
-      !Number.isFinite(alternatePrice.price)
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        label: alternatePrice.label,
-        price: alternatePrice.price,
-        comparisonPrice:
-          typeof alternatePrice.comparisonPrice === "number"
-            ? alternatePrice.comparisonPrice
-            : alternatePrice.price,
-      },
-    ];
-  });
 }
 
 function parseDatabaseNumber(value: number | string | null) {

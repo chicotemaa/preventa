@@ -6,8 +6,8 @@ export function buildPriceListOwnPrice(
 ): PriceListOwnPrice {
   const excelPrice = normalizePrice(excelPriceValue);
   const tokinPrice = normalizePrice(tokinPriceValue);
-  const selectedPrice = tokinPrice ?? excelPrice;
-  const selectedSource = tokinPrice ? "tokin" : excelPrice ? "excel" : null;
+  const selectedPrice = excelPrice ?? tokinPrice;
+  const selectedSource = excelPrice ? "excel" : tokinPrice ? "tokin" : null;
 
   return {
     excelPrice,

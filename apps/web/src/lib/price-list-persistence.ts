@@ -1,25 +1,19 @@
 import type {
   PriceListItemResult,
   PriceListResponse,
-  PriceListSourcePrice,
 } from "@/types/search";
+import {
+  analyzePriceListDecision,
+  getPriceListOwnPrice,
+} from "./price-list-decision";
+import { serializeStoredPriceListDetail } from "./price-list-storage";
 import {
   deleteSupabaseRows,
   insertSupabaseRows,
   isSupabaseConfigured,
 } from "./supabase-admin";
 
-const HIGH_PRICE_GAP_PERCENT = 12;
-const OPPORTUNITY_GAP_PERCENT = -8;
 const INSERT_CHUNK_SIZE = 20;
-
-type DecisionStatus =
-  | "ready"
-  | "review_match"
-  | "no_reference"
-  | "missing_own_price"
-  | "above_reference"
-  | "opportunity";
 
 type PersistenceResult = {
   enabled: boolean;
@@ -149,7 +143,8 @@ async function insertRowsInChunks(table: string, rows: unknown[]) {
 }
 
 function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
-  const decision = analyzeDecision(result);
+  const decision = analyzePriceListDecision(result);
+  const referenceSource = decision.referenceSource;
 
   return {
     run_id: runId,
@@ -159,142 +154,49 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
     code: result.input.code ?? null,
     ean13_di: result.input.ean13Di ?? null,
     ean13_bu: result.input.ean13Bu ?? null,
-    current_price: result.input.currentPrice ?? null,
+    current_price: getPriceListOwnPrice(result),
     current_cost: null,
     query_used: result.queryUsed ?? null,
     match_status: result.status,
-    best_price: result.bestPrice ?? null,
-    best_source_id: result.bestSource?.sourceId ?? null,
-    best_source_name: result.bestSource?.storeName ?? null,
-    best_source_type: result.bestSource?.storeType ?? null,
-    best_source_url: result.bestSource?.sourceUrl ?? null,
-    best_product_name: result.bestSource?.productName ?? null,
-    best_product_url: result.bestSource?.productUrl ?? null,
-    best_confidence_score: result.bestSource?.confidenceScore ?? null,
-    margin_percent: decision.marginPercent,
-    gap_percent: decision.gapPercent,
-    suggested_price: decision.suggestedPrice,
-    decision_status: decision.status,
-    decision_label: getDecisionStatusLabel(decision.status),
+    best_price: decision.referencePrice,
+    best_source_id: referenceSource?.sourceId ?? null,
+    best_source_name: referenceSource?.storeName ?? null,
+    best_source_type: referenceSource?.storeType ?? null,
+    best_source_url: referenceSource?.sourceUrl ?? null,
+    best_product_name: referenceSource?.productName ?? null,
+    best_product_url: referenceSource?.productUrl ?? null,
+    best_confidence_score: referenceSource?.confidenceScore ?? null,
+    margin_percent: null,
+    gap_percent:
+      decision.gapRatio === null ? null : decision.gapRatio * 100,
+    suggested_price: calculateSuggestedPrice(decision),
+    decision_status: decision.kind,
+    decision_label: decision.label,
     matched_count: result.matchedCount,
-    source_prices: result.sourcePrices.map(serializeSourcePrice),
+    source_prices: serializeStoredPriceListDetail({
+      sourcePrices: result.sourcePrices,
+      ownPrice: result.ownPrice,
+      input: result.input,
+    }),
   };
-}
-
-function analyzeDecision(result: PriceListItemResult) {
-  const currentPrice = normalizeOptionalNumber(result.input.currentPrice);
-  const referencePrice = normalizeOptionalNumber(result.bestPrice);
-  const gapPercent =
-    currentPrice && referencePrice
-      ? ((currentPrice - referencePrice) / referencePrice) * 100
-      : null;
-  const suggestedPrice = calculateSuggestedPrice(
-    currentPrice,
-    referencePrice,
-  );
-
-  return {
-    status: getDecisionStatus(
-      result,
-      currentPrice,
-      referencePrice,
-      gapPercent,
-    ),
-    marginPercent: null,
-    gapPercent,
-    suggestedPrice,
-  };
-}
-
-function getDecisionStatus(
-  result: PriceListItemResult,
-  currentPrice: number | null,
-  referencePrice: number | null,
-  gapPercent: number | null,
-): DecisionStatus {
-  if (!referencePrice) {
-    return "no_reference";
-  }
-
-  if (!currentPrice) {
-    return "missing_own_price";
-  }
-
-  if (result.bestSource && result.bestSource.confidenceScore < 70) {
-    return "review_match";
-  }
-
-  if (gapPercent !== null && gapPercent > HIGH_PRICE_GAP_PERCENT) {
-    return "above_reference";
-  }
-
-  if (gapPercent !== null && gapPercent < OPPORTUNITY_GAP_PERCENT) {
-    return "opportunity";
-  }
-
-  return "ready";
 }
 
 function calculateSuggestedPrice(
-  currentPrice: number | null,
-  referencePrice: number | null,
+  decision: ReturnType<typeof analyzePriceListDecision>,
 ) {
-  if (!currentPrice && !referencePrice) {
+  if (
+    decision.referenceSource?.storeType !== "mayorista" ||
+    decision.referenceSource.confidenceScore < 70 ||
+    ![
+      "above_wholesale_critical",
+      "above_wholesale_warning",
+    ].includes(decision.kind) ||
+    !decision.referencePrice
+  ) {
     return null;
   }
 
-  const target = Math.max(
-    referencePrice ?? 0,
-    currentPrice ?? 0,
-  );
-
-  return roundPriceForList(target);
-}
-
-function roundPriceForList(value: number) {
-  const step = value < 1_000 ? 10 : value < 10_000 ? 50 : 100;
-  return Math.ceil(value / step) * step;
-}
-
-function getDecisionStatusLabel(status: DecisionStatus) {
-  const labels: Record<DecisionStatus, string> = {
-    ready: "Listo",
-    review_match: "Revisar match",
-    no_reference: "Sin referencia",
-    missing_own_price: "Falta precio Aguiar",
-    above_reference: "Muy arriba",
-    opportunity: "Oportunidad",
-  };
-
-  return labels[status];
-}
-
-function serializeSourcePrice(sourcePrice: PriceListSourcePrice) {
-  return {
-    sourceId: sourcePrice.sourceId,
-    storeName: sourcePrice.storeName,
-    storeType: sourcePrice.storeType,
-    sourceUrl: sourcePrice.sourceUrl ?? null,
-    dataOrigin: sourcePrice.dataOrigin ?? null,
-    sourceScope: sourcePrice.sourceScope ?? null,
-    price: sourcePrice.price,
-    comparisonPrice: sourcePrice.comparisonPrice ?? sourcePrice.price,
-    priceCondition: sourcePrice.priceCondition ?? null,
-    alternatePrices: sourcePrice.alternatePrices ?? [],
-    packageQuantity: sourcePrice.packageQuantity ?? null,
-    packageLabel: sourcePrice.packageLabel ?? null,
-    category: sourcePrice.category ?? null,
-    currency: sourcePrice.currency,
-    productName: sourcePrice.productName,
-    productUrl: sourcePrice.productUrl ?? null,
-    confidenceScore: sourcePrice.confidenceScore,
-  };
-}
-
-function normalizeOptionalNumber(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : null;
+  return Math.round(decision.referencePrice * 0.99 * 100) / 100;
 }
 
 function getWeekStart(date: Date) {

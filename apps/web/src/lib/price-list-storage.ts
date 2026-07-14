@@ -1,0 +1,260 @@
+import type {
+  PriceListInputItem,
+  PriceListOwnPrice,
+  PriceListSourcePrice,
+} from "@/types/search";
+
+const STORAGE_VERSION = 2;
+
+export type StoredPriceListDimensions = Pick<
+  PriceListInputItem,
+  "business" | "segment" | "subrubro" | "line" | "uxb"
+>;
+
+export type StoredPriceListDetail = {
+  sourcePrices: PriceListSourcePrice[];
+  ownPrice: PriceListOwnPrice | null;
+  dimensions: StoredPriceListDimensions;
+  isLegacy: boolean;
+};
+
+export function serializeStoredPriceListDetail({
+  sourcePrices,
+  ownPrice,
+  input,
+}: {
+  sourcePrices: PriceListSourcePrice[];
+  ownPrice?: PriceListOwnPrice;
+  input: PriceListInputItem;
+}) {
+  return {
+    version: STORAGE_VERSION,
+    sourcePrices: sourcePrices.map(serializeSourcePrice),
+    ownPrice: ownPrice ?? null,
+    dimensions: {
+      business: input.business ?? null,
+      segment: input.segment ?? null,
+      subrubro: input.subrubro ?? null,
+      line: input.line ?? null,
+      uxb: input.uxb ?? null,
+    },
+  };
+}
+
+export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetail {
+  if (Array.isArray(value)) {
+    return {
+      sourcePrices: parseSourcePrices(value),
+      ownPrice: null,
+      dimensions: {},
+      isLegacy: true,
+    };
+  }
+
+  if (!value || typeof value !== "object") {
+    return emptyStoredDetail();
+  }
+
+  const payload = value as {
+    version?: unknown;
+    sourcePrices?: unknown;
+    ownPrice?: unknown;
+    dimensions?: unknown;
+  };
+
+  return {
+    sourcePrices: parseSourcePrices(payload.sourcePrices),
+    ownPrice: parseOwnPrice(payload.ownPrice),
+    dimensions: parseDimensions(payload.dimensions),
+    isLegacy: payload.version !== STORAGE_VERSION,
+  };
+}
+
+function emptyStoredDetail(): StoredPriceListDetail {
+  return {
+    sourcePrices: [],
+    ownPrice: null,
+    dimensions: {},
+    isLegacy: true,
+  };
+}
+
+function parseDimensions(value: unknown): StoredPriceListDimensions {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const dimensions = value as Record<string, unknown>;
+
+  return {
+    business: parseOptionalString(dimensions.business),
+    segment: parseOptionalString(dimensions.segment),
+    subrubro: parseOptionalString(dimensions.subrubro),
+    line: parseOptionalString(dimensions.line),
+    uxb: parseOptionalString(dimensions.uxb),
+  };
+}
+
+function parseOwnPrice(value: unknown): PriceListOwnPrice | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const ownPrice = value as Record<string, unknown>;
+  const excelPrice = parseOptionalNumber(ownPrice.excelPrice);
+  const tokinPrice = parseOptionalNumber(ownPrice.tokinPrice);
+  const selectedPrice = parseOptionalNumber(ownPrice.selectedPrice);
+  const selectedSource =
+    ownPrice.selectedSource === "tokin" || ownPrice.selectedSource === "excel"
+      ? ownPrice.selectedSource
+      : null;
+
+  if (!excelPrice && !tokinPrice && !selectedPrice) {
+    return null;
+  }
+
+  return {
+    excelPrice,
+    tokinPrice,
+    selectedPrice,
+    selectedSource,
+    excelVsTokinGapRatio:
+      typeof ownPrice.excelVsTokinGapRatio === "number" &&
+      Number.isFinite(ownPrice.excelVsTokinGapRatio)
+        ? ownPrice.excelVsTokinGapRatio
+        : null,
+  };
+}
+
+function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+
+    const sourcePrice = item as Partial<PriceListSourcePrice>;
+
+    if (
+      !sourcePrice.sourceId ||
+      !sourcePrice.storeName ||
+      !sourcePrice.productName ||
+      typeof sourcePrice.price !== "number" ||
+      !Number.isFinite(sourcePrice.price)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        sourceId: sourcePrice.sourceId,
+        storeName: sourcePrice.storeName,
+        storeType: sourcePrice.storeType === "minorista" ? "minorista" : "mayorista",
+        sourceUrl: sourcePrice.sourceUrl ?? null,
+        dataOrigin: sourcePrice.dataOrigin,
+        sourceScope: sourcePrice.sourceScope,
+        price: sourcePrice.price,
+        comparisonPrice:
+          typeof sourcePrice.comparisonPrice === "number" &&
+          Number.isFinite(sourcePrice.comparisonPrice)
+            ? sourcePrice.comparisonPrice
+            : sourcePrice.price,
+        priceCondition:
+          typeof sourcePrice.priceCondition === "string"
+            ? sourcePrice.priceCondition
+            : null,
+        alternatePrices: parseAlternatePrices(sourcePrice.alternatePrices),
+        packageQuantity:
+          typeof sourcePrice.packageQuantity === "number" &&
+          Number.isFinite(sourcePrice.packageQuantity)
+            ? sourcePrice.packageQuantity
+            : null,
+        packageLabel:
+          typeof sourcePrice.packageLabel === "string"
+            ? sourcePrice.packageLabel
+            : null,
+        category:
+          typeof sourcePrice.category === "string"
+            ? sourcePrice.category
+            : undefined,
+        currency: "ARS",
+        productName: sourcePrice.productName,
+        productUrl: sourcePrice.productUrl ?? null,
+        confidenceScore:
+          typeof sourcePrice.confidenceScore === "number" &&
+          Number.isFinite(sourcePrice.confidenceScore)
+            ? sourcePrice.confidenceScore
+            : 0,
+      },
+    ];
+  });
+}
+
+function parseAlternatePrices(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+
+    const alternatePrice = item as Record<string, unknown>;
+
+    if (
+      typeof alternatePrice.label !== "string" ||
+      typeof alternatePrice.price !== "number" ||
+      !Number.isFinite(alternatePrice.price)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        label: alternatePrice.label,
+        price: alternatePrice.price,
+        comparisonPrice:
+          typeof alternatePrice.comparisonPrice === "number" &&
+          Number.isFinite(alternatePrice.comparisonPrice)
+            ? alternatePrice.comparisonPrice
+            : alternatePrice.price,
+      },
+    ];
+  });
+}
+
+function serializeSourcePrice(sourcePrice: PriceListSourcePrice) {
+  return {
+    sourceId: sourcePrice.sourceId,
+    storeName: sourcePrice.storeName,
+    storeType: sourcePrice.storeType,
+    sourceUrl: sourcePrice.sourceUrl ?? null,
+    dataOrigin: sourcePrice.dataOrigin ?? null,
+    sourceScope: sourcePrice.sourceScope ?? null,
+    price: sourcePrice.price,
+    comparisonPrice: sourcePrice.comparisonPrice ?? sourcePrice.price,
+    priceCondition: sourcePrice.priceCondition ?? null,
+    alternatePrices: sourcePrice.alternatePrices ?? [],
+    packageQuantity: sourcePrice.packageQuantity ?? null,
+    packageLabel: sourcePrice.packageLabel ?? null,
+    category: sourcePrice.category ?? null,
+    currency: sourcePrice.currency,
+    productName: sourcePrice.productName,
+    productUrl: sourcePrice.productUrl ?? null,
+    confidenceScore: sourcePrice.confidenceScore,
+  };
+}
+
+function parseOptionalNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+function parseOptionalString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}

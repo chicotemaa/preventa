@@ -5,13 +5,13 @@ import type {
   PriceListRunItem,
   PriceListRunSource,
   PriceListRunSummary,
-  PriceListSourcePrice,
 } from "@/types/search";
 import {
   deleteSupabaseRows,
   isSupabaseConfigured,
   selectSupabaseRows,
 } from "./supabase-admin";
+import { parseStoredPriceListDetail } from "./price-list-storage";
 
 const HISTORY_LIMIT = 20;
 const INCOMPLETE_RUN_CLEANUP_AGE_MS = 5 * 60 * 1000;
@@ -228,15 +228,23 @@ function mapSourceRow(row: SourceRow): PriceListRunSource {
 }
 
 function mapItemRow(row: ItemRow): PriceListRunItem {
+  const storedDetail = parseStoredPriceListDetail(row.source_prices);
+
   return {
     id: row.id,
     rowNumber: row.row_number ?? 0,
+    business: storedDetail.dimensions.business ?? null,
     rubro: row.rubro,
+    segment: storedDetail.dimensions.segment ?? null,
+    subrubro: storedDetail.dimensions.subrubro ?? null,
+    line: storedDetail.dimensions.line ?? null,
+    uxb: storedDetail.dimensions.uxb ?? null,
     description: row.description,
     code: row.code,
     ean13Di: row.ean13_di,
     ean13Bu: row.ean13_bu,
     currentPrice: parseDatabaseNumber(row.current_price),
+    ownPrice: storedDetail.ownPrice,
     currentCost: parseDatabaseNumber(row.current_cost),
     matchStatus: row.match_status === "matched" ? "matched" : "not_found",
     bestPrice: parseDatabaseNumber(row.best_price),
@@ -254,108 +262,8 @@ function mapItemRow(row: ItemRow): PriceListRunItem {
     decisionStatus: row.decision_status,
     decisionLabel: row.decision_label,
     matchedCount: row.matched_count ?? 0,
-    sourcePrices: parseSourcePrices(row.source_prices),
+    sourcePrices: storedDetail.sourcePrices,
   };
-}
-
-function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") {
-      return [];
-    }
-
-    const sourcePrice = item as Partial<PriceListSourcePrice>;
-
-    if (
-      !sourcePrice.sourceId ||
-      !sourcePrice.storeName ||
-      !sourcePrice.productName ||
-      typeof sourcePrice.price !== "number"
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        sourceId: sourcePrice.sourceId,
-        storeName: sourcePrice.storeName,
-        storeType: sourcePrice.storeType === "minorista" ? "minorista" : "mayorista",
-        sourceUrl: sourcePrice.sourceUrl ?? null,
-        dataOrigin: sourcePrice.dataOrigin,
-        sourceScope: sourcePrice.sourceScope,
-        price: sourcePrice.price,
-        comparisonPrice:
-          typeof sourcePrice.comparisonPrice === "number"
-            ? sourcePrice.comparisonPrice
-            : sourcePrice.price,
-        priceCondition:
-          typeof sourcePrice.priceCondition === "string"
-            ? sourcePrice.priceCondition
-            : null,
-        alternatePrices: parseAlternatePrices(sourcePrice.alternatePrices),
-        packageQuantity:
-          typeof sourcePrice.packageQuantity === "number"
-            ? sourcePrice.packageQuantity
-            : null,
-        packageLabel:
-          typeof sourcePrice.packageLabel === "string"
-            ? sourcePrice.packageLabel
-            : null,
-        category:
-          typeof sourcePrice.category === "string"
-            ? sourcePrice.category
-            : undefined,
-        currency: "ARS",
-        productName: sourcePrice.productName,
-        productUrl: sourcePrice.productUrl ?? null,
-        confidenceScore:
-          typeof sourcePrice.confidenceScore === "number"
-            ? sourcePrice.confidenceScore
-            : 0,
-      },
-    ];
-  });
-}
-
-function parseAlternatePrices(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") {
-      return [];
-    }
-
-    const alternatePrice = item as {
-      label?: unknown;
-      price?: unknown;
-      comparisonPrice?: unknown;
-    };
-
-    if (
-      typeof alternatePrice.label !== "string" ||
-      typeof alternatePrice.price !== "number" ||
-      !Number.isFinite(alternatePrice.price)
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        label: alternatePrice.label,
-        price: alternatePrice.price,
-        comparisonPrice:
-          typeof alternatePrice.comparisonPrice === "number"
-            ? alternatePrice.comparisonPrice
-            : alternatePrice.price,
-      },
-    ];
-  });
 }
 
 function parseDatabaseNumber(value: number | string | null) {

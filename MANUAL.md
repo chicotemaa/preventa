@@ -109,7 +109,8 @@ Flujo:
 
 1. Cargar el Excel de articulos.
 2. Esperar la comparacion.
-3. Revisar productos sin precio o con diferencias fuertes.
+3. Usar `Cosas para ver` para abrir productos arriba del mayorista,
+   competitivos, oportunidades, faltantes o articulos sin referencia mayorista.
 4. Descargar el resultado.
 5. Guardar la corrida si se quiere usar para evolucion.
 
@@ -126,30 +127,40 @@ Precio Aguiar / Precio ARA / Precio actual
 
 No todas las columnas son obligatorias, pero mientras mas datos haya mejor sera el matching. El EAN y el codigo interno ayudan mucho a evitar falsos positivos.
 
+Regla de referencia propia:
+
+1. Si el Excel trae precio, ese es el precio usado para decidir.
+2. Tokin/Arcor se conserva y muestra por separado como control.
+3. Si el Excel no trae precio y Tokin si, se usa Tokin/Arcor.
+4. Si ambos faltan, la decision queda como `Falta precio propio`.
+
 ## Como leer la comparacion
 
-La app separa dos conceptos:
+La app separa tres conceptos:
 
-- `Precio Aguiar`: precio propio detectado desde Tokin o cargado en la lista.
+- `Precio Excel`: valor recibido en la lista semanal.
+- `Precio Tokin/Arcor`: valor propio detectado en el catalogo de Tokin.
 - `Precio de competencia`: precio encontrado en fuentes externas.
 
 Colores y señales:
 
-- Verde: precio encontrado y utilizable.
-- Naranja/alerta: una fuente tiene mejor precio que Aguiar.
-- Rojo suave: no hay precio propio ni referencia de mercado.
-- Gris: fuente sin precio para ese producto.
+- Rojo: el precio usado esta mas de 10% arriba del mejor mayorista.
+- Naranja: el precio usado esta entre 5% y 10% arriba del mejor mayorista.
+- Verde: el precio usado esta en rango competitivo.
+- Azul: el precio usado esta mas de 8% debajo del mayorista y puede existir
+  oportunidad de margen.
+- Gris: falta referencia suficiente, falta precio propio o el match debe revisarse.
 
-Regla de orden visual de fuentes:
+Regla de orden visual de fuentes (despues de Aguiar/Tokin como fuente propia):
 
-1. Vital
-2. Carrefour Comerciante / Maxi Pedido
-3. Maxi / Maxiconsumo
-4. Carrefour
-5. Cheek
+1. Maxiconsumo Chaco
+2. Maxiconsumo Web
+3. Vital
+4. Carrefour Comerciante / Maxi Pedido
+5. Check / Chek
 6. Yaguar / Jaguar
 7. Cucher Mercados
-8. Revista
+8. Minoristas: Vea, Carrefour, ChangoMas, Jumbo, Disco, DIA, La Anonima y Cordiez
 
 Si una fuente no existe todavia en el sistema, queda preparada para ordenarse correctamente cuando se agregue.
 
@@ -188,9 +199,10 @@ Requisitos:
 Uso:
 
 1. Abrir Evolucion.
-2. Seleccionar periodo o corrida disponible.
-3. Revisar variaciones de Aguiar y competencia.
-4. Identificar productos que subieron, bajaron o quedaron sin referencia.
+2. Buscar y seleccionar un articulo.
+3. Revisar por separado `Excel`, `Tokin/Arcor`, `Precio usado` y `Mejor mayorista`.
+4. Comparar las series historicas y la diferencia contra mayorista.
+5. Abrir la tabla por empresa para auditar el origen de cada precio.
 
 ## Pagina: Historial
 
@@ -202,8 +214,17 @@ Uso:
 
 1. Abrir Historial.
 2. Entrar a una corrida.
-3. Revisar detalle de articulos, precios y fuentes.
-4. Usar el detalle para auditar una lista anterior.
+3. Filtrar por rubro, subrubro, codigo, EAN o descripcion.
+4. Usar el semaforo `Cosas para ver` para separar alertas, competitivos y
+   oportunidades.
+5. Revisar `Excel`, `Tokin/Arcor`, precio usado, mejor mayorista y mejor
+   minorista antes de decidir.
+6. Abrir `Ver precios` para auditar todas las fuentes guardadas del articulo.
+
+Compatibilidad: las corridas nuevas conservan Excel y Tokin por separado en el
+`jsonb source_prices` existente. No hace falta una migracion de Supabase. Las
+corridas antiguas siguen visibles, pero pueden aparecer como `Propio historico`
+si fueron guardadas antes de que se registrara el origen de ambos precios.
 
 ## Pagina: Configuracion
 

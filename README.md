@@ -422,6 +422,8 @@ AI_MATCHING_TIMEOUT_MS=6000
 - En produccion, el catalogo consolidado del worker se guarda en Supabase, tabla `catalog_snapshots`, cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
 - `worker/data/catalog.json` queda como fallback local/desarrollo; no se debe editar a mano porque se regenera desde las fuentes.
 - Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
+- Las cargas nuevas guardan dentro de `price_list_run_items.source_prices` un objeto JSON versionado con precios de competencia, `Precio Excel`, `Precio Tokin/Arcor` y dimensiones del articulo. Las filas antiguas guardadas como array siguen siendo compatibles.
+- No hace falta una migracion adicional para esta separacion porque `source_prices` ya es `jsonb`. Solo las cargas guardadas despues de este cambio pueden reconstruir ambos precios; las anteriores se muestran como `Propio historico` cuando el origen no se puede determinar.
 - Las sesiones privadas y snapshots por fuente usan Supabase desde el worker cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
 - Antes de usar el modo offline persistido en produccion, aplicar las migraciones `supabase/migrations/20260701213000_source_sessions.sql` y `supabase/migrations/20260707123000_catalog_snapshots.sql`.
 - Los CSV reales de listas externas pueden cargarse en `worker/data/imports/*.csv`; los `.example.csv` no se cargan.
