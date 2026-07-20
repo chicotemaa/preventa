@@ -7,13 +7,16 @@ import {
   FileSpreadsheet,
   Loader2,
   Search,
+  Save,
   TrendingDown,
   TrendingUp,
   Upload,
 } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useMemo, useState } from "react";
+import { CatalogFreshnessBanner } from "@/components/catalog/CatalogFreshnessBanner";
 import {
   evaluatePriceListInBatches,
+  savePriceListForHistory,
   type PriceListBatchProgress,
 } from "@/lib/price-list-batches";
 import {
@@ -29,6 +32,7 @@ import {
   sortPriceListResultPrices,
   type PriceListDecisionTone,
 } from "@/lib/price-list-decision";
+import { summarizePriceListOwnPrices } from "@/lib/price-list-own-price-summary";
 import type {
   PendingSourceStatus,
   PriceListInputItem,
@@ -75,6 +79,7 @@ export default function ImportacionPage() {
   const [response, setResponse] = useState<PriceListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSavingForEvolution, setIsSavingForEvolution] = useState(false);
   const [persistForEvolution, setPersistForEvolution] = useState(false);
   const [batchProgress, setBatchProgress] =
     useState<PriceListBatchProgress | null>(null);
@@ -84,17 +89,44 @@ export default function ImportacionPage() {
       return null;
     }
 
+    const ownPrices = summarizePriceListOwnPrices(response.results);
+
     return {
       total: response.itemsCount,
-      withPrice: response.matchedCount,
-      withoutPrice: response.unmatchedCount,
+      withMarketPrice: response.matchedCount,
+      withoutMarketPrice: response.unmatchedCount,
       sourcesWithData: new Set(
         response.results.flatMap((result) =>
           result.sourcePrices.map((sourcePrice) => sourcePrice.sourceId),
         ),
       ).size,
+      ...ownPrices,
     };
   }, [response]);
+
+  async function handleSaveForEvolution() {
+    if (!response || isSavingForEvolution) {
+      return;
+    }
+
+    setIsSavingForEvolution(true);
+    setError(null);
+
+    try {
+      const persistence = await savePriceListForHistory(response);
+      setResponse((current) =>
+        current ? { ...current, persistence } : current,
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo guardar la carga para evolución.",
+      );
+    } finally {
+      setIsSavingForEvolution(false);
+    }
+  }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -221,8 +253,8 @@ export default function ImportacionPage() {
                 Guardar esta carga para evolución
               </span>
               <span className="mt-1 block text-sm text-[#667789]">
-                Activá esto solo si querés dejar esta lista como referencia
-                semanal.
+                Se guarda al terminar solo si existe al menos un precio propio
+                de Excel o Tokin. Los artículos faltantes quedan señalados.
               </span>
             </span>
           </label>
@@ -245,13 +277,34 @@ export default function ImportacionPage() {
               {error}
             </div>
           ) : null}
+
+          {response && summary ? (
+            <div className="mt-4 space-y-3">
+              <CatalogFreshnessBanner catalog={response.catalog} />
+              <HistorySavePanel
+                response={response}
+                ownPriceCount={summary.ownPriceCount}
+                missingOwnPriceCount={summary.missingOwnPriceCount}
+                itemsCount={summary.itemsCount}
+                isSaving={isSavingForEvolution}
+                onSave={() => void handleSaveForEvolution()}
+              />
+            </div>
+          ) : null}
         </section>
 
         {summary ? (
-          <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
             <Metric label="Artículos" value={summary.total} />
-            <Metric label="Con precio" value={summary.withPrice} />
-            <Metric label="Sin precio" value={summary.withoutPrice} />
+            <Metric label="Con precio propio" value={summary.ownPriceCount} />
+            <Metric label="Desde Excel" value={summary.excelPriceCount} />
+            <Metric label="Desde Tokin" value={summary.tokinPriceCount} />
+            <Metric
+              label="Falta precio propio"
+              value={summary.missingOwnPriceCount}
+              tone={summary.missingOwnPriceCount > 0 ? "warning" : "success"}
+            />
+            <Metric label="Con mercado" value={summary.withMarketPrice} />
             <Metric label="Fuentes con datos" value={summary.sourcesWithData} />
           </section>
         ) : null}
@@ -259,6 +312,73 @@ export default function ImportacionPage() {
         {response ? <ImportResults response={response} /> : null}
       </section>
     </main>
+  );
+}
+
+function HistorySavePanel({
+  response,
+  ownPriceCount,
+  missingOwnPriceCount,
+  itemsCount,
+  isSaving,
+  onSave,
+}: {
+  response: PriceListResponse;
+  ownPriceCount: number;
+  missingOwnPriceCount: number;
+  itemsCount: number;
+  isSaving: boolean;
+  onSave: () => void;
+}) {
+  const persistence = response.persistence;
+  const saved = persistence?.saved === true;
+  const cannotSave = ownPriceCount === 0;
+
+  return (
+    <section className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-sm font-bold text-[#17202a]">
+            Referencia propia para evolución
+          </div>
+          <p className="mt-1 text-sm leading-5 text-[#667789]">
+            {cannotSave
+              ? "No se puede guardar todavía: ningún artículo tiene precio de Excel ni Tokin."
+              : missingOwnPriceCount > 0
+                ? `${ownPriceCount}/${itemsCount} artículos tienen precio propio. La carga se puede guardar, pero quedará marcada para revisión.`
+                : `Los ${itemsCount} artículos tienen una referencia propia y están listos para historial.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={cannotSave || saved || isSaving}
+          onClick={onSave}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-[#153d7b] px-4 text-sm font-bold text-white transition hover:bg-[#0f2f61] disabled:cursor-not-allowed disabled:bg-[#a8b4c7]"
+        >
+          {isSaving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : saved ? (
+            <CircleCheck className="h-4 w-4" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {isSaving ? "Guardando..." : saved ? "Guardada" : "Guardar en historial"}
+        </button>
+      </div>
+
+      {persistence?.requested && persistence.errorMessage ? (
+        <div className="mt-3 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-3 py-2 text-sm text-[#8f2d20]">
+          {persistence.errorMessage}
+        </div>
+      ) : null}
+
+      {saved ? (
+        <div className="mt-3 rounded-md border border-[#bfe5cf] bg-[#f4fbf7] px-3 py-2 text-sm text-[#16613c]">
+          Carga guardada con Excel y Tokin separados. Ya está disponible en
+          Historial y Evolución.
+        </div>
+      ) : null}
+    </section>
   );
 }
 

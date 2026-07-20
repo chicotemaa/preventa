@@ -10,6 +10,7 @@ import {
   deleteSupabaseRows,
   isSupabaseConfigured,
   selectSupabaseRows,
+  updateSupabaseRows,
 } from "./supabase-admin";
 import { parseStoredPriceListDetail } from "./price-list-storage";
 
@@ -27,6 +28,8 @@ type RunRow = {
   items_count: number | null;
   matched_count: number | null;
   unmatched_count: number | null;
+  catalog_last_synced_at: string | null;
+  metadata: unknown;
 };
 
 type SourceRow = {
@@ -80,7 +83,8 @@ export async function getPriceListHistory(): Promise<PriceListHistoryResponse> {
   try {
     const rows = await selectSupabaseRows<RunRow[]>("price_list_runs", {
       select:
-        "id,list_name,status,week_start,searched_at,created_at,duration_ms,items_count,matched_count,unmatched_count",
+        "id,list_name,status,week_start,searched_at,created_at,duration_ms,items_count,matched_count,unmatched_count,catalog_last_synced_at,metadata",
+      filters: { status: "neq.archived" },
       order: "created_at.desc",
       limit: HISTORY_LIMIT,
     });
@@ -119,7 +123,7 @@ export async function getPriceListRunDetail(
     const [runRows, sourceRows, itemRows] = await Promise.all([
       selectSupabaseRows<RunRow[]>("price_list_runs", {
         select:
-          "id,list_name,status,week_start,searched_at,created_at,duration_ms,items_count,matched_count,unmatched_count",
+          "id,list_name,status,week_start,searched_at,created_at,duration_ms,items_count,matched_count,unmatched_count,catalog_last_synced_at,metadata",
         filters: { id: `eq.${runId}` },
         limit: 1,
       }),
@@ -162,6 +166,31 @@ export async function getPriceListRunDetail(
   }
 }
 
+export async function archivePriceListRun(runId: string) {
+  if (!isSupabaseConfigured()) {
+    return { enabled: false, archived: false };
+  }
+
+  try {
+    await updateSupabaseRows(
+      "price_list_runs",
+      { status: "archived" },
+      { filters: { id: `eq.${runId}` } },
+    );
+
+    return { enabled: true, archived: true };
+  } catch (error) {
+    return {
+      enabled: true,
+      archived: false,
+      errorMessage:
+        error instanceof Error
+          ? error.message
+          : "No se pudo archivar la carga.",
+    };
+  }
+}
+
 async function getRunIdsWithItems(runIds: string[]) {
   const validRunIds = await Promise.all(
     runIds.map(async (runId) => {
@@ -198,6 +227,8 @@ async function cleanupOldIncompleteRuns(rows: RunRow[]) {
 }
 
 function mapRunRow(row: RunRow): PriceListRunSummary {
+  const metadata = parseRunMetadata(row.metadata);
+
   return {
     id: row.id,
     listName: row.list_name,
@@ -209,7 +240,32 @@ function mapRunRow(row: RunRow): PriceListRunSummary {
     itemsCount: row.items_count ?? 0,
     matchedCount: row.matched_count ?? 0,
     unmatchedCount: row.unmatched_count ?? 0,
+    ownPriceCount: metadata.ownPriceCount,
+    excelPriceCount: metadata.excelPriceCount,
+    tokinPriceCount: metadata.tokinPriceCount,
+    missingOwnPriceCount: metadata.missingOwnPriceCount,
+    storageVersion: metadata.storageVersion,
+    catalogLastSyncedAt: row.catalog_last_synced_at,
   };
+}
+
+function parseRunMetadata(value: unknown) {
+  const metadata =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return {
+    ownPriceCount: parseMetadataNumber(metadata.ownPriceCount),
+    excelPriceCount: parseMetadataNumber(metadata.excelPriceCount),
+    tokinPriceCount: parseMetadataNumber(metadata.tokinPriceCount),
+    missingOwnPriceCount: parseMetadataNumber(metadata.missingOwnPriceCount),
+    storageVersion: parseMetadataNumber(metadata.storageVersion),
+  };
+}
+
+function parseMetadataNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function mapSourceRow(row: SourceRow): PriceListRunSource {
@@ -229,6 +285,7 @@ function mapSourceRow(row: SourceRow): PriceListRunSource {
 
 function mapItemRow(row: ItemRow): PriceListRunItem {
   const storedDetail = parseStoredPriceListDetail(row.source_prices);
+  const currentPrice = parseDatabaseNumber(row.current_price);
 
   return {
     id: row.id,
@@ -243,8 +300,12 @@ function mapItemRow(row: ItemRow): PriceListRunItem {
     code: row.code,
     ean13Di: row.ean13_di,
     ean13Bu: row.ean13_bu,
-    currentPrice: parseDatabaseNumber(row.current_price),
+    currentPrice,
     ownPrice: storedDetail.ownPrice,
+    ownPriceSnapshotStatus:
+      storedDetail.isLegacy && !storedDetail.ownPrice && !currentPrice
+        ? "not_stored_legacy"
+        : "stored",
     currentCost: parseDatabaseNumber(row.current_cost),
     matchStatus: row.match_status === "matched" ? "matched" : "not_found",
     bestPrice: parseDatabaseNumber(row.best_price),

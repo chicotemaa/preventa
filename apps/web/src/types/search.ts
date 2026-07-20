@@ -46,6 +46,8 @@ export type SourceSearchStatus = {
   resultsCount: number;
   errorMessage?: string;
   durationMs: number;
+  snapshotSyncedAt?: string | null;
+  usingStoredSnapshot?: boolean;
 };
 
 export type PendingSourceStatus = {
@@ -86,6 +88,7 @@ export type CategorySearchResponse = {
   durationMs: number;
   groups: CategorySearchGroup[];
   sources: SourceSearchStatus[];
+  catalog?: CatalogMetadata;
 };
 
 export type CategorySearchGroup = {
@@ -329,6 +332,11 @@ export type PriceListOwnPrice = {
   selectedPrice: number | null;
   selectedSource: "tokin" | "excel" | null;
   excelVsTokinGapRatio: number | null;
+  selectionReason?:
+    | "excel_priority"
+    | "excel_only"
+    | "tokin_fallback"
+    | "missing";
 };
 
 export type PriceListItemResult = {
@@ -374,6 +382,12 @@ export type PriceListRunSummary = {
   itemsCount: number;
   matchedCount: number;
   unmatchedCount: number;
+  ownPriceCount?: number | null;
+  excelPriceCount?: number | null;
+  tokinPriceCount?: number | null;
+  missingOwnPriceCount?: number | null;
+  storageVersion?: number | null;
+  catalogLastSyncedAt?: string | null;
 };
 
 export type PriceListRunSource = {
@@ -404,6 +418,7 @@ export type PriceListRunItem = {
   ean13Bu: string | null;
   currentPrice: number | null;
   ownPrice: PriceListOwnPrice | null;
+  ownPriceSnapshotStatus?: "stored" | "not_stored_legacy";
   currentCost: number | null;
   matchStatus: "matched" | "not_found";
   bestPrice: number | null;
@@ -480,6 +495,8 @@ export type CatalogMetadata = {
   region: CatalogRegion;
   brands: string[];
   lastSyncedAt: string | null;
+  lastSyncAttemptAt?: string | null;
+  usingLastGoodSnapshot?: boolean;
   syncStartedAt?: string | null;
   syncProgress?: CatalogSyncProgress | null;
   durationMs: number | null;

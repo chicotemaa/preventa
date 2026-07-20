@@ -31,6 +31,7 @@ test("conserva Excel, Tokin y clasificacion en el historial nuevo", () => {
 
   assert.equal(parsed.isLegacy, false);
   assert.equal(parsed.ownPrice?.selectedSource, "excel");
+  assert.equal(parsed.ownPrice?.selectionReason, "excel_priority");
   assert.equal(parsed.ownPrice?.tokinPrice, 1_000);
   assert.equal(parsed.dimensions.subrubro, "Alfajores triples");
   assert.equal(parsed.dimensions.uxb, "24");

@@ -23,6 +23,7 @@ const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
 const dataDir = resolveSourceStoreDir();
 const sessionsPath = path.resolve(dataDir, "source-sessions.json");
 const snapshotsPath = path.resolve(dataDir, "source-snapshots.json");
+const STORED_SNAPSHOT_WARNING_AGE_MS = 36 * 60 * 60 * 1000;
 
 type SourceStoreDiagnostic = {
   operation: string;
@@ -357,6 +358,12 @@ export async function getStoredSourceCatalogStatuses(): Promise<
     status: snapshot.status,
     resultsCount: snapshot.productsCount,
     durationMs: snapshot.durationMs,
+    snapshotSyncedAt: snapshot.syncedAt,
+    usingStoredSnapshot:
+      isOlderThan(snapshot.syncedAt, STORED_SNAPSHOT_WARNING_AGE_MS) ||
+      snapshot.errors.some((error) =>
+        /conserva|guardado anterior|último dato|ultimo dato/i.test(error),
+      ),
     errorMessage:
       snapshot.status === "success"
         ? undefined
@@ -382,6 +389,11 @@ export async function getStoredSourceCatalogStatuses(): Promise<
         errorMessage: getMissingSourceSnapshotMessage(source.sourceKind),
       })),
   ];
+}
+
+function isOlderThan(value: string, maxAgeMs: number) {
+  const timestamp = new Date(value).getTime();
+  return !Number.isFinite(timestamp) || Date.now() - timestamp > maxAgeMs;
 }
 
 function getMissingSourceSnapshotMessage(sourceKind: string | undefined) {

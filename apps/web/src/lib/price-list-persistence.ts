@@ -6,7 +6,11 @@ import {
   analyzePriceListDecision,
   getPriceListOwnPrice,
 } from "./price-list-decision";
-import { serializeStoredPriceListDetail } from "./price-list-storage";
+import { summarizePriceListOwnPrices } from "./price-list-own-price-summary";
+import {
+  PRICE_LIST_STORAGE_VERSION,
+  serializeStoredPriceListDetail,
+} from "./price-list-storage";
 import {
   deleteSupabaseRows,
   insertSupabaseRows,
@@ -33,6 +37,18 @@ export async function savePriceListRun(
     return { enabled: false, requested: true, saved: false };
   }
 
+  const ownPriceSummary = summarizePriceListOwnPrices(response.results);
+
+  if (!ownPriceSummary.canPersist) {
+    return {
+      enabled: true,
+      requested: true,
+      saved: false,
+      errorMessage:
+        "No se guardo la carga: ningun articulo tiene precio propio de Excel ni Tokin. La evolucion necesita al menos una referencia propia.",
+    };
+  }
+
   const weekStart = getWeekStart(new Date(response.searchedAt));
   const runPayload = {
     list_name: `Lista semanal ${formatDateKey(weekStart)}`,
@@ -44,10 +60,22 @@ export async function savePriceListRun(
     unmatched_count: response.unmatchedCount,
     catalog_status: response.catalog.status,
     catalog_last_synced_at: response.catalog.lastSyncedAt ?? null,
+    status: ownPriceSummary.coverageComplete ? "review" : "draft",
     metadata: {
       region: response.catalog.region,
       brands: response.catalog.brands,
       productsCount: response.catalog.productsCount,
+      storageVersion: PRICE_LIST_STORAGE_VERSION,
+      ownPricePolicy: "excel_first_then_tokin",
+      ownPriceCount: ownPriceSummary.ownPriceCount,
+      excelPriceCount: ownPriceSummary.excelPriceCount,
+      tokinPriceCount: ownPriceSummary.tokinPriceCount,
+      missingOwnPriceCount: ownPriceSummary.missingOwnPriceCount,
+      ownPriceCoverageRatio: ownPriceSummary.coverageRatio,
+      catalogUsingLastGoodSnapshot:
+        response.catalog.usingLastGoodSnapshot === true,
+      catalogLastSyncAttemptAt:
+        response.catalog.lastSyncAttemptAt ?? response.catalog.lastSyncedAt,
     },
   };
   let runRows: Array<{ id: string }> | null;

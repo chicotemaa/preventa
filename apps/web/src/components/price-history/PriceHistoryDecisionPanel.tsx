@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   CircleCheck,
   Download,
+  Archive,
+  Loader2,
   Search,
   TrendingDown,
   TrendingUp,
@@ -39,8 +41,12 @@ const percentFormatter = new Intl.NumberFormat("es-AR", {
 
 export function PriceHistoryDecisionPanel({
   detail,
+  isArchiving = false,
+  onArchive,
 }: {
   detail: PriceListRunDetail;
+  isArchiving?: boolean;
+  onArchive?: () => void;
 }) {
   const [filter, setFilter] = useState<HistoryDecisionFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -51,6 +57,14 @@ export function PriceHistoryDecisionPanel({
     [detail.items],
   );
   const summary = useMemo(() => summarizeHistoryItems(analyses), [analyses]);
+  const isLegacyWithoutOwnPrices = useMemo(
+    () =>
+      detail.items.length > 0 &&
+      detail.items.every(
+        (item) => item.ownPriceSnapshotStatus === "not_stored_legacy",
+      ),
+    [detail.items],
+  );
   const rubros = useMemo(
     () => uniqueValues(detail.items.map((item) => item.rubro)),
     [detail.items],
@@ -111,11 +125,12 @@ export function PriceHistoryDecisionPanel({
               {formatRunTitle(detail)}
             </h3>
             <p className="mt-1 text-sm text-[#667789]">
-              Guardada {formatDate(detail.run.createdAt)} · Excel y Tokin se
-              conservan como referencias separadas.
+              Guardada {formatDate(detail.run.createdAt)} · {isLegacyWithoutOwnPrices
+                ? "Carga anterior sin detalle propio almacenado."
+                : "Excel y Tokin se conservan como referencias separadas."}
             </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className={`grid gap-2 ${isLegacyWithoutOwnPrices ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             <button
               type="button"
               onClick={() => downloadRunResultCsv(detail, analyses)}
@@ -132,8 +147,35 @@ export function PriceHistoryDecisionPanel({
               <Download className="h-4 w-4" />
               Aguiar
             </button>
+            {isLegacyWithoutOwnPrices && onArchive ? (
+              <button
+                type="button"
+                disabled={isArchiving}
+                onClick={onArchive}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#e4a79f] bg-[#fff8f6] px-3 text-sm font-semibold text-[#8f2d20] transition hover:bg-[#fff1ef] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isArchiving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Archive className="h-4 w-4" />
+                )}
+                Archivar anterior
+              </button>
+            ) : null}
           </div>
         </div>
+
+        {isLegacyWithoutOwnPrices ? (
+          <div
+            role="status"
+            className="mt-4 rounded-md border border-[#f0d2a2] bg-[#fff8e8] px-3 py-3 text-sm text-[#704907]"
+          >
+            Esta carga se guardó con el formato anterior: conserva las
+            comparaciones de mercado, pero no los precios Excel/Tokin. Para
+            comparar datos propios, generá y guardá una nueva carga desde
+            Importación.
+          </div>
+        ) : null}
 
         <section aria-label="Semáforo de precios" className="mt-4">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -184,9 +226,15 @@ export function PriceHistoryDecisionPanel({
               icon={<TrendingDown className="h-4 w-4" />}
             />
             <SignalButton
-              label="Falta propio"
+              label={
+                isLegacyWithoutOwnPrices ? "Propio no guardado" : "Falta propio"
+              }
               value={summary.missingOwn}
-              helper="Excel y Tokin vacíos"
+              helper={
+                isLegacyWithoutOwnPrices
+                  ? "Carga con formato anterior"
+                  : "Excel y Tokin vacíos"
+              }
               tone="neutral"
               isActive={filter === "missing_own"}
               onClick={() => setFilter("missing_own")}
@@ -364,8 +412,19 @@ function HistoryDecisionTable({
                   {analysis.item.code || analysis.item.ean13Di || "Sin código"}
                 </div>
               </td>
-              <PriceValue value={analysis.excelPrice} />
-              <PriceValue value={analysis.tokinPrice} emphasize />
+              <PriceValue
+                value={analysis.excelPrice}
+                missingLabel={
+                  analysis.ownPriceWasStored ? "-" : "No guardado"
+                }
+              />
+              <PriceValue
+                value={analysis.tokinPrice}
+                emphasize
+                missingLabel={
+                  analysis.ownPriceWasStored ? "-" : "No guardado"
+                }
+              />
               <td className="px-3 py-3">
                 <div className="font-bold text-[#17202a]">
                   {formatCurrency(analysis.selectedOwnPrice)}
@@ -438,8 +497,16 @@ function HistoryDecisionCards({
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <MobilePrice label="Excel" value={analysis.excelPrice} />
-            <MobilePrice label="Tokin" value={analysis.tokinPrice} />
+            <MobilePrice
+              label="Excel"
+              value={analysis.excelPrice}
+              missingLabel={analysis.ownPriceWasStored ? "-" : "No guardado"}
+            />
+            <MobilePrice
+              label="Tokin"
+              value={analysis.tokinPrice}
+              missingLabel={analysis.ownPriceWasStored ? "-" : "No guardado"}
+            />
             <MobilePrice
               label={`Usado · ${analysis.selectedOwnPriceLabel}`}
               value={analysis.selectedOwnPrice}
@@ -480,13 +547,15 @@ function HistoryDecisionCards({
 function PriceValue({
   value,
   emphasize = false,
+  missingLabel = "-",
 }: {
   value: number | null;
   emphasize?: boolean;
+  missingLabel?: string;
 }) {
   return (
     <td className={`px-3 py-3 font-semibold ${emphasize ? "text-[#153d7b]" : "text-[#526170]"}`}>
-      {formatCurrency(value)}
+      {value === null ? missingLabel : formatCurrency(value)}
     </td>
   );
 }
@@ -504,14 +573,22 @@ function MarketPriceCell({ price }: { price: PriceListSourcePrice | null }) {
   );
 }
 
-function MobilePrice({ label, value }: { label: string; value: number | null }) {
+function MobilePrice({
+  label,
+  value,
+  missingLabel = "-",
+}: {
+  label: string;
+  value: number | null;
+  missingLabel?: string;
+}) {
   return (
     <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2">
       <div className="line-clamp-2 text-[10px] font-bold uppercase text-[#667789]">
         {label}
       </div>
       <div className="mt-1 font-extrabold text-[#17202a]">
-        {formatCurrency(value)}
+        {value === null ? missingLabel : formatCurrency(value)}
       </div>
     </div>
   );

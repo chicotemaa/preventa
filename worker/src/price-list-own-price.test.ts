@@ -8,6 +8,7 @@ test("Excel tiene prioridad y conserva Tokin como referencia separada", () => {
     tokinPrice: 1_000,
     selectedPrice: 1_100,
     selectedSource: "excel",
+    selectionReason: "excel_priority",
     excelVsTokinGapRatio: 0.1,
   });
 });
@@ -18,6 +19,7 @@ test("usa Excel cuando Tokin no tiene un precio valido", () => {
     tokinPrice: null,
     selectedPrice: 1_100,
     selectedSource: "excel",
+    selectionReason: "excel_only",
     excelVsTokinGapRatio: null,
   });
 });
@@ -28,6 +30,7 @@ test("usa Tokin cuando el Excel no trae precio", () => {
     tokinPrice: 1_000,
     selectedPrice: 1_000,
     selectedSource: "tokin",
+    selectionReason: "tokin_fallback",
     excelVsTokinGapRatio: null,
   });
 });
@@ -38,6 +41,7 @@ test("no inventa un precio propio cuando ambas fuentes estan vacias", () => {
     tokinPrice: null,
     selectedPrice: null,
     selectedSource: null,
+    selectionReason: "missing",
     excelVsTokinGapRatio: null,
   });
 });

@@ -50,6 +50,8 @@ export type SourceSearchStatus = {
   resultsCount: number;
   errorMessage?: string;
   durationMs: number;
+  snapshotSyncedAt?: string | null;
+  usingStoredSnapshot?: boolean;
 };
 
 export type PendingSourceStatus = {
@@ -90,6 +92,7 @@ export type CategorySearchResponse = {
   durationMs: number;
   groups: CategorySearchGroup[];
   sources: SourceSearchStatus[];
+  catalog?: CatalogMetadata;
 };
 
 export type CategorySearchGroup = {
@@ -224,6 +227,11 @@ export type PriceListOwnPrice = {
   selectedPrice: number | null;
   selectedSource: "tokin" | "excel" | null;
   excelVsTokinGapRatio: number | null;
+  selectionReason?:
+    | "excel_priority"
+    | "excel_only"
+    | "tokin_fallback"
+    | "missing";
 };
 
 export type PriceListItemResult = {
@@ -254,6 +262,8 @@ export type CatalogMetadata = {
   region: CatalogRegion;
   brands: string[];
   lastSyncedAt: string | null;
+  lastSyncAttemptAt?: string | null;
+  usingLastGoodSnapshot?: boolean;
   syncStartedAt?: string | null;
   syncProgress?: CatalogSyncProgress | null;
   durationMs: number | null;
@@ -304,10 +314,12 @@ export type ScrapingSource = {
     | "vtex_api"
     | "yaguar_auth"
     | "woocommerce_pmw_json"
-    | "cucher_supabase";
+    | "cucher_supabase"
+    | "cheek_magazine_pdf";
   searchUrlTemplate: string;
   requiresJavascript: boolean;
   catalogSearchMode?: "query" | "full_page";
+  catalogSnapshotStrategy?: "merge" | "replace";
   maxCards?: number;
   enabled?: boolean;
   disabledReason?: string;

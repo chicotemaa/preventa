@@ -18,6 +18,7 @@ import {
 } from "@/lib/price-list-batches";
 import { compareSourcePriority } from "@/lib/source-priority";
 import type {
+  CatalogMetadata,
   CategorySearchGroup,
   CategorySearchResponse,
   PriceListInputItem,
@@ -711,6 +712,7 @@ function CategorySearchResults({
           group={selectedGroup}
           sources={response.sources}
           searchedAt={response.searchedAt}
+          catalog={response.catalog}
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -776,16 +778,19 @@ function CategoryGroupDetail({
   group,
   sources,
   searchedAt,
+  catalog,
 }: {
   group: CategorySearchGroup;
   sources: SourceSearchStatus[];
   searchedAt: string;
+  catalog?: CatalogMetadata;
 }) {
   return (
     <CategoryPricingDashboard
       group={group}
       sources={sources}
       searchedAt={searchedAt}
+      catalog={catalog}
     />
   );
 }

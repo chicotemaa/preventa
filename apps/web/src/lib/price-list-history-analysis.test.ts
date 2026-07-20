@@ -69,6 +69,24 @@ test("semaforo separa alertas y oportunidades", () => {
   assert.deepEqual(filterHistoryAnalyses(analyses, "opportunity"), [opportunity]);
 });
 
+test("una carga anterior informa que el precio propio no fue guardado", () => {
+  const item = createItem({
+    selectedPrice: 1_000,
+    selectedSource: "excel",
+    sources: [createSource("maxi", "Maxiconsumo Chaco", "mayorista", 950)],
+  });
+  item.currentPrice = null;
+  item.ownPrice = null;
+  item.ownPriceSnapshotStatus = "not_stored_legacy";
+
+  const analysis = analyzeHistoryItem(item);
+
+  assert.equal(analysis.ownPriceWasStored, false);
+  assert.equal(analysis.selectedOwnPriceLabel, "No guardado en esta carga");
+  assert.equal(analysis.label, "Precio propio no guardado");
+  assert.equal(analysis.action, "Generar una nueva carga");
+});
+
 function createItem({
   excelPrice = null,
   tokinPrice = null,

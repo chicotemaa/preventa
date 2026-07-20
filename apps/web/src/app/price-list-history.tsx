@@ -16,6 +16,7 @@ export function PriceListHistory() {
   const [detail, setDetail] = useState<PriceListRunDetail | null>(null);
   const [isLoadingRuns, setIsLoadingRuns] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEnabled, setIsEnabled] = useState(true);
 
@@ -100,6 +101,51 @@ export function PriceListHistory() {
     }
   }
 
+  async function archiveSelectedRun() {
+    if (!detail || isArchiving) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Esta carga anterior dejará de aparecer en el historial. No se eliminan sus datos. ¿Continuar?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsArchiving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/price-list/history/${detail.run.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
+      });
+      const payload = (await response.json()) as {
+        archived?: boolean;
+        errorMessage?: string;
+      };
+
+      if (!response.ok || !payload.archived) {
+        throw new Error(payload.errorMessage ?? "No se pudo archivar la carga.");
+      }
+
+      setSelectedRunId(null);
+      setDetail(null);
+      await loadHistory();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudo archivar la carga.",
+      );
+    } finally {
+      setIsArchiving(false);
+    }
+  }
+
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) ?? null,
     [runs, selectedRunId],
@@ -174,7 +220,12 @@ export function PriceListHistory() {
                 Cargando detalle...
               </div>
             ) : detail ? (
-              <PriceHistoryDecisionPanel key={detail.run.id} detail={detail} />
+              <PriceHistoryDecisionPanel
+                key={detail.run.id}
+                detail={detail}
+                isArchiving={isArchiving}
+                onArchive={() => void archiveSelectedRun()}
+              />
             ) : selectedRun ? (
               <div className="px-4 py-5 text-sm text-[#526170]">
                 Seleccioná una carga para ver el detalle.
@@ -222,8 +273,15 @@ function RunList({
                 {formatDate(run.createdAt)}
               </span>
               <span className="mt-2 block text-xs text-[#526170]">
-                {run.matchedCount}/{run.itemsCount} con precio
+                {typeof run.ownPriceCount !== "number"
+                  ? `${run.matchedCount}/${run.itemsCount} con mercado · carga anterior`
+                  : `${run.ownPriceCount}/${run.itemsCount} con precio propio`}
               </span>
+              {typeof run.missingOwnPriceCount === "number" && run.missingOwnPriceCount > 0 ? (
+                <span className="mt-1 block text-xs font-semibold text-[#8a5a0a]">
+                  {run.missingOwnPriceCount} sin referencia propia
+                </span>
+              ) : null}
             </span>
             <Eye
               aria-hidden="true"

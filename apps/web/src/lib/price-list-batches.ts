@@ -88,7 +88,7 @@ export async function evaluatePriceListInBatches({
   );
 
   if (persist) {
-    mergedResponse.persistence = await saveMergedPriceList(mergedResponse);
+    mergedResponse.persistence = await savePriceListForHistory(mergedResponse);
   }
 
   return mergedResponse;
@@ -145,7 +145,7 @@ function mergePriceListResponses(
   };
 }
 
-async function saveMergedPriceList(response: PriceListResponse) {
+export async function savePriceListForHistory(response: PriceListResponse) {
   const saveResponse = await fetch("/api/price-list/save", {
     method: "POST",
     headers: {

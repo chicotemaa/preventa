@@ -12,6 +12,10 @@ COPY worker/tsconfig.json ./worker/tsconfig.json
 COPY worker/src ./worker/src
 COPY worker/data ./worker/data
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends imagemagick poppler-utils tesseract-ocr tesseract-ocr-spa \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN npm ci --workspace worker --include=dev
 RUN npm run build --workspace worker
 RUN npm prune --omit=dev --workspace worker

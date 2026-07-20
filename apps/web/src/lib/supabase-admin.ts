@@ -14,6 +14,10 @@ type DeleteOptions = {
   filters?: Record<string, string | number | boolean>;
 };
 
+type UpdateOptions = {
+  filters?: Record<string, string | number | boolean>;
+};
+
 export function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && getSupabaseServerKey());
 }
@@ -136,6 +140,47 @@ export async function deleteSupabaseRows(
     {
       method: "DELETE",
       headers: buildSupabaseHeaders(serverKey, { prefer: "return=minimal" }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      errorText || `Supabase respondio con estado ${response.status}.`,
+    );
+  }
+}
+
+export async function updateSupabaseRows(
+  table: string,
+  values: unknown,
+  options: UpdateOptions = {},
+) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serverKey = getSupabaseServerKey();
+
+  if (!supabaseUrl || !serverKey) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  if (Object.keys(options.filters ?? {}).length === 0) {
+    throw new Error("No se puede actualizar en Supabase sin filtros.");
+  }
+
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(options.filters ?? {})) {
+    params.set(key, String(value));
+  }
+
+  const normalizedUrl = supabaseUrl.replace(/\/$/, "");
+  const response = await fetch(
+    `${normalizedUrl}/rest/v1/${table}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: buildSupabaseHeaders(serverKey, { prefer: "return=minimal" }),
+      body: JSON.stringify(values),
       cache: "no-store",
     },
   );

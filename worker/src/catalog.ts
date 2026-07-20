@@ -49,6 +49,7 @@ import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import { config } from "./config.js";
 import { loadCatalogSearchSeedTerms } from "./catalog-seeds.js";
+import { shouldKeepLastGoodCatalog } from "./catalog-snapshot-policy.js";
 import { buildPriceListOwnPrice } from "./price-list-own-price.js";
 import type {
   CatalogMetadata,
@@ -77,7 +78,10 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const workerRoot = path.resolve(path.dirname(currentFilePath), "..");
 const catalogPath = path.resolve(workerRoot, "data/catalog.json");
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
-const REMOVED_CATALOG_SOURCE_IDS = new Set(["sabor-y-aroma-formosa"]);
+const REMOVED_CATALOG_SOURCE_IDS = new Set([
+  "sabor-y-aroma-formosa",
+  "check-chek-mayorista",
+]);
 const MIN_PRICE_LIST_CONFIDENCE_SCORE = 60;
 const DIAGNOSTIC_REJECT_LIMIT = 5;
 const AGUIAR_REFERENCE_NORMALIZE_TRIGGER_MULTIPLIER = 3;
@@ -98,6 +102,8 @@ let currentCatalog: CatalogSnapshot = {
   region: catalogRegion,
   brands: targetBrands.map((brand) => brand.name),
   lastSyncedAt: null,
+  lastSyncAttemptAt: null,
+  usingLastGoodSnapshot: false,
   syncStartedAt: null,
   syncProgress: null,
   durationMs: null,
@@ -300,18 +306,25 @@ export async function syncCatalogSource(
     );
 
     const previousSnapshot = await getSourceCatalogSnapshot(source.id);
-    const mergedProducts = dedupeCatalogProducts([
-      ...(previousSnapshot?.products ?? []),
-      ...dedupedProducts,
-    ]).sort(
+    const usingPreviousSnapshot =
+      dedupedProducts.length === 0 &&
+      Boolean(previousSnapshot && previousSnapshot.products.length > 0);
+    const productsToPersist =
+      source.catalogSnapshotStrategy === "replace" && dedupedProducts.length > 0
+        ? dedupedProducts
+        : [...(previousSnapshot?.products ?? []), ...dedupedProducts];
+    const mergedProducts = dedupeCatalogProducts(productsToPersist).sort(
       (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     );
-    const mergedQueries = [
-      ...new Set([
-        ...(previousSnapshot?.queries ?? []),
-        ...queriesUsed.filter(Boolean),
-      ]),
-    ];
+    const mergedQueries =
+      source.catalogSnapshotStrategy === "replace" && dedupedProducts.length > 0
+        ? [...new Set(queriesUsed.filter(Boolean))]
+        : [
+            ...new Set([
+              ...(previousSnapshot?.queries ?? []),
+              ...queriesUsed.filter(Boolean),
+            ]),
+          ];
     const mergedStatus = toMergedSourceStatus(
       summarizedStatus,
       mergedProducts.length,
@@ -324,24 +337,37 @@ export async function syncCatalogSource(
       dataOrigin: source.dataOrigin,
       sourceScope: source.sourceScope,
       status: mergedStatus.status,
-      syncedAt: new Date().toISOString(),
+      syncedAt: usingPreviousSnapshot
+        ? previousSnapshot?.syncedAt ?? syncedAt
+        : new Date().toISOString(),
       durationMs: summarizedStatus.durationMs,
       queries: mergedQueries,
       productsCount: mergedProducts.length,
       privateProductsCount: 0,
       visiblePriceProductsCount: mergedProducts.length,
-      errors: mergedStatus.errorMessage ? [mergedStatus.errorMessage] : [],
+      errors: usingPreviousSnapshot
+        ? [
+            mergedStatus.errorMessage ??
+              "La fuente no entrego productos nuevos; se conserva el ultimo snapshot valido.",
+          ]
+        : mergedStatus.errorMessage
+          ? [mergedStatus.errorMessage]
+          : [],
       products: mergedProducts,
     });
 
     await reloadStoredSourceCatalogs();
-    markCatalogUpdatedFromSourceSync(startedAt);
+    markCatalogUpdatedFromSourceSync(startedAt, usingPreviousSnapshot);
     await persistCatalogIfWritable(currentCatalog);
 
     return {
       sourceId: source.id,
       snapshot,
-      status: mergedStatus,
+      status: {
+        ...mergedStatus,
+        snapshotSyncedAt: snapshot?.syncedAt ?? null,
+        usingStoredSnapshot: usingPreviousSnapshot,
+      },
       productsCount: mergedProducts.length,
     };
   } catch (error) {
@@ -368,6 +394,9 @@ export async function syncCatalogSource(
       errorMessage,
     };
     const previousSnapshot = await getSourceCatalogSnapshot(source.id);
+    const usingPreviousSnapshot =
+      dedupedProducts.length === 0 &&
+      Boolean(previousSnapshot && previousSnapshot.products.length > 0);
     const mergedProducts = dedupeCatalogProducts([
       ...(previousSnapshot?.products ?? []),
       ...dedupedProducts,
@@ -389,24 +418,35 @@ export async function syncCatalogSource(
       dataOrigin: source.dataOrigin,
       sourceScope: source.sourceScope,
       status: mergedStatus.status,
-      syncedAt: new Date().toISOString(),
+      syncedAt: usingPreviousSnapshot
+        ? previousSnapshot?.syncedAt ?? syncedAt
+        : new Date().toISOString(),
       durationMs: status.durationMs,
       queries: mergedQueries,
       productsCount: mergedProducts.length,
       privateProductsCount: 0,
       visiblePriceProductsCount: mergedProducts.length,
-      errors: [errorMessage],
+      errors: [
+        errorMessage,
+        ...(usingPreviousSnapshot
+          ? ["Se conserva el ultimo snapshot valido de la fuente."]
+          : []),
+      ],
       products: mergedProducts,
     });
 
     await reloadStoredSourceCatalogs();
-    markCatalogUpdatedFromSourceSync(startedAt);
+    markCatalogUpdatedFromSourceSync(startedAt, usingPreviousSnapshot);
     await persistCatalogIfWritable(currentCatalog);
 
     return {
       sourceId: source.id,
       snapshot,
-      status: mergedStatus,
+      status: {
+        ...mergedStatus,
+        snapshotSyncedAt: snapshot?.syncedAt ?? null,
+        usingStoredSnapshot: usingPreviousSnapshot,
+      },
       productsCount: mergedProducts.length,
     };
   }
@@ -437,6 +477,10 @@ export async function searchCatalog(query: string) {
 
       return second.confidenceScore - first.confidenceScore;
     });
+  const sources = summarizeSourceStatuses([
+    ...currentCatalog.sources,
+    ...storedStatuses.filter(isActiveSourceStatus),
+  ]);
 
   return {
     query,
@@ -444,11 +488,11 @@ export async function searchCatalog(query: string) {
     searchedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
     results,
-    sources: summarizeSourceStatuses([
-      ...currentCatalog.sources,
-      ...storedStatuses.filter(isActiveSourceStatus),
-    ]),
-    catalog: getCatalogMetadata(),
+    sources,
+    catalog: {
+      ...getCatalogMetadata(),
+      sources,
+    },
   };
 }
 
@@ -606,6 +650,10 @@ export async function searchCategory(
     durationMs: Date.now() - startedAt,
     groups,
     sources,
+    catalog: {
+      ...getCatalogMetadata(),
+      sources,
+    },
   };
 }
 
@@ -669,10 +717,12 @@ async function matchPriceListItemWithDirectAguiar(
 async function runCatalogSync(): Promise<CatalogSnapshot> {
   const startedAt = Date.now();
   const syncStartedAt = new Date(startedAt).toISOString();
+  const previousCatalog = currentCatalog;
 
   currentCatalog = {
     ...currentCatalog,
     status: "syncing",
+    lastSyncAttemptAt: syncStartedAt,
     syncStartedAt,
     syncProgress: {
       phase: "starting",
@@ -912,17 +962,39 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
     const dedupedProducts = dedupeCatalogProducts(products).sort(
       (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     );
+    const summarizedSources = summarizeSourceStatuses(sourceStatuses);
+
+    if (shouldPreservePreviousCatalog(previousCatalog, dedupedProducts)) {
+      currentCatalog = {
+        ...previousCatalog,
+        status: "ready",
+        lastSyncAttemptAt: new Date().toISOString(),
+        usingLastGoodSnapshot: true,
+        syncStartedAt: null,
+        syncProgress: null,
+        durationMs: Date.now() - startedAt,
+        sources: summarizedSources,
+        errorMessage:
+          `La actualización devolvió ${dedupedProducts.length} productos frente a ${previousCatalog.productsCount}. Se conserva el último catálogo válido para evitar una pérdida masiva de datos.`,
+      };
+      await persistCatalogIfWritable(currentCatalog);
+      return currentCatalog;
+    }
+
+    const completedAt = new Date().toISOString();
 
     currentCatalog = {
       status: "ready",
       region: catalogRegion,
       brands: targetBrands.map((brand) => brand.name),
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: completedAt,
+      lastSyncAttemptAt: completedAt,
+      usingLastGoodSnapshot: false,
       syncStartedAt: null,
       syncProgress: null,
       durationMs: Date.now() - startedAt,
       productsCount: dedupedProducts.length,
-      sources: summarizeSourceStatuses(sourceStatuses),
+      sources: summarizedSources,
       pendingSources: getPendingSources(),
       products: dedupedProducts,
     };
@@ -930,17 +1002,35 @@ async function runCatalogSync(): Promise<CatalogSnapshot> {
     await persistCatalogIfWritable(currentCatalog);
     return currentCatalog;
   } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Error sincronizando catalogo.";
+    const hasPreviousCatalog = previousCatalog.productsCount > 0;
+
     currentCatalog = {
-      ...currentCatalog,
-      status: "failed",
+      ...(hasPreviousCatalog ? previousCatalog : currentCatalog),
+      status: hasPreviousCatalog ? "ready" : "failed",
+      lastSyncAttemptAt: new Date().toISOString(),
+      usingLastGoodSnapshot: hasPreviousCatalog,
       syncStartedAt: null,
       syncProgress: null,
-      errorMessage:
-        error instanceof Error ? error.message : "Error sincronizando catalogo.",
+      durationMs: Date.now() - startedAt,
+      errorMessage: hasPreviousCatalog
+        ? `Falló la actualización diaria; se conserva el último catálogo válido. ${errorMessage}`
+        : errorMessage,
     };
     await persistCatalogIfWritable(currentCatalog);
     return currentCatalog;
   }
+}
+
+function shouldPreservePreviousCatalog(
+  previousCatalog: CatalogSnapshot,
+  incomingProducts: ProductSearchResult[],
+) {
+  return shouldKeepLastGoodCatalog(
+    previousCatalog.productsCount,
+    incomingProducts.length,
+  );
 }
 
 function buildUniqueBrandSearchTerms() {
@@ -1075,15 +1165,26 @@ function toMergedSourceStatus(
   };
 }
 
-function markCatalogUpdatedFromSourceSync(startedAt: number) {
+function markCatalogUpdatedFromSourceSync(
+  startedAt: number,
+  usingPreviousSnapshot: boolean,
+) {
+  const completedAt = new Date().toISOString();
+
   currentCatalog = {
     ...currentCatalog,
     status: currentCatalog.productsCount > 0 ? "ready" : currentCatalog.status,
-    lastSyncedAt: new Date().toISOString(),
+    lastSyncedAt: usingPreviousSnapshot
+      ? currentCatalog.lastSyncedAt
+      : completedAt,
+    lastSyncAttemptAt: completedAt,
+    usingLastGoodSnapshot: usingPreviousSnapshot,
     syncStartedAt: null,
     syncProgress: null,
     durationMs: Date.now() - startedAt,
-    errorMessage: undefined,
+    errorMessage: usingPreviousSnapshot
+      ? "La fuente no entrego datos nuevos; se conserva el ultimo catalogo valido."
+      : undefined,
   };
 }
 
@@ -1457,6 +1558,11 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
       status: mergedStatus,
       resultsCount: current.resultsCount + source.resultsCount,
       durationMs: current.durationMs + source.durationMs,
+      snapshotSyncedAt:
+        current.snapshotSyncedAt ?? source.snapshotSyncedAt ?? null,
+      usingStoredSnapshot:
+        current.usingStoredSnapshot === true ||
+        source.usingStoredSnapshot === true,
       errorMessage:
         mergedStatus === "success"
           ? undefined

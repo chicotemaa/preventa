@@ -8,12 +8,20 @@ export function buildPriceListOwnPrice(
   const tokinPrice = normalizePrice(tokinPriceValue);
   const selectedPrice = excelPrice ?? tokinPrice;
   const selectedSource = excelPrice ? "excel" : tokinPrice ? "tokin" : null;
+  const selectionReason = excelPrice
+    ? tokinPrice
+      ? "excel_priority"
+      : "excel_only"
+    : tokinPrice
+      ? "tokin_fallback"
+      : "missing";
 
   return {
     excelPrice,
     tokinPrice,
     selectedPrice,
     selectedSource,
+    selectionReason,
     excelVsTokinGapRatio:
       excelPrice && tokinPrice ? (excelPrice - tokinPrice) / tokinPrice : null,
   };

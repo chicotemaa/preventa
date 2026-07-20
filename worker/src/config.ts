@@ -106,6 +106,12 @@ export const config = {
       getOptionalStringEnv("CUCHER_SUPABASE_ANON_KEY") ??
       "sb_publishable_oE88zB98aPc_-SKjOCJtQA_JNVn2lWT",
   },
+  cheek: {
+    enabled: process.env.CHEEK_ENABLED !== "false",
+    homeUrl: getOptionalStringEnv("CHEEK_HOME_URL") ?? "https://cheeksa.com.ar/",
+    ocrLanguage: getOptionalStringEnv("CHEEK_OCR_LANGUAGE") ?? "spa",
+    timeoutMs: getNumberEnv("CHEEK_OCR_TIMEOUT_MS", 240_000),
+  },
   carrefourComerciante: {
     enabled: process.env.CARREFOUR_COMERCIANTE_ENABLED === "true",
     name: getOptionalStringEnv("CARREFOUR_COMERCIANTE_NAME"),

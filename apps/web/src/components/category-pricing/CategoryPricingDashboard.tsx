@@ -2,6 +2,7 @@
 
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { CatalogFreshnessBanner } from "@/components/catalog/CatalogFreshnessBanner";
 import { CategoryDecisionTable } from "@/components/category-pricing/CategoryDecisionTable";
 import { CategoryProductDetail } from "@/components/category-pricing/CategoryProductDetail";
 import { CategorySourceHealth } from "@/components/category-pricing/CategorySourceHealth";
@@ -14,7 +15,11 @@ import {
   type CompetitorPriceCell,
   type PricingTone,
 } from "@/lib/category-pricing";
-import type { CategorySearchGroup, SourceSearchStatus } from "@/types/search";
+import type {
+  CatalogMetadata,
+  CategorySearchGroup,
+  SourceSearchStatus,
+} from "@/types/search";
 
 const currencyFormatter = new Intl.NumberFormat("es-AR", {
   style: "currency",
@@ -56,10 +61,12 @@ export function CategoryPricingDashboard({
   group,
   sources,
   searchedAt,
+  catalog,
 }: {
   group: CategorySearchGroup;
   sources: SourceSearchStatus[];
   searchedAt: string;
+  catalog?: CatalogMetadata;
 }) {
   const dashboard = useMemo(
     () => buildCategoryPricingDashboard({ group, sources, searchedAt }),
@@ -81,6 +88,7 @@ export function CategoryPricingDashboard({
   return (
     <section className="flex flex-col gap-4">
       <ExecutiveSummary dashboard={dashboard} />
+      {catalog ? <CatalogFreshnessBanner catalog={catalog} compact /> : null}
       <CategorySourceHealth summary={dashboard.sourceHealth} />
 
       <section className="rounded-md border border-[#d9dee7] bg-white p-3 sm:p-4">

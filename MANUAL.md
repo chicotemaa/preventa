@@ -112,7 +112,8 @@ Flujo:
 3. Usar `Cosas para ver` para abrir productos arriba del mayorista,
    competitivos, oportunidades, faltantes o articulos sin referencia mayorista.
 4. Descargar el resultado.
-5. Guardar la corrida si se quiere usar para evolucion.
+5. Revisar el bloque `Referencia propia para evolucion`.
+6. Guardar la corrida si se quiere usar para evolucion.
 
 Columnas esperadas del Excel:
 
@@ -133,6 +134,14 @@ Regla de referencia propia:
 2. Tokin/Arcor se conserva y muestra por separado como control.
 3. Si el Excel no trae precio y Tokin si, se usa Tokin/Arcor.
 4. Si ambos faltan, la decision queda como `Falta precio propio`.
+5. No se puede guardar una carga si ningun articulo tiene precio de Excel ni
+   Tokin. Si la cobertura es parcial, se guarda como borrador y los faltantes
+   quedan identificados.
+
+Cada carga nueva registra cuantos articulos tienen precio propio, cuantos
+provienen del Excel, cuantos tienen control Tokin y cuantos siguen pendientes.
+Tambien guarda el motivo de seleccion: Excel prioritario, solo Excel, fallback
+Tokin o faltante.
 
 ## Como leer la comparacion
 
@@ -157,10 +166,14 @@ Regla de orden visual de fuentes (despues de Aguiar/Tokin como fuente propia):
 2. Maxiconsumo Web
 3. Vital
 4. Carrefour Comerciante / Maxi Pedido
-5. Check / Chek
+5. Cheek S.A. Resistencia
 6. Yaguar / Jaguar
 7. Cucher Mercados
 8. Minoristas: Vea, Carrefour, ChangoMas, Jumbo, Disco, DIA, La Anonima y Cordiez
+
+Cheek se actualiza desde su revista digital oficial durante la sincronizacion
+diaria. Sus precios deben leerse como ofertas con vigencia y no como confirmacion
+de catalogo completo o stock disponible.
 
 Si una fuente no existe todavia en el sistema, queda preparada para ordenarse correctamente cuando se agregue.
 
@@ -220,6 +233,8 @@ Uso:
 5. Revisar `Excel`, `Tokin/Arcor`, precio usado, mejor mayorista y mejor
    minorista antes de decidir.
 6. Abrir `Ver precios` para auditar todas las fuentes guardadas del articulo.
+7. Las cargas antiguas sin Excel/Tokin pueden archivarse. Archivar las oculta
+   del historial operativo, pero no elimina sus datos de Supabase.
 
 Compatibilidad: las corridas nuevas conservan Excel y Tokin por separado en el
 `jsonb source_prices` existente. No hace falta una migracion de Supabase. Las
@@ -457,6 +472,11 @@ Flujo:
 4. El worker valida `CATALOG_SYNC_SECRET`.
 5. El worker sincroniza fuentes en background y actualiza `catalog_snapshots`.
 6. Las paginas consultan categorias en modo `catalog`.
+
+Si una actualizacion falla o devuelve menos del 20% de un catalogo grande, el
+worker conserva el ultimo snapshot valido. La interfaz muestra la fecha del
+ultimo dato correcto y diferencia entre catalogo fresco, conservado y
+desactualizado.
 
 Horario configurado:
 

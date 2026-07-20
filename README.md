@@ -164,6 +164,7 @@ Fuentes activas o preparadas:
 - Maxiconsumo Web
 - Supermayorista Vital Online
 - Carrefour Comerciante / Maxi Pedido
+- Cheek S.A. Resistencia (revista digital)
 - Carrefour Argentina
 - Yaguar Chaco
 - Vea Argentina
@@ -188,11 +189,10 @@ Cuando hay comparaciones por fuente, se prioriza este orden visual:
 2. Maxiconsumo Web
 3. Vital
 4. Carrefour Comerciante / Maxi Pedido
-5. Carrefour
-6. Cheek
-7. Yaguar / Jaguar
-8. Cucher Mercados
-9. Revista
+5. Cheek S.A. Resistencia
+6. Yaguar / Jaguar
+7. Cucher Mercados
+8. Minoristas: Vea, Carrefour, ChangoMas, Jumbo, Disco, DIA, La Anonima y Cordiez
 
 Aguiar/Tokin se mantiene separado como referencia propia cuando corresponde.
 
@@ -210,6 +210,24 @@ MAXICONSUMO_PASSWORD=
 MAXICONSUMO_HOME_URL=https://maxiconsumo.com/sucursal_chaco/
 MAXICONSUMO_LOGIN_URL=https://maxiconsumo.com/sucursal_chaco/customer/account/login/
 ```
+
+### Cheek S.A. Resistencia
+
+El cron descarga la revista digital oficial publicada en
+https://cheeksa.com.ar/, renderiza sus paginas y usa OCR para guardar las
+ofertas como un snapshot mayorista en Supabase. No requiere credenciales.
+
+```bash
+CHEEK_ENABLED=true
+CHEEK_HOME_URL=https://cheeksa.com.ar/
+CHEEK_OCR_LANGUAGE=spa
+CHEEK_OCR_TIMEOUT_MS=240000
+```
+
+La revista informa precios promocionales y vigencia, pero no representa
+necesariamente el catalogo completo ni confirma stock. Cuando aparece una
+edicion nueva, el snapshot anterior de Cheek se reemplaza para no mezclar
+ofertas vencidas.
 
 ### Resolver de busquedas por categoria
 
@@ -244,6 +262,11 @@ expone `syncStartedAt` y `syncProgress` en `GET /catalog`.
 `WORKER_URL` es obligatorio en produccion; no se usa un worker publico de
 respaldo porque podria ocultar una configuracion incorrecta.
 
+La sincronizacion protege el ultimo dato valido: una corrida vacia o una caida
+masiva por debajo del 20% de un catalogo previo grande no reemplaza el snapshot.
+En ese caso `usingLastGoodSnapshot` queda activo y la web muestra la antiguedad
+real del catalogo conservado.
+
 Variables necesarias en produccion:
 
 ```bash
@@ -271,9 +294,9 @@ lista general de articulos para que el cron precargue mas productos y la
 importacion de Excel compare contra el snapshot, sin scraping por cada carga.
 
 La importacion conserva por separado el precio recibido en el Excel y el precio
-obtenido de Tokin/Arcor. Cuando Tokin aporta un match valido se usa como precio
-propio prioritario, pero ambos valores y su diferencia quedan visibles en la UI
-y en el XLSX exportado.
+obtenido de Tokin/Arcor. El Excel tiene prioridad; Tokin se usa como fallback
+cuando el Excel no trae precio. Ambos valores, el precio seleccionado y el
+motivo de seleccion quedan versionados en el historial.
 
 ### Yaguar Chaco
 
@@ -423,6 +446,8 @@ AI_MATCHING_TIMEOUT_MS=6000
 - `worker/data/catalog.json` queda como fallback local/desarrollo; no se debe editar a mano porque se regenera desde las fuentes.
 - Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
 - Las cargas nuevas guardan dentro de `price_list_run_items.source_prices` un objeto JSON versionado con precios de competencia, `Precio Excel`, `Precio Tokin/Arcor` y dimensiones del articulo. Las filas antiguas guardadas como array siguen siendo compatibles.
+- Una carga sin ningun precio propio de Excel/Tokin no se guarda para evolucion. Las cargas parciales se guardan como borrador y registran cobertura propia en `price_list_runs.metadata`.
+- Las cargas antiguas sin detalle propio pueden archivarse desde Historial; se cambia su estado a `archived` sin eliminar filas.
 - No hace falta una migracion adicional para esta separacion porque `source_prices` ya es `jsonb`. Solo las cargas guardadas despues de este cambio pueden reconstruir ambos precios; las anteriores se muestran como `Propio historico` cuando el origen no se puede determinar.
 - Las sesiones privadas y snapshots por fuente usan Supabase desde el worker cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
 - Antes de usar el modo offline persistido en produccion, aplicar las migraciones `supabase/migrations/20260701213000_source_sessions.sql` y `supabase/migrations/20260707123000_catalog_snapshots.sql`.

@@ -26,6 +26,7 @@ export type HistoryItemAnalysis = PriceListDecisionAnalysis & {
   tokinPrice: number | null;
   selectedOwnPrice: number | null;
   selectedOwnPriceLabel: string;
+  ownPriceWasStored: boolean;
   bestWholesale: PriceListSourcePrice | null;
   bestRetail: PriceListSourcePrice | null;
 };
@@ -42,7 +43,20 @@ export type HistoryDecisionSummary = {
 
 export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis {
   const result = buildResult(item);
-  const analysis = analyzePriceListDecision(result);
+  const baseAnalysis = analyzePriceListDecision(result);
+  const ownPriceWasStored =
+    item.ownPriceSnapshotStatus !== "not_stored_legacy";
+  const analysis =
+    !ownPriceWasStored && !item.currentPrice
+      ? {
+          ...baseAnalysis,
+          label: "Precio propio no guardado",
+          action: "Generar una nueva carga",
+          helper:
+            "Esta carga anterior no guardo las referencias de Excel y Tokin.",
+          tone: "neutral" as const,
+        }
+      : baseAnalysis;
 
   return {
     ...analysis,
@@ -52,6 +66,7 @@ export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis 
     selectedOwnPrice:
       item.ownPrice?.selectedPrice ?? normalizeOptionalNumber(item.currentPrice),
     selectedOwnPriceLabel: getStoredOwnPriceLabel(item),
+    ownPriceWasStored,
     bestWholesale:
       getBestPriceListSourceByType(result, "mayorista") ?? null,
     bestRetail: getBestPriceListSourceByType(result, "minorista") ?? null,
@@ -184,6 +199,13 @@ function getStoredOwnPriceLabel(item: PriceListRunItem) {
 
   if (item.ownPrice?.selectedSource === "excel") {
     return "Excel";
+  }
+
+  if (
+    item.ownPriceSnapshotStatus === "not_stored_legacy" &&
+    !item.currentPrice
+  ) {
+    return "No guardado en esta carga";
   }
 
   return item.currentPrice ? "Propio histórico" : "Sin precio propio";

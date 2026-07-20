@@ -241,18 +241,25 @@ export const scrapingSources: ScrapingSource[] = [
     disabledReason: carrefourComercianteDisabledReason,
   },
   {
-    id: "check-chek-mayorista",
-    storeName: "Check / Chek",
+    id: "cheek-resistencia-revista",
+    storeName: "Cheek S.A. Resistencia",
     storeType: "mayorista",
-    city: "NEA",
-    dataOrigin: "Fuente mayorista esperada para tablero competitivo",
-    sourceScope: "NEA",
-    searchUrlTemplate: "not-configured:check-chek",
+    city: "Resistencia, Chaco",
+    sourceUrl: "https://cheeksa.com.ar/",
+    dataOrigin:
+      "Revista digital oficial de ofertas de Cheek S.A.; precios publicados por el supermercado mayorista",
+    sourceScope: "NEA: sucursal Resistencia, Ruta 11 km 1007,2",
+    sourceKind: "cheek_magazine_pdf",
+    searchUrlTemplate: "https://cheeksa.com.ar/",
     requiresJavascript: false,
-    enabled: false,
-    disabledKind: "not_configured",
-    disabledReason:
-      "Fuente esperada para decision de pricing mayorista; falta identificar fuente real, catalogo o credenciales.",
+    catalogSearchMode: "full_page",
+    catalogSnapshotStrategy: "replace",
+    maxCards: 400,
+    enabled: config.cheek.enabled,
+    disabledKind: "no_public_prices",
+    disabledReason: config.cheek.enabled
+      ? undefined
+      : "Fuente Cheek deshabilitada por CHEEK_ENABLED=false.",
   },
   {
     id: "vital-online",

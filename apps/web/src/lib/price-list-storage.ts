@@ -4,7 +4,8 @@ import type {
   PriceListSourcePrice,
 } from "@/types/search";
 
-const STORAGE_VERSION = 2;
+export const PRICE_LIST_STORAGE_VERSION = 3;
+const SUPPORTED_STORAGE_VERSIONS = new Set([2, PRICE_LIST_STORAGE_VERSION]);
 
 export type StoredPriceListDimensions = Pick<
   PriceListInputItem,
@@ -28,9 +29,9 @@ export function serializeStoredPriceListDetail({
   input: PriceListInputItem;
 }) {
   return {
-    version: STORAGE_VERSION,
+    version: PRICE_LIST_STORAGE_VERSION,
     sourcePrices: sourcePrices.map(serializeSourcePrice),
-    ownPrice: ownPrice ?? null,
+    ownPrice: ownPrice ? serializeOwnPrice(ownPrice) : null,
     dimensions: {
       business: input.business ?? null,
       segment: input.segment ?? null,
@@ -38,6 +39,21 @@ export function serializeStoredPriceListDetail({
       line: input.line ?? null,
       uxb: input.uxb ?? null,
     },
+  };
+}
+
+function serializeOwnPrice(ownPrice: PriceListOwnPrice) {
+  return {
+    ...ownPrice,
+    selectionReason:
+      ownPrice.selectionReason ??
+      (ownPrice.excelPrice
+        ? ownPrice.tokinPrice
+          ? "excel_priority"
+          : "excel_only"
+        : ownPrice.tokinPrice
+          ? "tokin_fallback"
+          : "missing"),
   };
 }
 
@@ -66,7 +82,9 @@ export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetai
     sourcePrices: parseSourcePrices(payload.sourcePrices),
     ownPrice: parseOwnPrice(payload.ownPrice),
     dimensions: parseDimensions(payload.dimensions),
-    isLegacy: payload.version !== STORAGE_VERSION,
+    isLegacy:
+      typeof payload.version !== "number" ||
+      !SUPPORTED_STORAGE_VERSIONS.has(payload.version),
   };
 }
 
@@ -108,6 +126,11 @@ function parseOwnPrice(value: unknown): PriceListOwnPrice | null {
     ownPrice.selectedSource === "tokin" || ownPrice.selectedSource === "excel"
       ? ownPrice.selectedSource
       : null;
+  const selectionReason = parseSelectionReason(
+    ownPrice.selectionReason,
+    excelPrice,
+    tokinPrice,
+  );
 
   if (!excelPrice && !tokinPrice && !selectedPrice) {
     return null;
@@ -118,12 +141,34 @@ function parseOwnPrice(value: unknown): PriceListOwnPrice | null {
     tokinPrice,
     selectedPrice,
     selectedSource,
+    selectionReason,
     excelVsTokinGapRatio:
       typeof ownPrice.excelVsTokinGapRatio === "number" &&
       Number.isFinite(ownPrice.excelVsTokinGapRatio)
         ? ownPrice.excelVsTokinGapRatio
         : null,
   };
+}
+
+function parseSelectionReason(
+  value: unknown,
+  excelPrice: number | null,
+  tokinPrice: number | null,
+) {
+  if (
+    value === "excel_priority" ||
+    value === "excel_only" ||
+    value === "tokin_fallback" ||
+    value === "missing"
+  ) {
+    return value;
+  }
+
+  if (excelPrice) {
+    return tokinPrice ? "excel_priority" : "excel_only";
+  }
+
+  return tokinPrice ? "tokin_fallback" : "missing";
 }
 
 function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
