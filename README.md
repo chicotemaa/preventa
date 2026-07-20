@@ -451,4 +451,5 @@ AI_MATCHING_TIMEOUT_MS=6000
 - No hace falta una migracion adicional para esta separacion porque `source_prices` ya es `jsonb`. Solo las cargas guardadas despues de este cambio pueden reconstruir ambos precios; las anteriores se muestran como `Propio historico` cuando el origen no se puede determinar.
 - Las sesiones privadas y snapshots por fuente usan Supabase desde el worker cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
 - Antes de usar el modo offline persistido en produccion, aplicar las migraciones `supabase/migrations/20260701213000_source_sessions.sql` y `supabase/migrations/20260707123000_catalog_snapshots.sql`.
+- Para confirmar o rechazar equivalencias desde **Revisiones** y reutilizarlas en importaciones futuras, aplicar tambien `supabase/migrations/20260720193000_product_match_overrides.sql`.
 - Los CSV reales de listas externas pueden cargarse en `worker/data/imports/*.csv`; los `.example.csv` no se cargan.

@@ -51,6 +51,12 @@ import { config } from "./config.js";
 import { loadCatalogSearchSeedTerms } from "./catalog-seeds.js";
 import { shouldKeepLastGoodCatalog } from "./catalog-snapshot-policy.js";
 import { buildPriceListOwnPrice } from "./price-list-own-price.js";
+import {
+  getItemMatchOverrides,
+  getProductOverrideStatus,
+  loadProductMatchOverrides,
+  type ProductMatchOverride,
+} from "./match-overrides.js";
 import type {
   CatalogMetadata,
   CatalogSnapshot,
@@ -661,10 +667,11 @@ export async function matchPriceListItems(
   items: PriceListInputItem[],
 ): Promise<PriceListResponse> {
   const startedAt = Date.now();
+  const matchOverrides = await loadProductMatchOverrides();
   const results = await mapWithConcurrency(
     items,
     4,
-    matchPriceListItemWithDirectAguiar,
+    (item) => matchPriceListItemWithDirectAguiar(item, matchOverrides),
   );
   const matchedCount = results.filter((result) => result.status === "matched").length;
 
@@ -682,8 +689,10 @@ export async function matchPriceListItems(
 
 async function matchPriceListItemWithDirectAguiar(
   item: PriceListInputItem,
+  matchOverrides: ProductMatchOverride[],
 ): Promise<PriceListItemResult> {
-  const catalogResult = matchPriceListItem(item);
+  const itemOverrides = getItemMatchOverrides(item, matchOverrides);
+  const catalogResult = matchPriceListItem(item, itemOverrides);
 
   if (normalizeOptionalPrice(catalogResult.ownPrice?.tokinPrice)) {
     return catalogResult;
@@ -697,6 +706,7 @@ async function matchPriceListItemWithDirectAguiar(
   const aguiarSourcePrice = await findDirectAguiarSourcePrice(
     item,
     expectedBrand,
+    itemOverrides,
   );
 
   if (!aguiarSourcePrice.sourcePrice) {
@@ -1801,7 +1811,10 @@ function slugifyCategoryName(value: string) {
   return normalizeProductName(value).replace(/\s+/g, "-") || "general";
 }
 
-function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
+function matchPriceListItem(
+  item: PriceListInputItem,
+  matchOverrides: ProductMatchOverride[],
+): PriceListItemResult {
   const expectedBrand = getExpectedBrandForPriceListItem(item);
   const diagnostics = createPriceListDiagnostics(expectedBrand);
   const excelPrice = normalizeOptionalPrice(item.currentPrice);
@@ -1813,6 +1826,7 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
       currentCatalog.products,
       expectedBrand,
       item,
+      { matchOverrides },
     );
     diagnostics.queriesTried.push(query);
     diagnostics.queryDiagnostics.push(analysis.diagnostic);
@@ -1942,6 +1956,7 @@ function matchPriceListItem(item: PriceListInputItem): PriceListItemResult {
 async function findDirectAguiarSourcePrice(
   item: PriceListInputItem,
   expectedBrand?: TargetBrand,
+  matchOverrides: ProductMatchOverride[] = [],
 ) {
   const source = scrapingSources.find(
     (scrapingSource) => scrapingSource.id === AGUIAR_TOKIN_SOURCE_ID,
@@ -2007,7 +2022,10 @@ async function findDirectAguiarSourcePrice(
       result.results,
       expectedBrand,
       item,
-      { sourceResultsCount: result.results.length },
+      {
+        sourceResultsCount: result.results.length,
+        matchOverrides,
+      },
     );
     diagnostics.queryDiagnostics.push(analysis.diagnostic);
     const sourcePrice = summarizeSourcePrices(analysis.matches).find(
@@ -2701,19 +2719,55 @@ function analyzeProductMatches(
   products: ProductSearchResult[],
   expectedBrand?: TargetBrand,
   item?: PriceListInputItem,
-  options: { sourceResultsCount?: number } = {},
+  options: {
+    sourceResultsCount?: number;
+    matchOverrides?: ProductMatchOverride[];
+  } = {},
 ) {
   const itemPresentationText = item
     ? [item.description, item.rubro].filter(Boolean).join(" ")
     : null;
   const queryIdentifier = cleanIdentifier(query);
-  const searchableProducts = getSearchableProductsForQuery(query, products);
+  const searchableProducts = options.matchOverrides?.length
+    ? products
+    : getSearchableProductsForQuery(query, products);
   const matches: ProductSearchResult[] = [];
   const rejected: PriceListRejectedCandidate[] = [];
   let candidatesCount = 0;
   let rejectedCount = 0;
 
   for (const product of searchableProducts) {
+    const overrideStatus = getProductOverrideStatus(
+      product,
+      options.matchOverrides ?? [],
+    );
+    const sourceHasConfirmedOverride = (options.matchOverrides ?? []).some(
+      (override) =>
+        override.sourceId === product.sourceId &&
+        override.status === "confirmed",
+    );
+
+    if (
+      overrideStatus === "rejected" ||
+      (sourceHasConfirmedOverride && overrideStatus !== "confirmed")
+    ) {
+      rejectedCount += 1;
+      pushRejectedCandidate(
+        rejected,
+        product,
+        "manual_rejected",
+        100,
+        0,
+      );
+      continue;
+    }
+
+    if (overrideStatus === "confirmed") {
+      candidatesCount += 1;
+      matches.push({ ...product, confidenceScore: 100 });
+      continue;
+    }
+
     const exactIdentifierMatch =
       Boolean(queryIdentifier) &&
       getProductIdentifiers(product).some(

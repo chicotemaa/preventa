@@ -7,6 +7,7 @@ const navItems = [
   { href: "/", label: "Categorías" },
   { href: "/busqueda-general", label: "Búsqueda general" },
   { href: "/importacion", label: "Importación" },
+  { href: "/revisiones", label: "Revisiones" },
   { href: "/evolucion", label: "Evolución" },
   { href: "/historial", label: "Historial" },
   { href: "/configuracion", label: "Configuración" },

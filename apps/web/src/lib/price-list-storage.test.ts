@@ -26,6 +26,20 @@ test("conserva Excel, Tokin y clasificacion en el historial nuevo", () => {
       line: "Chocolate",
       uxb: "24",
     },
+    diagnostics: {
+      expectedBrand: "Arcor",
+      queriesTried: ["alfajor arcor"],
+      matchedQuery: null,
+      queryDiagnostics: [
+        {
+          query: "alfajor arcor",
+          candidatesCount: 1,
+          matchesCount: 0,
+          rejectedCount: 1,
+          topRejected: [],
+        },
+      ],
+    },
   });
   const parsed = parseStoredPriceListDetail(serialized);
 
@@ -36,6 +50,7 @@ test("conserva Excel, Tokin y clasificacion en el historial nuevo", () => {
   assert.equal(parsed.dimensions.subrubro, "Alfajores triples");
   assert.equal(parsed.dimensions.uxb, "24");
   assert.equal(parsed.sourcePrices[0]?.storeType, "mayorista");
+  assert.deepEqual(parsed.diagnostics?.queriesTried, ["alfajor arcor"]);
 });
 
 test("sigue leyendo source_prices historicos guardados como array", () => {
@@ -43,6 +58,7 @@ test("sigue leyendo source_prices historicos guardados como array", () => {
 
   assert.equal(parsed.isLegacy, true);
   assert.equal(parsed.ownPrice, null);
+  assert.equal(parsed.diagnostics, null);
   assert.equal(parsed.sourcePrices.length, 1);
   assert.equal(parsed.sourcePrices[0]?.storeName, "Maxiconsumo Chaco");
 });

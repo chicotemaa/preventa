@@ -263,6 +263,7 @@ export type PriceListRejectReason =
   | "brand_mismatch"
   | "score_below_threshold"
   | "presentation_or_flavor_mismatch"
+  | "manual_rejected"
   | "no_candidates";
 
 export type PriceListRejectedCandidate = {
@@ -418,6 +419,7 @@ export type PriceListRunItem = {
   ean13Bu: string | null;
   currentPrice: number | null;
   ownPrice: PriceListOwnPrice | null;
+  matchDiagnostics?: PriceListMatchDiagnostics | null;
   ownPriceSnapshotStatus?: "stored" | "not_stored_legacy";
   currentCost: number | null;
   matchStatus: "matched" | "not_found";
@@ -451,6 +453,38 @@ export type PriceListHistoryResponse = {
 export type PriceListRunDetailResponse = {
   enabled: boolean;
   detail: PriceListRunDetail | null;
+  errorMessage?: string;
+};
+
+export type ProductMatchOverride = {
+  id: string;
+  inputFingerprint: string;
+  inputDescription: string | null;
+  inputCode: string | null;
+  inputEan13Di: string | null;
+  inputEan13Bu: string | null;
+  sourceId: string;
+  storeName: string;
+  productFingerprint: string;
+  productName: string;
+  productUrl: string | null;
+  status: "confirmed" | "rejected";
+  updatedAt: string;
+};
+
+export type ProductMatchOverridesResponse = {
+  enabled: boolean;
+  overrides: ProductMatchOverride[];
+  migrationRequired?: boolean;
+  errorMessage?: string;
+};
+
+export type PriceListReviewResponse = {
+  enabled: boolean;
+  currentDetail: PriceListRunDetail | null;
+  previousDetail: PriceListRunDetail | null;
+  overrides: ProductMatchOverride[];
+  migrationRequired?: boolean;
   errorMessage?: string;
 };
 

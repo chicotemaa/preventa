@@ -302,6 +302,7 @@ function mapItemRow(row: ItemRow): PriceListRunItem {
     ean13Bu: row.ean13_bu,
     currentPrice,
     ownPrice: storedDetail.ownPrice,
+    matchDiagnostics: storedDetail.diagnostics,
     ownPriceSnapshotStatus:
       storedDetail.isLegacy && !storedDetail.ownPrice && !currentPrice
         ? "not_stored_legacy"

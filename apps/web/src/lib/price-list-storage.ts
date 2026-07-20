@@ -1,11 +1,12 @@
 import type {
   PriceListInputItem,
+  PriceListMatchDiagnostics,
   PriceListOwnPrice,
   PriceListSourcePrice,
 } from "@/types/search";
 
-export const PRICE_LIST_STORAGE_VERSION = 3;
-const SUPPORTED_STORAGE_VERSIONS = new Set([2, PRICE_LIST_STORAGE_VERSION]);
+export const PRICE_LIST_STORAGE_VERSION = 4;
+const SUPPORTED_STORAGE_VERSIONS = new Set([2, 3, PRICE_LIST_STORAGE_VERSION]);
 
 export type StoredPriceListDimensions = Pick<
   PriceListInputItem,
@@ -15,6 +16,7 @@ export type StoredPriceListDimensions = Pick<
 export type StoredPriceListDetail = {
   sourcePrices: PriceListSourcePrice[];
   ownPrice: PriceListOwnPrice | null;
+  diagnostics: PriceListMatchDiagnostics | null;
   dimensions: StoredPriceListDimensions;
   isLegacy: boolean;
 };
@@ -22,16 +24,19 @@ export type StoredPriceListDetail = {
 export function serializeStoredPriceListDetail({
   sourcePrices,
   ownPrice,
+  diagnostics,
   input,
 }: {
   sourcePrices: PriceListSourcePrice[];
   ownPrice?: PriceListOwnPrice;
+  diagnostics?: PriceListMatchDiagnostics;
   input: PriceListInputItem;
 }) {
   return {
     version: PRICE_LIST_STORAGE_VERSION,
     sourcePrices: sourcePrices.map(serializeSourcePrice),
     ownPrice: ownPrice ? serializeOwnPrice(ownPrice) : null,
+    diagnostics: diagnostics ?? null,
     dimensions: {
       business: input.business ?? null,
       segment: input.segment ?? null,
@@ -62,6 +67,7 @@ export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetai
     return {
       sourcePrices: parseSourcePrices(value),
       ownPrice: null,
+      diagnostics: null,
       dimensions: {},
       isLegacy: true,
     };
@@ -75,12 +81,14 @@ export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetai
     version?: unknown;
     sourcePrices?: unknown;
     ownPrice?: unknown;
+    diagnostics?: unknown;
     dimensions?: unknown;
   };
 
   return {
     sourcePrices: parseSourcePrices(payload.sourcePrices),
     ownPrice: parseOwnPrice(payload.ownPrice),
+    diagnostics: parseDiagnostics(payload.diagnostics),
     dimensions: parseDimensions(payload.dimensions),
     isLegacy:
       typeof payload.version !== "number" ||
@@ -92,9 +100,27 @@ function emptyStoredDetail(): StoredPriceListDetail {
   return {
     sourcePrices: [],
     ownPrice: null,
+    diagnostics: null,
     dimensions: {},
     isLegacy: true,
   };
+}
+
+function parseDiagnostics(value: unknown): PriceListMatchDiagnostics | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const diagnostics = value as Partial<PriceListMatchDiagnostics>;
+
+  if (
+    !Array.isArray(diagnostics.queriesTried) ||
+    !Array.isArray(diagnostics.queryDiagnostics)
+  ) {
+    return null;
+  }
+
+  return diagnostics as PriceListMatchDiagnostics;
 }
 
 function parseDimensions(value: unknown): StoredPriceListDimensions {

@@ -4,6 +4,7 @@ import type {
   StoredSessionRecord,
 } from "./source-session-store.js";
 import type { CatalogSnapshot, SourceSearchStatus, StoreType } from "./types.js";
+import type { ProductMatchOverride } from "./match-overrides.js";
 
 type SourceStoreMode = "auto" | "supabase" | "file";
 
@@ -44,6 +45,21 @@ type SupabaseCatalogSnapshotRow = {
   duration_ms: number | null;
   products_count: number;
   snapshot: CatalogSnapshot;
+};
+
+type SupabaseProductMatchOverrideRow = {
+  id: string;
+  input_fingerprint: string;
+  input_description: string | null;
+  input_code: string | null;
+  input_ean13_di: string | null;
+  input_ean13_bu: string | null;
+  source_id: string;
+  product_fingerprint: string;
+  product_name: string;
+  product_url: string | null;
+  status: "confirmed" | "rejected";
+  updated_at: string;
 };
 
 export function shouldUseSupabaseSourceStore() {
@@ -143,6 +159,26 @@ export async function upsertCurrentCatalogSnapshotToSupabase(
   });
 }
 
+export async function selectProductMatchOverridesFromSupabase() {
+  if (!isSupabaseSourceStoreConfigured()) {
+    return [];
+  }
+
+  const rows = await requestSupabase<SupabaseProductMatchOverrideRow[]>(
+    "product_match_overrides",
+    {
+      method: "GET",
+      searchParams: {
+        select:
+          "id,input_fingerprint,input_description,input_code,input_ean13_di,input_ean13_bu,source_id,product_fingerprint,product_name,product_url,status,updated_at",
+        order: "updated_at.desc",
+      },
+    },
+  );
+
+  return rows.map(mapProductMatchOverrideRow);
+}
+
 function mapSessionRowToRecord(
   row: SupabaseSourceSessionRow,
 ): StoredSessionRecord {
@@ -216,6 +252,25 @@ function mapSnapshotRecordToRow(
     visible_price_products_count: snapshot.visiblePriceProductsCount,
     errors: snapshot.errors,
     products: snapshot.products,
+  };
+}
+
+function mapProductMatchOverrideRow(
+  row: SupabaseProductMatchOverrideRow,
+): ProductMatchOverride {
+  return {
+    id: row.id,
+    inputFingerprint: row.input_fingerprint,
+    inputDescription: row.input_description,
+    inputCode: row.input_code,
+    inputEan13Di: row.input_ean13_di,
+    inputEan13Bu: row.input_ean13_bu,
+    sourceId: row.source_id,
+    productFingerprint: row.product_fingerprint,
+    productName: row.product_name,
+    productUrl: row.product_url,
+    status: row.status,
+    updatedAt: row.updated_at,
   };
 }
 

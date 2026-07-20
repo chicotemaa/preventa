@@ -459,6 +459,11 @@ consolidado deben guardarse en Supabase. Aplicar las migraciones
 y `SOURCE_SESSION_SECRET` en el worker. El storage local queda solo como fallback
 de desarrollo.
 
+Para guardar decisiones manuales de equivalencia desde **Revisiones**, aplicar
+ademas `supabase/migrations/20260720193000_product_match_overrides.sql`. Sin esa
+tabla el tablero sigue siendo consultable, pero los botones Confirmar y Rechazar
+quedan deshabilitados.
+
 ### Sincronizacion programada de catalogo
 
 La app esta preparada para consultar categorias desde el catalogo precargado en

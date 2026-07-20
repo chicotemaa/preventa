@@ -18,6 +18,12 @@ type UpdateOptions = {
   filters?: Record<string, string | number | boolean>;
 };
 
+type UpsertOptions = {
+  onConflict: string;
+  returning?: "minimal" | "representation";
+  select?: string;
+};
+
 export function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && getSupabaseServerKey());
 }
@@ -48,6 +54,51 @@ export async function insertSupabaseRows<T>(
     body: JSON.stringify(rows),
     cache: "no-store",
   });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      errorText || `Supabase respondio con estado ${response.status}.`,
+    );
+  }
+
+  if (options.returning !== "representation") {
+    return null as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+export async function upsertSupabaseRows<T>(
+  table: string,
+  rows: unknown,
+  options: UpsertOptions,
+) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serverKey = getSupabaseServerKey();
+
+  if (!supabaseUrl || !serverKey) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  const normalizedUrl = supabaseUrl.replace(/\/$/, "");
+  const params = new URLSearchParams({ on_conflict: options.onConflict });
+
+  if (options.select) {
+    params.set("select", options.select);
+  }
+
+  const response = await fetch(
+    `${normalizedUrl}/rest/v1/${table}?${params.toString()}`,
+    {
+      method: "POST",
+      headers: buildSupabaseHeaders(serverKey, {
+        prefer: `resolution=merge-duplicates,return=${options.returning ?? "minimal"}`,
+      }),
+      body: JSON.stringify(rows),
+      cache: "no-store",
+    },
+  );
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");

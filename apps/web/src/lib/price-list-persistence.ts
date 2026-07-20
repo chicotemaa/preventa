@@ -204,6 +204,7 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
     source_prices: serializeStoredPriceListDetail({
       sourcePrices: result.sourcePrices,
       ownPrice: result.ownPrice,
+      diagnostics: result.diagnostics,
       input: result.input,
     }),
   };

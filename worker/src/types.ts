@@ -158,6 +158,7 @@ export type PriceListRejectReason =
   | "brand_mismatch"
   | "score_below_threshold"
   | "presentation_or_flavor_mismatch"
+  | "manual_rejected"
   | "no_candidates";
 
 export type PriceListRejectedCandidate = {
