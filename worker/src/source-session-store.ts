@@ -339,16 +339,25 @@ export async function getSourceCatalogSnapshotSummaries() {
   );
 }
 
-export async function getStoredSourceCatalogProducts() {
+export async function getStoredSourceCatalogSnapshots() {
   const store = await readSnapshotStore();
-  return Object.values(store.snapshots).flatMap((snapshot) => snapshot.products);
+  return Object.values(store.snapshots);
 }
 
-export async function getStoredSourceCatalogStatuses(): Promise<
-  SourceSearchStatus[]
-> {
-  const store = await readSnapshotStore();
-  const statuses = Object.values(store.snapshots).map((snapshot) => ({
+export async function getStoredSourceCatalogProducts(
+  snapshots?: SourceCatalogSnapshot[],
+) {
+  const storedSnapshots =
+    snapshots ?? (await getStoredSourceCatalogSnapshots());
+  return storedSnapshots.flatMap((snapshot) => snapshot.products);
+}
+
+export async function getStoredSourceCatalogStatuses(
+  snapshots?: SourceCatalogSnapshot[],
+): Promise<SourceSearchStatus[]> {
+  const storedSnapshots =
+    snapshots ?? (await getStoredSourceCatalogSnapshots());
+  const statuses = storedSnapshots.map((snapshot) => ({
     sourceId: snapshot.sourceId,
     storeName: snapshot.storeName,
     storeType: snapshot.storeType,

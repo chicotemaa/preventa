@@ -29,5 +29,5 @@ test("rota el bloque de busqueda una vez por dia", () => {
 });
 
 test("usa un bloque diario compatible con el limite del cron", () => {
-  assert.equal(CATALOG_SYNC_MAX_TERMS, 12);
+  assert.equal(CATALOG_SYNC_MAX_TERMS, 3);
 });

@@ -36,6 +36,7 @@ import { compareSourcePriority } from "./source-priority.js";
 import {
   getSourceCatalogSnapshot,
   getStoredSourceCatalogProducts,
+  getStoredSourceCatalogSnapshots,
   getStoredSourceCatalogStatuses,
   saveSourceCatalogSnapshot,
 } from "./source-session-store.js";
@@ -559,10 +560,17 @@ export async function searchCatalog(query: string) {
 }
 
 export async function reloadStoredSourceCatalogs() {
-  await backfillSourceSnapshotsFromCurrentCatalog();
+  let storedSnapshots = await getStoredSourceCatalogSnapshots();
+  const snapshotsAdded = await backfillSourceSnapshotsFromCurrentCatalog(
+    storedSnapshots,
+  );
 
-  const storedProducts = await getStoredSourceCatalogProducts();
-  const storedStatuses = await getStoredSourceCatalogStatuses();
+  if (snapshotsAdded) {
+    storedSnapshots = await getStoredSourceCatalogSnapshots();
+  }
+
+  const storedProducts = await getStoredSourceCatalogProducts(storedSnapshots);
+  const storedStatuses = await getStoredSourceCatalogStatuses(storedSnapshots);
 
   if (storedProducts.length === 0 && storedStatuses.length === 0) {
     return currentCatalog;
@@ -588,11 +596,21 @@ export async function reloadStoredSourceCatalogs() {
   return currentCatalog;
 }
 
-async function backfillSourceSnapshotsFromCurrentCatalog() {
+async function backfillSourceSnapshotsFromCurrentCatalog(
+  storedSnapshots: Awaited<ReturnType<typeof getStoredSourceCatalogSnapshots>>,
+) {
   if (currentCatalog.products.length === 0) {
-    return;
+    return false;
   }
 
+  const populatedSourceIds = new Set(
+    storedSnapshots
+      .filter((snapshot) => snapshot.products.length > 0)
+      .map((snapshot) => snapshot.sourceId),
+  );
+  const snapshotsBySource = new Map(
+    storedSnapshots.map((snapshot) => [snapshot.sourceId, snapshot]),
+  );
   const productsBySource = new Map<string, ProductSearchResult[]>();
 
   for (const product of currentCatalog.products) {
@@ -606,13 +624,14 @@ async function backfillSourceSnapshotsFromCurrentCatalog() {
     ]);
   }
 
-  for (const [sourceId, products] of productsBySource.entries()) {
-    const currentSnapshot = await getSourceCatalogSnapshot(sourceId);
+  let snapshotsAdded = false;
 
-    if (currentSnapshot && currentSnapshot.products.length > 0) {
+  for (const [sourceId, products] of productsBySource.entries()) {
+    if (populatedSourceIds.has(sourceId)) {
       continue;
     }
 
+    const currentSnapshot = snapshotsBySource.get(sourceId);
     const source = scrapingSources.find((candidate) => candidate.id === sourceId);
     const firstProduct = products[0];
     const dedupedProducts = dedupeCatalogProducts(products);
@@ -638,7 +657,10 @@ async function backfillSourceSnapshotsFromCurrentCatalog() {
       errors: [],
       products: dedupedProducts,
     });
+    snapshotsAdded = true;
   }
+
+  return snapshotsAdded;
 }
 
 export async function searchCategory(
