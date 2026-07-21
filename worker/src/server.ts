@@ -11,6 +11,7 @@ import {
   getCatalogSnapshot,
   loadCatalogFromDisk,
   matchPriceListItems,
+  rebuildCatalogFromStoredSources,
   reloadStoredSourceCatalogs,
   searchCategory,
   searchCatalog,
@@ -45,6 +46,8 @@ const categorySearchRequestSchema = searchRequestSchema.extend({
 const catalogSourceSyncRequestSchema = z.object({
   sourceId: z.string().trim().min(2).max(120),
   maxTerms: z.number().int().positive().max(240).optional(),
+  offset: z.number().int().nonnegative().max(10_000_000).optional(),
+  deferCatalogRebuild: z.boolean().optional(),
 });
 
 const carrefourComercianteSessionValidationSchema = z.object({
@@ -212,6 +215,7 @@ const server = http.createServer(async (request, response) => {
         catalogSync: "POST /catalog/sync",
         catalogSyncBackground: "POST /catalog/sync/background",
         catalogSourceSync: "POST /catalog/sync/source",
+        catalogRebuild: "POST /catalog/rebuild",
         liveSearch: config.liveSearchEnabled
           ? "POST /search"
           : "disabled; set ENABLE_LIVE_SEARCH=true to enable",
@@ -285,8 +289,13 @@ const server = http.createServer(async (request, response) => {
 
     try {
       const body = await readJsonBody(request);
-      const { sourceId, maxTerms } = catalogSourceSyncRequestSchema.parse(body);
-      const result = await syncCatalogSource(sourceId, { maxTerms });
+      const { sourceId, maxTerms, offset, deferCatalogRebuild } =
+        catalogSourceSyncRequestSchema.parse(body);
+      const result = await syncCatalogSource(sourceId, {
+        maxTerms,
+        offset,
+        deferCatalogRebuild,
+      });
       sendJson(response, 200, { ok: true, ...result });
     } catch (error) {
       sendJson(response, 400, {
@@ -296,6 +305,21 @@ const server = http.createServer(async (request, response) => {
             : "No se pudo sincronizar la fuente.",
       });
     }
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/catalog/rebuild") {
+    if (!isAuthorizedCatalogSyncRequest(request)) {
+      sendJson(response, 401, { error: "No autorizado." });
+      return;
+    }
+
+    const snapshot = await rebuildCatalogFromStoredSources();
+    sendJson(response, 200, {
+      ok: true,
+      catalog: getCatalogMetadata(),
+      productsCount: snapshot.productsCount,
+    });
     return;
   }
 
@@ -377,6 +401,7 @@ const server = http.createServer(async (request, response) => {
         "POST /catalog/sync",
         "POST /catalog/sync/background",
         "POST /catalog/sync/source",
+        "POST /catalog/rebuild",
         "POST /sources/carrefour-comerciante/session/validate",
         "POST /sources/carrefour-comerciante/session/save",
         "POST /sources/carrefour-comerciante/session/login",

@@ -258,7 +258,7 @@ export async function saveSourceCatalogSnapshot(
     store.snapshots[snapshot.sourceId],
     snapshot,
   );
-  await writeSnapshotStore(store);
+  await writeSnapshotStore(store, snapshot.sourceId);
   return getSourceCatalogSnapshotSummary(snapshot.sourceId);
 }
 
@@ -465,8 +465,8 @@ async function readSnapshotStore(): Promise<SnapshotStoreFile> {
   }
 }
 
-async function writeSnapshotStore(store: SnapshotStoreFile) {
-  const wroteToSupabase = await writeSupabaseSnapshotStore(store);
+async function writeSnapshotStore(store: SnapshotStoreFile, sourceId: string) {
+  const wroteToSupabase = await writeSupabaseSnapshotStore(store, sourceId);
 
   if (wroteToSupabase) {
     return;
@@ -533,15 +533,22 @@ async function readSupabaseSnapshotStore(): Promise<SnapshotStoreFile | null> {
   }
 }
 
-async function writeSupabaseSnapshotStore(store: SnapshotStoreFile) {
+async function writeSupabaseSnapshotStore(
+  store: SnapshotStoreFile,
+  sourceId: string,
+) {
   if (!shouldUseSupabaseSourceStore()) {
     return false;
   }
 
   try {
-    await upsertSourceCatalogSnapshotsToSupabase(
-      Object.values(store.snapshots),
-    );
+    const snapshot = store.snapshots[sourceId];
+
+    if (!snapshot) {
+      return true;
+    }
+
+    await upsertSourceCatalogSnapshotsToSupabase([snapshot]);
     clearSupabaseStoreError("guardar snapshots");
     return true;
   } catch (error) {

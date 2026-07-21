@@ -103,6 +103,7 @@ Notas:
 - `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false` evita consultas directas a Tokin al evaluar listas importadas.
 - `CATALOG_SYNC_SEED_MAX_TERMS=160` limita cuantas semillas de `worker/data/catalog-search-seeds.txt` usa el cron diario.
 - `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
+- El cron diario no ejecuta `/catalog/sync` completo: sincroniza cada fuente en paralelo, procesa bloques rotativos de 80 terminos y consolida en Supabase los snapshots obtenidos. Asi conserva avances aunque una fuente falle o tarde demasiado.
 
 ## Correr localmente
 
@@ -289,6 +290,10 @@ CATALOG_SYNC_SEED_MAX_TERMS=160
 
 Operacion recomendada: dejar categorias y busqueda general en modo `catalog`;
 revisar `/health` o `/catalog` para confirmar `lastSyncedAt` despues del cron.
+El cron de Vercel corre a las `15:00 UTC` (`12:00` de Argentina) y llama a
+`/api/cron/catalog-sync`. Cada dia rota el bloque consultado para evitar el
+limite de duracion de Vercel; los resultados anteriores se conservan y el
+catalogo final se reconstruye desde los snapshots guardados por fuente.
 El archivo `worker/data/catalog-search-seeds.txt` agrega familias y lineas de la
 lista general de articulos para que el cron precargue mas productos y la
 importacion de Excel compare contra el snapshot, sin scraping por cada carga.

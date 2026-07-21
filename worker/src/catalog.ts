@@ -49,6 +49,11 @@ import { productIsInStock } from "./stock.js";
 import { getComparisonPrice, withUnitPricing } from "./unit-pricing.js";
 import { config } from "./config.js";
 import { loadCatalogSearchSeedTerms } from "./catalog-seeds.js";
+import {
+  buildCatalogSyncWindow,
+  withProcessedCatalogTerms,
+  type CatalogSyncWindow,
+} from "./catalog-sync-window.js";
 import { shouldKeepLastGoodCatalog } from "./catalog-snapshot-policy.js";
 import { buildPriceListOwnPrice } from "./price-list-own-price.js";
 import {
@@ -131,6 +136,7 @@ export type CatalogSourceSyncResult = {
   snapshot: Awaited<ReturnType<typeof saveSourceCatalogSnapshot>>;
   status: SourceSearchStatus;
   productsCount: number;
+  progress: ReturnType<typeof withProcessedCatalogTerms>;
 };
 
 export async function loadCatalogFromDisk() {
@@ -198,7 +204,11 @@ export function syncCatalogInBackground() {
 
 export async function syncCatalogSource(
   sourceId: string,
-  options: { maxTerms?: number } = {},
+  options: {
+    maxTerms?: number;
+    offset?: number;
+    deferCatalogRebuild?: boolean;
+  } = {},
 ): Promise<CatalogSourceSyncResult> {
   const source = scrapingSources.find((candidate) => candidate.id === sourceId);
 
@@ -208,6 +218,7 @@ export async function syncCatalogSource(
 
   const startedAt = Date.now();
   const syncedAt = new Date(startedAt).toISOString();
+  let syncWindow: CatalogSyncWindow = buildCatalogSyncWindow(0);
 
   if (source.enabled === false) {
     const status: SourceSearchStatus = {
@@ -241,13 +252,16 @@ export async function syncCatalogSource(
       products: [],
     });
 
-    await reloadStoredSourceCatalogs();
+    if (!options.deferCatalogRebuild) {
+      await reloadStoredSourceCatalogs();
+    }
 
     return {
       sourceId: source.id,
       snapshot,
       status,
       productsCount: 0,
+      progress: withProcessedCatalogTerms(syncWindow, 0),
     };
   }
 
@@ -261,10 +275,14 @@ export async function syncCatalogSource(
     const allSearchJobs = fullPageMode
       ? [{ kind: "full_page" as const, searchTerm: "", normalizedSearchTerm: "" }]
       : await buildSourceCatalogSearchJobs();
-    const searchJobs =
-      options.maxTerms && options.maxTerms > 0
-        ? allSearchJobs.slice(0, options.maxTerms)
-        : allSearchJobs;
+    syncWindow = buildCatalogSyncWindow(allSearchJobs.length, {
+      maxTerms: options.maxTerms,
+      offset: fullPageMode ? 0 : options.offset,
+    });
+    const searchJobs = allSearchJobs.slice(
+      syncWindow.offset,
+      syncWindow.offset + syncWindow.limit,
+    );
 
     for (const job of searchJobs) {
       throwIfCatalogSourceSyncTimedOut(startedAt);
@@ -315,15 +333,19 @@ export async function syncCatalogSource(
     const usingPreviousSnapshot =
       dedupedProducts.length === 0 &&
       Boolean(previousSnapshot && previousSnapshot.products.length > 0);
+    const shouldReplaceSnapshot =
+      source.catalogSnapshotStrategy === "replace" &&
+      syncWindow.complete &&
+      dedupedProducts.length > 0;
     const productsToPersist =
-      source.catalogSnapshotStrategy === "replace" && dedupedProducts.length > 0
+      shouldReplaceSnapshot
         ? dedupedProducts
         : [...(previousSnapshot?.products ?? []), ...dedupedProducts];
     const mergedProducts = dedupeCatalogProducts(productsToPersist).sort(
       (first, second) => getComparisonPrice(first) - getComparisonPrice(second),
     );
     const mergedQueries =
-      source.catalogSnapshotStrategy === "replace" && dedupedProducts.length > 0
+      shouldReplaceSnapshot
         ? [...new Set(queriesUsed.filter(Boolean))]
         : [
             ...new Set([
@@ -362,9 +384,11 @@ export async function syncCatalogSource(
       products: mergedProducts,
     });
 
-    await reloadStoredSourceCatalogs();
-    markCatalogUpdatedFromSourceSync(startedAt, usingPreviousSnapshot);
-    await persistCatalogIfWritable(currentCatalog);
+    if (!options.deferCatalogRebuild) {
+      await reloadStoredSourceCatalogs();
+      markCatalogUpdatedFromSourceSync(startedAt, usingPreviousSnapshot);
+      await persistCatalogIfWritable(currentCatalog);
+    }
 
     return {
       sourceId: source.id,
@@ -375,6 +399,7 @@ export async function syncCatalogSource(
         usingStoredSnapshot: usingPreviousSnapshot,
       },
       productsCount: mergedProducts.length,
+      progress: withProcessedCatalogTerms(syncWindow, queriesUsed.length),
     };
   } catch (error) {
     const errorMessage =
@@ -441,9 +466,11 @@ export async function syncCatalogSource(
       products: mergedProducts,
     });
 
-    await reloadStoredSourceCatalogs();
-    markCatalogUpdatedFromSourceSync(startedAt, usingPreviousSnapshot);
-    await persistCatalogIfWritable(currentCatalog);
+    if (!options.deferCatalogRebuild) {
+      await reloadStoredSourceCatalogs();
+      markCatalogUpdatedFromSourceSync(startedAt, usingPreviousSnapshot);
+      await persistCatalogIfWritable(currentCatalog);
+    }
 
     return {
       sourceId: source.id,
@@ -454,8 +481,37 @@ export async function syncCatalogSource(
         usingStoredSnapshot: usingPreviousSnapshot,
       },
       productsCount: mergedProducts.length,
+      progress: withProcessedCatalogTerms(syncWindow, queriesUsed.length),
     };
   }
+}
+
+export async function rebuildCatalogFromStoredSources() {
+  const startedAt = Date.now();
+
+  await reloadStoredSourceCatalogs();
+
+  const completedAt = new Date().toISOString();
+  currentCatalog = {
+    ...currentCatalog,
+    status: currentCatalog.productsCount > 0 ? "ready" : "empty",
+    lastSyncedAt:
+      currentCatalog.productsCount > 0
+        ? completedAt
+        : currentCatalog.lastSyncedAt,
+    lastSyncAttemptAt: completedAt,
+    usingLastGoodSnapshot: false,
+    syncStartedAt: null,
+    syncProgress: null,
+    durationMs: Date.now() - startedAt,
+    errorMessage:
+      currentCatalog.productsCount > 0
+        ? undefined
+        : "No hay snapshots de fuentes para consolidar.",
+  };
+
+  await persistCatalogIfWritable(currentCatalog);
+  return currentCatalog;
 }
 
 export async function searchCatalog(query: string) {

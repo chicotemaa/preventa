@@ -1,34 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { GET } from "@/app/api/cron/catalog-sync/route";
+import { CATALOG_SYNC_SOURCE_IDS } from "./catalog-sync-sources";
 
-test("el cron dispara la sincronizacion completa en background", async () => {
+test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
   const originalFetch = globalThis.fetch;
   const originalCronSecret = process.env.CRON_SECRET;
   const originalWorkerCronSecret = process.env.WORKER_CRON_SECRET;
   const originalWorkerUrl = process.env.WORKER_URL;
-  let requestedUrl = "";
+  const requestedUrls: string[] = [];
+  const sourceBodies: unknown[] = [];
 
   process.env.CRON_SECRET = "cron-test-secret";
   process.env.WORKER_CRON_SECRET = "worker-test-secret";
   process.env.WORKER_URL = "https://worker.example.test";
   globalThis.fetch = async (input, init) => {
-    requestedUrl = String(input);
+    const requestedUrl = String(input);
+    requestedUrls.push(requestedUrl);
     assert.equal(init?.method, "POST");
     assert.equal(
       new Headers(init?.headers).get("authorization"),
       "Bearer worker-test-secret",
     );
 
-    return Response.json(
-      {
+    if (requestedUrl.endsWith("/catalog/rebuild")) {
+      return Response.json({
         ok: true,
-        started: true,
-        alreadyRunning: false,
-        catalog: { status: "syncing" },
-      },
-      { status: 202 },
-    );
+        catalog: { status: "ready", productsCount: 120 },
+      });
+    }
+
+    sourceBodies.push(JSON.parse(String(init?.body)));
+    return Response.json({
+      ok: true,
+      productsCount: 10,
+      progress: { processedTerms: 80 },
+    });
   };
 
   try {
@@ -39,15 +46,29 @@ test("el cron dispara la sincronizacion completa en background", async () => {
     );
     const body = (await response.json()) as {
       ok: boolean;
-      started: boolean;
+      successfulSources: number;
+      catalog: { status: string };
     };
 
-    assert.equal(response.status, 202);
+    assert.equal(response.status, 200);
     assert.equal(body.ok, true);
-    assert.equal(body.started, true);
+    assert.equal(body.successfulSources, CATALOG_SYNC_SOURCE_IDS.length);
+    assert.equal(body.catalog.status, "ready");
     assert.equal(
-      requestedUrl,
-      "https://worker.example.test/catalog/sync/background",
+      requestedUrls.filter((url) => url.endsWith("/catalog/sync/source"))
+        .length,
+      CATALOG_SYNC_SOURCE_IDS.length,
+    );
+    assert.equal(requestedUrls.at(-1), "https://worker.example.test/catalog/rebuild");
+    assert.equal(
+      (sourceBodies[0] as { sourceId: string }).sourceId,
+      CATALOG_SYNC_SOURCE_IDS[0],
+    );
+    assert.equal((sourceBodies[0] as { maxTerms: number }).maxTerms, 80);
+    assert.equal(
+      (sourceBodies[0] as { deferCatalogRebuild: boolean })
+        .deferCatalogRebuild,
+      true,
     );
   } finally {
     globalThis.fetch = originalFetch;
