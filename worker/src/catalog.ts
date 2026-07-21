@@ -145,7 +145,6 @@ export async function loadCatalogFromDisk() {
 
   if (persistedCatalog) {
     currentCatalog = hydrateCatalogSnapshot(persistedCatalog);
-    await reloadStoredSourceCatalogs();
     return currentCatalog;
   }
 
@@ -160,7 +159,6 @@ export async function loadCatalogFromDisk() {
     await persistCatalogIfWritable(currentCatalog);
   }
 
-  await reloadStoredSourceCatalogs();
   return currentCatalog;
 }
 
@@ -518,8 +516,9 @@ export async function rebuildCatalogFromStoredSources() {
 export async function searchCatalog(query: string) {
   const startedAt = Date.now();
   const normalizedQuery = normalizeQuery(query);
-  const storedProducts = await getStoredSourceCatalogProducts();
-  const storedStatuses = await getStoredSourceCatalogStatuses();
+  const storedSnapshots = await getStoredSourceCatalogSnapshots();
+  const storedProducts = await getStoredSourceCatalogProducts(storedSnapshots);
+  const storedStatuses = await getStoredSourceCatalogStatuses(storedSnapshots);
   const products = dedupeCatalogProducts([
     ...currentCatalog.products,
     ...storedProducts.filter(isActiveCatalogProduct),
@@ -553,7 +552,7 @@ export async function searchCatalog(query: string) {
     results,
     sources,
     catalog: {
-      ...getCatalogMetadata(),
+      ...getCatalogMetadataWithStoredFreshness(storedStatuses),
       sources,
     },
   };
@@ -687,8 +686,9 @@ export async function searchCategory(
           categorySearchQueries,
         )
       : [];
-  const storedProducts = await getStoredSourceCatalogProducts();
-  const storedStatuses = await getStoredSourceCatalogStatuses();
+  const storedSnapshots = await getStoredSourceCatalogSnapshots();
+  const storedProducts = await getStoredSourceCatalogProducts(storedSnapshots);
+  const storedStatuses = await getStoredSourceCatalogStatuses(storedSnapshots);
   const products = dedupeProductResults(
     [
       ...sourceResults.flatMap((result) => result.results),
@@ -735,7 +735,7 @@ export async function searchCategory(
     groups,
     sources,
     catalog: {
-      ...getCatalogMetadata(),
+      ...getCatalogMetadataWithStoredFreshness(storedStatuses),
       sources,
     },
   };
@@ -1273,6 +1273,50 @@ function markCatalogUpdatedFromSourceSync(
     errorMessage: usingPreviousSnapshot
       ? "La fuente no entrego datos nuevos; se conserva el ultimo catalogo valido."
       : undefined,
+  };
+}
+
+function getCatalogMetadataWithStoredFreshness(
+  statuses: SourceSearchStatus[],
+): CatalogMetadata {
+  const metadata = getCatalogMetadata();
+  const latestValidSnapshot = statuses.reduce<string | null>(
+    (latest, status) => {
+      if (
+        status.status !== "success" ||
+        status.resultsCount <= 0 ||
+        !status.snapshotSyncedAt
+      ) {
+        return latest;
+      }
+
+      const timestamp = Date.parse(status.snapshotSyncedAt);
+      const latestTimestamp = latest ? Date.parse(latest) : Number.NaN;
+
+      if (!Number.isFinite(timestamp)) {
+        return latest;
+      }
+
+      return !Number.isFinite(latestTimestamp) || timestamp > latestTimestamp
+        ? status.snapshotSyncedAt
+        : latest;
+    },
+    null,
+  );
+
+  if (
+    !latestValidSnapshot ||
+    (metadata.lastSyncedAt &&
+      Date.parse(metadata.lastSyncedAt) >= Date.parse(latestValidSnapshot))
+  ) {
+    return metadata;
+  }
+
+  return {
+    ...metadata,
+    lastSyncedAt: latestValidSnapshot,
+    lastSyncAttemptAt: latestValidSnapshot,
+    usingLastGoodSnapshot: false,
   };
 }
 

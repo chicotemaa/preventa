@@ -326,7 +326,6 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    await ensureCatalogLoaded();
     const snapshot = await rebuildCatalogFromStoredSources();
     sendJson(response, 200, {
       ok: true,
