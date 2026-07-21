@@ -6,6 +6,7 @@ import {
   CATALOG_SOURCE_SYNC_TIMEOUT_MS,
   CATALOG_SYNC_MAX_TERMS,
   CATALOG_SYNC_SOURCE_IDS,
+  getDailyCatalogSyncSourceIds,
 } from "./catalog-sync-sources";
 
 test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
@@ -44,6 +45,7 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
   };
 
   try {
+    const expectedSourceIds = getDailyCatalogSyncSourceIds();
     const response = await GET(
       new Request("https://web.example.test/api/cron/catalog-sync", {
         headers: { Authorization: "Bearer cron-test-secret" },
@@ -57,17 +59,17 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
 
     assert.equal(response.status, 200);
     assert.equal(body.ok, true);
-    assert.equal(body.successfulSources, CATALOG_SYNC_SOURCE_IDS.length);
+    assert.equal(body.successfulSources, expectedSourceIds.length);
     assert.equal(body.catalog.status, "ready");
     assert.equal(
       requestedUrls.filter((url) => url.endsWith("/catalog/sync/source"))
         .length,
-      CATALOG_SYNC_SOURCE_IDS.length,
+      expectedSourceIds.length,
     );
     assert.equal(requestedUrls.at(-1), "https://worker.example.test/catalog/rebuild");
     assert.equal(
       (sourceBodies[0] as { sourceId: string }).sourceId,
-      CATALOG_SYNC_SOURCE_IDS[0],
+      expectedSourceIds[0],
     );
     assert.equal(
       (sourceBodies[0] as { maxTerms: number }).maxTerms,

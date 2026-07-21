@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import {
   CATALOG_REBUILD_TIMEOUT_MS,
+  CATALOG_SYNC_CONCURRENCY,
   CATALOG_SOURCE_SYNC_TIMEOUT_MS,
   CATALOG_SYNC_MAX_TERMS,
-  CATALOG_SYNC_SOURCE_IDS,
   getDailyCatalogSyncOffset,
+  getDailyCatalogSyncSourceIds,
 } from "@/lib/catalog-sync-sources";
 
 export const maxDuration = 300;
@@ -49,21 +50,24 @@ export async function GET(request: Request) {
   const workerSecret = process.env.WORKER_CRON_SECRET ?? cronSecret;
   const baseWorkerUrl = workerUrl.replace(/\/$/, "");
   const offset = getDailyCatalogSyncOffset();
+  const selectedSourceIds = getDailyCatalogSyncSourceIds();
   console.info("[catalog-cron] started", {
     triggeredAt: new Date(startedAt).toISOString(),
-    sourceCount: CATALOG_SYNC_SOURCE_IDS.length,
+    sourceCount: selectedSourceIds.length,
+    selectedSourceIds,
     maxTerms: CATALOG_SYNC_MAX_TERMS,
     offset,
   });
-  const sources = await Promise.all(
-    CATALOG_SYNC_SOURCE_IDS.map((sourceId) =>
+  const sources = await mapWithConcurrency(
+    selectedSourceIds,
+    CATALOG_SYNC_CONCURRENCY,
+    (sourceId) =>
       syncSource({
         baseWorkerUrl,
         workerSecret,
         sourceId,
         offset,
       }),
-    ),
   );
   const successfulSources = sources.filter((source) => source.ok).length;
   const updatedSources = sources.filter((source) => source.updated).length;
@@ -140,6 +144,7 @@ export async function GET(request: Request) {
     block: {
       offset,
       maxTerms: CATALOG_SYNC_MAX_TERMS,
+      sourceIds: selectedSourceIds,
     },
     successfulSources,
     updatedSources,
@@ -188,18 +193,22 @@ async function syncSource({
       typeof payload?.progress?.processedTerms === "number"
         ? payload.progress.processedTerms
         : 0;
-    const usingStoredSnapshot =
-      payload?.status?.usingStoredSnapshot === true;
+    const usingStoredSnapshot = payload?.status?.usingStoredSnapshot === true;
+    const productsCount =
+      typeof payload?.productsCount === "number"
+        ? payload.productsCount
+        : null;
 
     return {
       sourceId,
       ok: response.ok,
-      updated: response.ok && processedTerms > 0 && !usingStoredSnapshot,
+      updated:
+        response.ok &&
+        processedTerms > 0 &&
+        !usingStoredSnapshot &&
+        Boolean(productsCount && productsCount > 0),
       httpStatus: response.status,
-      productsCount:
-        typeof payload?.productsCount === "number"
-          ? payload.productsCount
-          : null,
+      productsCount,
       progress: payload?.progress ?? null,
       ...(response.ok
         ? {}
@@ -278,4 +287,26 @@ function getProcessedTerms(progress: unknown) {
 
   const processedTerms = (progress as { processedTerms?: unknown }).processedTerms;
   return typeof processedTerms === "number" ? processedTerms : 0;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+) {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  );
+  return results;
 }

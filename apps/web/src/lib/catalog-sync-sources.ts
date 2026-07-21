@@ -1,9 +1,10 @@
 // A small daily window keeps all source requests and the final consolidation
 // inside Vercel's five-minute cron execution limit. Snapshots are merged in
 // Supabase, so subsequent days progressively cover the complete term list.
-export const CATALOG_SYNC_MAX_TERMS = 3;
-export const CATALOG_SOURCE_SYNC_TIMEOUT_MS = 120_000;
-export const CATALOG_REBUILD_TIMEOUT_MS = 120_000;
+export const CATALOG_SYNC_MAX_TERMS = 2;
+export const CATALOG_SOURCE_SYNC_TIMEOUT_MS = 100_000;
+export const CATALOG_REBUILD_TIMEOUT_MS = 45_000;
+export const CATALOG_SYNC_CONCURRENCY = 2;
 
 export const CATALOG_SYNC_SOURCE_IDS = [
   "aguiar-arcor-resistencia",
@@ -23,6 +24,23 @@ export const CATALOG_SYNC_SOURCE_IDS = [
   "cordiez-argentina-vtex",
   "depot-express-argentina",
 ] as const;
+
+const DAILY_PRIORITY_SOURCE_IDS = CATALOG_SYNC_SOURCE_IDS.slice(0, 2);
+const ROTATING_SOURCE_IDS = CATALOG_SYNC_SOURCE_IDS.slice(2);
+
+export function getDailyCatalogSyncSourceIds(now = new Date()) {
+  const utcDay = Math.floor(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) /
+      86_400_000,
+  );
+  const rotatingStart = (utcDay * 2) % ROTATING_SOURCE_IDS.length;
+  const rotating = [0, 1].map(
+    (index) =>
+      ROTATING_SOURCE_IDS[(rotatingStart + index) % ROTATING_SOURCE_IDS.length],
+  );
+
+  return [...DAILY_PRIORITY_SOURCE_IDS, ...rotating];
+}
 
 export function getDailyCatalogSyncOffset(date = new Date()) {
   const utcDay = Math.floor(
