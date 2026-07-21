@@ -8,17 +8,29 @@ export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary
   const ownItems = visibleItems.filter((item) => item.channel === "own");
   const wholesaleItems = visibleItems.filter((item) => item.channel === "mayorista");
   const retailItems = visibleItems.filter((item) => item.channel === "minorista");
+  const criticalMissingNames = summary.criticalMissing
+    .map((item) => item.displayName)
+    .slice(0, 4);
 
   return (
-    <section className="rounded-md border border-[#d9dee7] bg-white">
-      <div className="flex flex-col gap-3 border-b border-[#e5e9ef] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+    <details className="group rounded-md border border-[#d9dee7] bg-white">
+      <summary className="flex cursor-pointer list-none flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-[0.05em] text-[#17202a]">
-            Cobertura de fuentes
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold uppercase tracking-[0.05em] text-[#17202a]">
+              Cobertura de fuentes
+            </h3>
+            <span className="text-xs font-semibold text-[#667789] group-open:hidden">
+              Ver detalle
+            </span>
+            <span className="hidden text-xs font-semibold text-[#667789] group-open:inline">
+              Ocultar detalle
+            </span>
+          </div>
           <p className="mt-1 text-sm text-[#667789]">
-            Maxiconsumo Chaco queda como referencia mayorista principal del NEA.
-            Las fuentes esperadas no se ocultan aunque no tengan datos.
+            {criticalMissingNames.length > 0
+              ? `Faltan mayoristas críticos: ${criticalMissingNames.join(", ")}`
+              : "Las fuentes mayoristas críticas están disponibles."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-bold">
@@ -26,14 +38,14 @@ export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary
           <MetricChip label="Sin datos" value={summary.withoutData} tone="neutral" />
           <MetricChip label="Pendientes" value={summary.pending} tone="warning" />
         </div>
-      </div>
+      </summary>
 
-      <div className="flex flex-col gap-4 p-3">
+      <div className="flex flex-col gap-4 border-t border-[#e5e9ef] p-3">
         <SourceHealthGroup title="Fuente propia" items={ownItems} />
         <SourceHealthGroup title="Mayoristas prioritarios" items={wholesaleItems} emphasized />
         <SourceHealthGroup title="Minoristas de referencia" items={retailItems} />
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -95,13 +107,29 @@ function SourceHealthCard({ item }: { item: SourceHealthItem }) {
       </div>
       <div className="mt-2 text-xs text-[#667789]">
         {item.resultsCount} productos guardados
-        {item.durationMs > 0 ? ` · ultimo intento ${item.durationMs} ms` : ""}
+        {item.durationMs > 0 ? ` · último intento ${formatDuration(item.durationMs)}` : ""}
       </div>
       {item.status !== "ok" || item.message ? (
         <p className="mt-1 line-clamp-2 text-xs leading-4 text-[#73510b]">{item.message}</p>
       ) : null}
     </article>
   );
+}
+
+function formatDuration(durationMs: number) {
+  if (durationMs < 1000) {
+    return `${durationMs} ms`;
+  }
+
+  const totalSeconds = Math.round(durationMs / 1000);
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds} s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds > 0 ? `${minutes} min ${seconds} s` : `${minutes} min`;
 }
 
 function MetricChip({

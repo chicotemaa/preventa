@@ -1,5 +1,7 @@
 "use client";
 
+import { X } from "lucide-react";
+import { useEffect } from "react";
 import type { CategoryDecisionRow } from "@/lib/category-pricing";
 import { getComparablePrice } from "@/lib/category-pricing";
 import { getSourceChannel } from "@/lib/source-priority";
@@ -11,53 +13,94 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 2,
 });
 
-export function CategoryProductDetail({ row }: { row: CategoryDecisionRow | null }) {
+export function CategoryProductDetail({
+  row,
+  onClose,
+}: {
+  row: CategoryDecisionRow | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!row) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, row]);
+
   if (!row) {
-    return (
-      <section className="rounded-md border border-dashed border-[#c9d3df] bg-[#f8fafc] px-4 py-6 text-center">
-        <h3 className="text-base font-bold text-[#17202a]">Ver detalle de productos</h3>
-        <p className="mt-1 text-sm text-[#667789]">
-          Abrí una fila de la tabla para revisar fotos, fuente, unidad, bulto y precios alternativos.
-        </p>
-      </section>
-    );
+    return null;
   }
 
   const ownProducts = row.products.filter((product) => getSourceChannel(product) === "own");
   const marketProducts = row.products.filter((product) => getSourceChannel(product) !== "own");
 
   return (
-    <section className="rounded-md border border-[#d9dee7] bg-white">
-      <div className="border-b border-[#e5e9ef] px-4 py-3">
-        <div className="text-xs font-bold uppercase tracking-[0.05em] text-[#667789]">
-          Ver detalle de productos
+    <div className="fixed inset-0 z-50 bg-[#17202a]/35" role="presentation">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="category-product-detail-title"
+        className="ml-auto flex h-full w-full max-w-3xl flex-col border-l border-[#d9dee7] bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[#e5e9ef] px-4 py-3">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.05em] text-[#667789]">
+              Detalle de comparación
+            </div>
+            <h3 id="category-product-detail-title" className="mt-1 text-lg font-bold text-[#17202a]">
+              {row.clusterName}
+            </h3>
+            <p className="mt-1 text-sm text-[#667789]">
+              {row.brand} · {row.presentationLabel} · {row.sourcesWithPrice} fuentes de mercado
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            aria-label="Cerrar detalle"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[#d9dee7] bg-white text-[#526170] hover:border-[#153d7b] hover:text-[#153d7b]"
+          >
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
         </div>
-        <h3 className="mt-1 text-lg font-bold text-[#17202a]">{row.clusterName}</h3>
-        <p className="mt-1 text-sm text-[#667789]">
-          {row.brand} · {row.presentationLabel} · {row.sourcesWithPrice} fuentes con precio
-        </p>
-      </div>
 
-      <details open className="group">
-        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#17202a]">
-          Tokin / Aguiar ({ownProducts.length})
-        </summary>
-        <ProductGrid
-          products={ownProducts}
-          emptyMessage="Sin productos propios para este cluster. Revisar catalogo o credenciales Tokin."
-        />
-      </details>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <details open className="group">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#17202a]">
+              Tokin / Aguiar ({ownProducts.length})
+            </summary>
+            <ProductGrid
+              products={ownProducts}
+              emptyMessage="Sin un producto propio equivalente confirmado."
+            />
+          </details>
 
-      <details open className="group border-t border-[#e5e9ef]">
-        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#17202a]">
-          Competencia ({marketProducts.length})
-        </summary>
-        <ProductGrid
-          products={marketProducts}
-          emptyMessage="Sin productos de competencia para este cluster."
-        />
-      </details>
-    </section>
+          <details open className="group border-t border-[#e5e9ef]">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#17202a]">
+              Competencia ({marketProducts.length})
+            </summary>
+            <ProductGrid
+              products={marketProducts}
+              emptyMessage="Sin productos de competencia para este grupo."
+            />
+          </details>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -79,7 +122,7 @@ function ProductGrid({
   }
 
   return (
-    <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid gap-3 px-4 pb-4 md:grid-cols-2">
       {products.map((product) => (
         <ProductCard key={`${product.sourceId}-${product.rawName}-${product.price}`} product={product} />
       ))}

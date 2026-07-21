@@ -8,11 +8,12 @@ import { CategoryProductDetail } from "@/components/category-pricing/CategoryPro
 import { CategorySourceHealth } from "@/components/category-pricing/CategorySourceHealth";
 import {
   buildCategoryPricingDashboard,
+  countDecisionRowsByFilter,
   filterAndSortDecisionRows,
+  formatGapExplanation,
   type CategoryDecisionFilter,
   type CategoryDecisionSort,
   type CategoryPricingDashboard as CategoryPricingDashboardModel,
-  type CompetitorPriceCell,
   type PricingTone,
 } from "@/lib/category-pricing";
 import type {
@@ -21,15 +22,6 @@ import type {
   SourceSearchStatus,
 } from "@/types/search";
 
-const currencyFormatter = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  maximumFractionDigits: 2,
-});
-const percentFormatter = new Intl.NumberFormat("es-AR", {
-  maximumFractionDigits: 1,
-  minimumFractionDigits: 1,
-});
 const dateFormatter = new Intl.DateTimeFormat("es-AR", {
   dateStyle: "short",
   timeStyle: "short",
@@ -42,8 +34,8 @@ const filterOptions: Array<{ value: CategoryDecisionFilter; label: string }> = [
   { value: "alerts", label: "Con alertas" },
   { value: "critical_gap", label: "Diferencia critica" },
   { value: "opportunities", label: "Oportunidades" },
-  { value: "missing_aguiar", label: "Sin precio Aguiar" },
-  { value: "weak_match", label: "Match dudoso" },
+  { value: "missing_aguiar", label: "Sin equivalente Aguiar" },
+  { value: "weak_match", label: "Equivalencia dudosa" },
   { value: "sources_with_data", label: "Fuentes con datos" },
 ];
 
@@ -84,21 +76,29 @@ export function CategoryPricingDashboard({
     () => dashboard.rows.find((row) => row.id === selectedRowId) ?? null,
     [dashboard.rows, selectedRowId],
   );
+  const filterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        filterOptions.map((option) => [
+          option.value,
+          countDecisionRowsByFilter(dashboard.rows, option.value),
+        ]),
+      ) as Record<CategoryDecisionFilter, number>,
+    [dashboard.rows],
+  );
 
   return (
     <section className="flex flex-col gap-4">
       <ExecutiveSummary dashboard={dashboard} />
       {catalog ? <CatalogFreshnessBanner catalog={catalog} compact /> : null}
-      <CategorySourceHealth summary={dashboard.sourceHealth} />
 
       <section className="rounded-md border border-[#d9dee7] bg-white p-3 sm:p-4">
         <div className="flex flex-col gap-3 border-b border-[#e5e9ef] pb-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h3 className="text-lg font-bold text-[#17202a]">Mesa de decision</h3>
             <p className="mt-1 text-sm text-[#667789]">
-              Clusters comparables con prioridad comercial: Aguiar, mayoristas y minoristas. La
-              diferencia vs mercado compara Aguiar contra la mejor referencia: positivo es mas
-              caro, negativo es por debajo.
+              Primero se muestran los artículos propios. La posición de Aguiar se calcula contra
+              el mejor precio del mercado comparable, priorizando referencias mayoristas.
             </p>
           </div>
           <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#cfd8e3] bg-white px-3 py-2 text-sm text-[#526170] lg:min-w-[300px]">
@@ -126,7 +126,7 @@ export function CategoryPricingDashboard({
                     : "rounded-md border border-[#d9dee7] bg-white px-3 py-2 text-xs font-bold text-[#526170] hover:border-[#153d7b]"
                 }
               >
-                {option.label}
+                {option.label} ({filterCounts[option.value]})
               </button>
             ))}
           </div>
@@ -152,7 +152,8 @@ export function CategoryPricingDashboard({
         </div>
       </section>
 
-      <CategoryProductDetail row={selectedRow} />
+      <CategorySourceHealth summary={dashboard.sourceHealth} />
+      <CategoryProductDetail row={selectedRow} onClose={() => setSelectedRowId(null)} />
     </section>
   );
 }
@@ -165,7 +166,7 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
       <div className="flex flex-col gap-3 border-b border-[#e5e9ef] px-4 py-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.08em] text-[#e02c3b]">
-            Tablero competitivo de pricing
+            Tablero competitivo de precios
           </div>
           <h2 className="mt-1 text-2xl font-black tracking-tight text-[#17202a]">
             {dashboard.familyName}
@@ -181,10 +182,14 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
         />
       </div>
 
-      <div className="grid gap-px bg-[#e5e9ef] sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
-        <SummaryMetric label="Total productos" value={dashboard.totalProducts} />
+      <div className="grid gap-px bg-[#e5e9ef] sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         <SummaryMetric
-          label="Aguiar / Tokin"
+          label="Grupos comparables"
+          value={dashboard.rows.length}
+          helper={`${dashboard.totalProducts} registros encontrados`}
+        />
+        <SummaryMetric
+          label="Artículos Aguiar / Tokin"
           value={dashboard.aguiarProductsCount}
           helper={
             dashboard.visibleAguiarProductsCount < dashboard.aguiarProductsCount
@@ -193,33 +198,32 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
           }
         />
         <SummaryMetric
-          label="Competencia"
-          value={dashboard.competitorProductsCount}
-          helper={
-            dashboard.visibleCompetitorProductsCount <
-            dashboard.competitorProductsCount
-              ? `${dashboard.visibleCompetitorProductsCount} visibles`
-              : undefined
-          }
+          label="Posición promedio"
+          value={formatGapExplanation(dashboard.averageGapVsAguiarPercent)}
+          helper={`${dashboard.comparableRowsCount} comparaciones válidas`}
         />
-        <SummaryMetric label="Fuentes consultadas" value={dashboard.sourceHealth.total} />
-        <SummaryMetric label="Fuentes con datos" value={dashboard.sourceHealth.withData} />
-        <SummaryMetric label="Fuentes sin datos" value={dashboard.sourceHealth.withoutData} />
-        <SummaryMetric label="Pendientes/login" value={dashboard.sourceHealth.pending} />
-        <SummaryMetric label="Mejor mayorista" value={formatCellPrice(dashboard.bestWholesalePrice)} />
-        <SummaryMetric label="Mejor minorista" value={formatCellPrice(dashboard.bestRetailPrice)} />
-        <SummaryMetric label="Mejor general" value={formatCellPrice(dashboard.bestOverallPrice)} />
         <SummaryMetric
-          label="Dif. prom. Aguiar vs mercado"
-          value={
-            dashboard.averageGapVsAguiarPercent === null
-              ? "-"
-              : `${dashboard.averageGapVsAguiarPercent > 0 ? "+" : ""}${percentFormatter.format(
-                  dashboard.averageGapVsAguiarPercent,
-                )}%`
-          }
+          label="Aguiar más caro"
+          value={dashboard.aboveMarketRowsCount}
+          helper="Requieren revisión"
+          tone={dashboard.aboveMarketRowsCount > 0 ? "danger" : "neutral"}
         />
-        <SummaryMetric label="Alertas criticas" value={dashboard.criticalAlertsCount} tone="danger" />
+        <SummaryMetric
+          label="Precio competitivo"
+          value={dashboard.competitiveRowsCount}
+          helper="Dentro del rango esperado"
+        />
+        <SummaryMetric
+          label="Oportunidades de margen"
+          value={dashboard.opportunityRowsCount}
+          helper={`${dashboard.withoutOwnEquivalentRowsCount} sin equivalente propio`}
+        />
+        <SummaryMetric
+          label="Cobertura"
+          value={`${dashboard.sourceHealth.withData}/${dashboard.sourceHealth.total}`}
+          helper={`${dashboard.criticalAlertsCount} alertas críticas`}
+          tone={dashboard.criticalAlertsCount > 0 ? "danger" : "neutral"}
+        />
       </div>
     </section>
   );
@@ -266,10 +270,6 @@ function SummaryMetric({
       ) : null}
     </div>
   );
-}
-
-function formatCellPrice(cell: CompetitorPriceCell | null) {
-  return cell ? currencyFormatter.format(cell.price) : "-";
 }
 
 function recommendationPanelClassName(tone: PricingTone) {

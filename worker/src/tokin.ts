@@ -228,9 +228,11 @@ function toTokinProductResults(
   source: ScrapingSource,
   query: string,
 ) {
-  return findPricedTokinVariants(product).map((variant) =>
-    toTokinProductResult(product, source, query, variant),
-  );
+  const results = findPricedTokinVariants(product)
+    .map((variant) => toTokinProductResult(product, source, query, variant))
+    .filter((result): result is ProductSearchResult => result !== null);
+
+  return consolidateTokinPriceModes(results);
 }
 
 function toTokinProductResult(
@@ -461,6 +463,60 @@ function applyTokinUnitAndPackagePricing(
     packageQuantity,
     packageLabel: `bulto x ${packageQuantity} unidades`,
   };
+}
+
+export function consolidateTokinPriceModes(products: ProductSearchResult[]) {
+  const byProduct = new Map<string, ProductSearchResult[]>();
+
+  for (const product of products) {
+    const key = [product.normalizedName, product.imageUrl ?? ""].join("|");
+    byProduct.set(key, [...(byProduct.get(key) ?? []), product]);
+  }
+
+  return Array.from(byProduct.values()).flatMap((variants) => {
+    if (variants.length < 2 || variants.some((variant) => variant.packageQuantity)) {
+      return variants;
+    }
+
+    const sorted = [...variants].sort((first, second) => first.price - second.price);
+    const unitVariant = sorted[0]!;
+    const packageVariant = sorted.at(-1)!;
+    const ratio = packageVariant.price / unitVariant.price;
+    const packageQuantity = Math.round(ratio);
+
+    if (
+      packageQuantity < 2 ||
+      packageQuantity > 200 ||
+      Math.abs(ratio - packageQuantity) > 0.03
+    ) {
+      return variants;
+    }
+
+    return [
+      {
+        ...unitVariant,
+        sku: unitVariant.sku ?? packageVariant.sku,
+        price: packageVariant.price,
+        comparisonPrice: unitVariant.price,
+        priceCondition: `Unidad y bulto: ${packageQuantity} unidades`,
+        alternatePrices: [
+          {
+            label: "Unidad",
+            price: unitVariant.price,
+            comparisonPrice: unitVariant.price,
+          },
+          {
+            label: `Bulto x ${packageQuantity}`,
+            price: packageVariant.price,
+            comparisonPrice: unitVariant.price,
+          },
+        ],
+        packageQuantity,
+        packageLabel: `bulto x ${packageQuantity} unidades`,
+        stockQuantity: unitVariant.stockQuantity,
+      },
+    ];
+  });
 }
 
 function roundMoney(value: number) {

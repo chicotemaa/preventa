@@ -139,7 +139,7 @@ export type CategoryDecisionRow = {
   gapVsBestOverallPercent: number | null;
   winningChannel: SourceChannel | null;
   winningSourceName: string | null;
-  confidenceScore: number;
+  confidenceScore: number | null;
   matchQuality: MatchQuality;
   sourcesWithPrice: number;
   hasPromo: boolean;
@@ -163,6 +163,11 @@ export type CategoryPricingDashboard = {
   bestOverallPrice: CompetitorPriceCell | null;
   averageGapVsAguiarPercent: number | null;
   criticalAlertsCount: number;
+  comparableRowsCount: number;
+  aboveMarketRowsCount: number;
+  competitiveRowsCount: number;
+  opportunityRowsCount: number;
+  withoutOwnEquivalentRowsCount: number;
   recommendation: PricingRecommendation;
 };
 
@@ -195,7 +200,10 @@ export function buildCategoryPricingDashboard({
   sources: SourceSearchStatus[];
   searchedAt: string;
 }): CategoryPricingDashboard {
-  const products = [...group.tokinProducts, ...group.competitorProducts];
+  const products = consolidateProductVariants([
+    ...group.tokinProducts,
+    ...group.competitorProducts,
+  ]);
   const sourceHealth = buildSourceHealthSummary(sources);
   const criticalMissing = sourceHealth.criticalMissing;
   const rows = buildDecisionRows(products, group.categoryName, criticalMissing);
@@ -229,6 +237,18 @@ export function buildCategoryPricingDashboard({
     bestOverallPrice,
     averageGapVsAguiarPercent: average(gapValues),
     criticalAlertsCount,
+    comparableRowsCount: rows.filter((row) => row.matchQuality !== "not_comparable").length,
+    aboveMarketRowsCount: rows.filter((row) => (row.gapVsAguiarPercent ?? -Infinity) > 5).length,
+    competitiveRowsCount: rows.filter(
+      (row) =>
+        row.gapVsAguiarPercent !== null &&
+        row.gapVsAguiarPercent >= -8 &&
+        row.gapVsAguiarPercent <= 5,
+    ).length,
+    opportunityRowsCount: rows.filter(
+      (row) => row.recommendation.kind === "margin_opportunity",
+    ).length,
+    withoutOwnEquivalentRowsCount: rows.filter((row) => !row.aguiarPrice).length,
     recommendation: buildCategoryRecommendation(rows, sourceHealth),
   };
 }
@@ -277,8 +297,50 @@ export function formatMatchQualityLabel(quality: MatchQuality) {
   return "No comparable";
 }
 
+export function formatGapExplanation(value: number | null) {
+  if (value === null) {
+    return "Sin comparación";
+  }
+
+  const magnitude = new Intl.NumberFormat("es-AR", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(Math.abs(value));
+
+  if (Math.abs(value) < 0.05) {
+    return "Igual al mercado";
+  }
+
+  return value > 0
+    ? `Aguiar ${magnitude}% más caro`
+    : `Aguiar ${magnitude}% más barato`;
+}
+
+export function countDecisionRowsByFilter(
+  rows: CategoryDecisionRow[],
+  filter: CategoryDecisionFilter,
+) {
+  return rows.filter((row) => rowMatchesFilter(row, filter)).length;
+}
+
 export function getComparablePrice(product: ProductSearchResult) {
   return normalizeNumber(product.comparisonPrice) ?? product.price;
+}
+
+export function consolidateProductVariants(products: ProductSearchResult[]) {
+  const groups = new Map<string, ProductSearchResult[]>();
+
+  for (const product of products) {
+    const key = [
+      product.sourceId,
+      product.normalizedName || normalizeDecisionText(product.rawName),
+      extractPresentation(product).key,
+      product.productUrl ?? product.imageUrl ?? "",
+    ].join("|");
+    groups.set(key, [...(groups.get(key) ?? []), product]);
+  }
+
+  return Array.from(groups.values()).map(consolidateProductGroup);
 }
 
 function buildDecisionRows(
@@ -306,7 +368,7 @@ function buildDecisionRow(
   products: ProductSearchResult[],
   criticalMissing: SourceHealthItem[],
 ): CategoryDecisionRow {
-  const sortedProducts = [...products].sort(compareProductsForCluster);
+  const sortedProducts = consolidateProductVariants(products).sort(compareProductsForCluster);
   const aguiarPrice = findBestProductCell(
     sortedProducts.filter((product) => getSourceChannel(product) === "own"),
   );
@@ -319,9 +381,18 @@ function buildDecisionRow(
   const bestWholesale = findBestProductCell(wholesalePrices);
   const bestRetail = findBestProductCell(retailPrices);
   const bestMarket = findBestCell([bestWholesale, bestRetail]);
-  const bestOverall = findBestCell([aguiarPrice, bestWholesale, bestRetail]);
-  const confidenceScore = Math.round(average(products.map((product) => product.confidenceScore)) ?? 0);
+  const bestOverall = bestMarket;
   const matchQuality = determineMatchQuality(products, aguiarPrice, bestMarket);
+  const confidenceScore =
+    matchQuality === "not_comparable"
+      ? null
+      : Math.round(
+          average(
+            [aguiarPrice?.product.confidenceScore, bestMarket?.product.confidenceScore].filter(
+              (score): score is number => typeof score === "number",
+            ),
+          ) ?? 0,
+        );
   const commercialPriority = determineCommercialPriority(sortedProducts);
   const gapVsAguiarPercent =
     aguiarPrice && bestMarket
@@ -346,8 +417,8 @@ function buildDecisionRow(
       aguiarPrice && bestOverall
         ? calculateGapPercent(aguiarPrice.price, bestOverall.price)
         : null,
-    winningChannel: bestMarket?.channel ?? bestOverall?.channel ?? null,
-    winningSourceName: bestMarket?.sourceName ?? bestOverall?.sourceName ?? null,
+    winningChannel: bestMarket?.channel ?? null,
+    winningSourceName: bestMarket?.sourceName ?? null,
     confidenceScore,
     matchQuality,
     sourcesWithPrice: new Set(
@@ -553,22 +624,14 @@ function getSourceHealthChannelRank(source: SourceHealthItem) {
 
 function buildAlerts(
   row: Omit<CategoryDecisionRow, "alerts" | "recommendation">,
-  criticalMissing: SourceHealthItem[],
+  _criticalMissing: SourceHealthItem[],
 ): PricingAlert[] {
   const alerts: PricingAlert[] = [];
 
-  if (!row.aguiarPrice && row.bestOverall) {
+  if (row.matchQuality === "match_weak") {
     alerts.push({
       severity: "warning",
-      label: "Sin Aguiar",
-      message: "Hay mercado, pero falta precio propio para decidir.",
-    });
-  }
-
-  if (row.matchQuality === "match_weak" || row.matchQuality === "not_comparable") {
-    alerts.push({
-      severity: "warning",
-      label: "Match dudoso",
+      label: "Equivalencia dudosa",
       message: "Revisar equivalencia de marca/presentacion antes de decidir.",
     });
   }
@@ -602,33 +665,6 @@ function buildAlerts(
     });
   }
 
-  if (row.gapVsAguiarPercent !== null && row.gapVsAguiarPercent < -8) {
-    alerts.push({
-      severity: "info",
-      label: "Margen",
-      message: "Aguiar esta por debajo del mercado; puede haber oportunidad de margen.",
-    });
-  }
-
-  if (row.hasPromo) {
-    alerts.push({
-      severity: "info",
-      label: "Promo detectada",
-      message: "Hay condiciones promocionales, pack o bulto en alguna fuente.",
-    });
-  }
-
-  if (criticalMissing.length > 0) {
-    alerts.push({
-      severity: "warning",
-      label: "Cobertura limitada",
-      message: `Faltan fuentes criticas: ${criticalMissing
-        .map((source) => source.displayName)
-        .slice(0, 3)
-        .join(", ")}.`,
-    });
-  }
-
   return alerts;
 }
 
@@ -644,10 +680,10 @@ function buildRowRecommendation(
 
   if (!row.aguiarPrice && row.bestOverall) {
     return {
-      kind: "load_aguiar",
-      label: "Cargar precio Aguiar",
-      reason: "Existe referencia de mercado, pero no hay precio propio.",
-      tone: "warning",
+      kind: "insufficient_reference",
+      label: "Sin equivalente Aguiar",
+      reason: "Es un producto de mercado sin equivalencia confirmada en el surtido propio.",
+      tone: "neutral",
       targetPrice: null,
     };
   }
@@ -767,21 +803,14 @@ function buildCategoryRecommendation(
     };
   }
 
-  if (rows.some((row) => !row.aguiarPrice && row.bestOverall)) {
-    return {
-      kind: "load_aguiar",
-      label: "Completar precios Aguiar",
-      reason: "Hay productos con mercado y sin precio propio.",
-      tone: "warning",
-      targetPrice: null,
-    };
-  }
-
   if (criticalRows.length > 0) {
     return {
       kind: "compete",
       label: "Revisar productos criticos",
-      reason: `${criticalRows.length} clusters tienen alertas criticas de precio o canal.`,
+      reason:
+        criticalRows.length === 1
+          ? "1 grupo comparable tiene una alerta crítica de precio o canal."
+          : `${criticalRows.length} grupos comparables tienen alertas críticas de precio o canal.`,
       tone: "danger",
       targetPrice: null,
     };
@@ -830,7 +859,7 @@ function rowMatchesFilter(row: CategoryDecisionRow, filter: CategoryDecisionFilt
   }
 
   if (filter === "alerts") {
-    return row.alerts.length > 0;
+    return row.alerts.some((alert) => alert.severity !== "info");
   }
 
   if (filter === "critical_gap") {
@@ -873,7 +902,7 @@ function compareRows(
   }
 
   if (sort === "confidence_desc") {
-    return second.confidenceScore - first.confidenceScore;
+    return nullableNumber(second.confidenceScore, -Infinity) - nullableNumber(first.confidenceScore, -Infinity);
   }
 
   if (sort === "winning_source") {
@@ -1106,6 +1135,85 @@ function findBestProductCell(products: ProductSearchResult[]) {
   return findBestCell(products.map(toPriceCell));
 }
 
+function consolidateProductGroup(products: ProductSearchResult[]): ProductSearchResult {
+  if (products.length === 1) {
+    return products[0]!;
+  }
+
+  const sorted = [...products].sort(
+    (first, second) => getComparablePrice(first) - getComparablePrice(second),
+  );
+  const lowest = sorted[0]!;
+  const highest = sorted.at(-1)!;
+  const inferredQuantity = inferPackageQuantity(lowest, highest);
+  const alternatePrices = dedupeAlternatePrices(
+    sorted.flatMap((product) => [
+      ...(product.alternatePrices ?? []),
+      {
+        label:
+          product === lowest
+            ? "Unidad"
+            : inferredQuantity
+              ? `Bulto x ${inferredQuantity}`
+              : `Precio alternativo ${product.storeName}`,
+        price: product.price,
+        comparisonPrice: getComparablePrice(product),
+      },
+    ]),
+  );
+
+  if (inferredQuantity) {
+    return {
+      ...lowest,
+      price: highest.price,
+      comparisonPrice: getComparablePrice(lowest),
+      packageQuantity: inferredQuantity,
+      packageLabel: `bulto x ${inferredQuantity} unidades`,
+      priceCondition: `Unidad y bulto detectados en ${lowest.storeName}`,
+      alternatePrices,
+      confidenceScore: Math.max(...products.map((product) => product.confidenceScore)),
+    };
+  }
+
+  return {
+    ...lowest,
+    alternatePrices,
+    confidenceScore: Math.max(...products.map((product) => product.confidenceScore)),
+  };
+}
+
+function inferPackageQuantity(
+  lowest: ProductSearchResult,
+  highest: ProductSearchResult,
+) {
+  if (lowest === highest || getComparablePrice(lowest) <= 0 || highest.price <= lowest.price) {
+    return null;
+  }
+
+  const ratio = highest.price / getComparablePrice(lowest);
+  const roundedRatio = Math.round(ratio);
+
+  return roundedRatio >= 2 && roundedRatio <= 200 && Math.abs(ratio - roundedRatio) <= 0.03
+    ? roundedRatio
+    : null;
+}
+
+function dedupeAlternatePrices(
+  prices: NonNullable<ProductSearchResult["alternatePrices"]>,
+) {
+  const byPrice = new Map<string, (typeof prices)[number]>();
+
+  for (const price of prices) {
+    if (!Number.isFinite(price.price) || price.price <= 0) {
+      continue;
+    }
+
+    byPrice.set(`${price.label}|${price.price}`, price);
+  }
+
+  return Array.from(byPrice.values()).sort((first, second) => first.price - second.price);
+}
+
 function findBestCell(
   cells: Array<CompetitorPriceCell | null | undefined>,
 ): CompetitorPriceCell | null {
@@ -1188,10 +1296,7 @@ function detectPromo(product: ProductSearchResult) {
     ].join(" "),
   );
 
-  return (
-    (product.alternatePrices?.length ?? 0) > 0 ||
-    /\b(promo|oferta|2x|segunda|descuento|pack|bulto|caja|display)\b/.test(text)
-  );
+  return /\b(promo|promocion|oferta|2x|3x|segunda|descuento|rebaja)\b/.test(text);
 }
 
 function calculateGapPercent(aguiarPrice: number, referencePrice: number) {

@@ -1,17 +1,16 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { CategoryDecisionRow, PricingTone } from "@/lib/category-pricing";
-import { formatMatchQualityLabel } from "@/lib/category-pricing";
+import { formatGapExplanation, formatMatchQualityLabel } from "@/lib/category-pricing";
 
 const currencyFormatter = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
   maximumFractionDigits: 2,
 });
-const percentFormatter = new Intl.NumberFormat("es-AR", {
-  maximumFractionDigits: 1,
-  minimumFractionDigits: 1,
-});
+const DEFAULT_PAGE_SIZE = 25;
 
 export function CategoryDecisionTable({
   rows,
@@ -20,6 +19,18 @@ export function CategoryDecisionTable({
   rows: CategoryDecisionRow[];
   onOpenDetail: (rowId: string) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const visibleRows = useMemo(
+    () => rows.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, rows],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows]);
+
   if (rows.length === 0) {
     return (
       <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-8 text-center text-sm text-[#526170]">
@@ -30,35 +41,41 @@ export function CategoryDecisionTable({
 
   return (
     <>
-      <div className="hidden overflow-auto rounded-md border border-[#d9dee7] bg-white xl:block">
-        <table className="min-w-[1320px] w-full border-collapse text-left text-xs">
+      <PaginationBar
+        page={page}
+        pageSize={pageSize}
+        rowsCount={rows.length}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
+
+      <div className="mt-3 hidden rounded-md border border-[#d9dee7] bg-white xl:block">
+        <table className="w-full table-fixed border-collapse text-left text-xs">
           <thead className="sticky top-0 z-10 bg-[#edf1f5] text-[11px] uppercase tracking-[0.05em] text-[#526170]">
             <tr>
-              <th className="w-[270px] px-3 py-3">Producto / cluster</th>
-              <th className="w-[120px] px-3 py-3">Marca</th>
-              <th className="w-[120px] px-3 py-3">Presentacion</th>
-              <th className="w-[125px] px-3 py-3">Aguiar</th>
-              <th className="w-[145px] px-3 py-3">Mejor mayorista</th>
-              <th className="w-[145px] px-3 py-3">Mejor minorista</th>
-              <th className="w-[145px] px-3 py-3">Mejor general</th>
-              <th className="w-[135px] px-3 py-3">Dif. vs mercado</th>
-              <th className="w-[105px] px-3 py-3">Canal</th>
-              <th className="w-[130px] px-3 py-3">Ganador</th>
-              <th className="w-[105px] px-3 py-3">Confianza</th>
-              <th className="w-[190px] px-3 py-3">Accion</th>
-              <th className="w-[100px] px-3 py-3">Detalle</th>
+              <th className="w-[25%] px-3 py-3">Producto comparable</th>
+              <th className="w-[11%] px-3 py-3">Aguiar</th>
+              <th className="w-[13%] px-3 py-3">Mejor mayorista</th>
+              <th className="w-[13%] px-3 py-3">Mejor minorista</th>
+              <th className="w-[15%] px-3 py-3">Posición de Aguiar</th>
+              <th className="w-[10%] px-3 py-3">Equivalencia</th>
+              <th className="w-[15%] px-3 py-3">Acción</th>
+              <th className="w-[8%] px-3 py-3">Detalle</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#e5e9ef]">
-            {rows.map((row) => (
+            {visibleRows.map((row) => (
               <tr key={row.id} className={rowToneClassName(row.recommendation.tone)}>
                 <td className="px-3 py-3 align-top">
                   <div className="line-clamp-2 font-semibold leading-5 text-[#17202a]">
                     {row.clusterName}
                   </div>
+                  <div className="mt-0.5 text-[11px] text-[#667789]">
+                    {row.brand} · {row.presentationLabel}
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <CommercialPriorityChip row={row} />
-                    {row.hasPromo ? <PromoChip /> : null}
                     {row.alerts.slice(0, 2).map((alert) => (
                       <span
                         key={`${row.id}-${alert.label}`}
@@ -68,12 +85,6 @@ export function CategoryDecisionTable({
                       </span>
                     ))}
                   </div>
-                </td>
-                <td className="px-3 py-3 align-top font-medium text-[#526170]">
-                  {row.brand}
-                </td>
-                <td className="px-3 py-3 align-top text-[#526170]">
-                  {row.presentationLabel}
                 </td>
                 <td className="px-3 py-3 align-top">
                   <PriceCell cell={row.aguiarPrice} />
@@ -85,19 +96,16 @@ export function CategoryDecisionTable({
                   <PriceCell cell={row.bestRetail} />
                 </td>
                 <td className="px-3 py-3 align-top">
-                  <PriceCell cell={row.bestOverall} />
+                  <GapCell
+                    value={row.gapVsAguiarPercent}
+                    tone={row.recommendation.tone}
+                    reference={row.winningSourceName}
+                  />
                 </td>
                 <td className="px-3 py-3 align-top">
-                  <GapCell value={row.gapVsAguiarPercent} tone={row.recommendation.tone} />
-                </td>
-                <td className="px-3 py-3 align-top">
-                  {row.winningChannel ? <ChannelChip channel={row.winningChannel} /> : "-"}
-                </td>
-                <td className="px-3 py-3 align-top font-medium text-[#17202a]">
-                  {row.winningSourceName ?? "-"}
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <div className="font-semibold text-[#17202a]">{row.confidenceScore}</div>
+                  <div className="font-semibold text-[#17202a]">
+                    {row.confidenceScore === null ? "—" : `${row.confidenceScore}%`}
+                  </div>
                   <div className="text-[11px] text-[#667789]">
                     {formatMatchQualityLabel(row.matchQuality)}
                   </div>
@@ -127,8 +135,8 @@ export function CategoryDecisionTable({
         </table>
       </div>
 
-      <div className="grid gap-3 xl:hidden">
-        {rows.map((row) => (
+      <div className="mt-3 grid gap-3 xl:hidden">
+        {visibleRows.map((row) => (
           <article
             key={`mobile-${row.id}`}
             className={`rounded-md border border-[#d9dee7] p-3 ${rowToneClassName(row.recommendation.tone)}`}
@@ -154,12 +162,8 @@ export function CategoryDecisionTable({
               <MobileMetric label="Mayorista" value={formatCellPrice(row.bestWholesale)} />
               <MobileMetric label="Minorista" value={formatCellPrice(row.bestRetail)} />
               <MobileMetric
-                label="Dif. vs mercado"
-                value={
-                  row.gapVsAguiarPercent === null
-                    ? "-"
-                    : `${percentFormatter.format(row.gapVsAguiarPercent)}%`
-                }
+                label="Posición de Aguiar"
+                value={formatGapExplanation(row.gapVsAguiarPercent)}
               />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -179,7 +183,86 @@ export function CategoryDecisionTable({
           </article>
         ))}
       </div>
+      {totalPages > 1 ? (
+        <div className="mt-3">
+          <PaginationBar
+            page={page}
+            pageSize={pageSize}
+            rowsCount={rows.length}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        </div>
+      ) : null}
     </>
+  );
+}
+
+function PaginationBar({
+  page,
+  pageSize,
+  rowsCount,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: number;
+  rowsCount: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+}) {
+  const firstRow = rowsCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(page * pageSize, rowsCount);
+
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-xs font-semibold text-[#526170]">
+        Mostrando {firstRow}-{lastRow} de {rowsCount} comparaciones
+      </div>
+      <div className="flex items-center justify-between gap-2 sm:justify-end">
+        <label className="text-xs font-semibold text-[#526170]">
+          Filas
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              onPageSizeChange(Number(event.target.value));
+              onPageChange(1);
+            }}
+            className="ml-2 h-8 rounded-md border border-[#cfd8e3] bg-white px-2 text-xs text-[#17202a]"
+          >
+            {[25, 50, 100].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page === 1}
+          aria-label="Página anterior"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#d9dee7] bg-white text-[#153d7b] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+        </button>
+        <span className="min-w-16 text-center text-xs font-bold text-[#17202a]">
+          {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page === totalPages}
+          aria-label="Página siguiente"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#d9dee7] bg-white text-[#153d7b] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronRight aria-hidden="true" className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -199,16 +282,24 @@ function PriceCell({ cell }: { cell: CategoryDecisionRow["bestOverall"] }) {
   );
 }
 
-function GapCell({ value, tone }: { value: number | null; tone: PricingTone }) {
+function GapCell({
+  value,
+  tone,
+  reference,
+}: {
+  value: number | null;
+  tone: PricingTone;
+  reference: string | null;
+}) {
   if (value === null) {
-    return <span className="text-[#9aa5b1]">-</span>;
+    return <span className="text-[#9aa5b1]">Sin comparación</span>;
   }
 
   return (
-    <span className={gapClassName(tone)}>
-      {value > 0 ? "+" : ""}
-      {percentFormatter.format(value)}%
-    </span>
+    <div>
+      <span className={gapClassName(tone)}>{formatGapExplanation(value)}</span>
+      {reference ? <div className="mt-1 text-[10px] text-[#667789]">vs {reference}</div> : null}
+    </div>
   );
 }
 

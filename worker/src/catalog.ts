@@ -1494,6 +1494,7 @@ function buildCategorySearchGroup(
   products: ProductSearchResult[],
 ): CategorySearchGroup | null {
   const matchedProducts = products
+    .filter((product) => productBelongsToCategory(category, product))
     .map((product) => ({
       ...product,
       confidenceScore: calculateCategoryProductScore(query, category, product),
@@ -1547,6 +1548,26 @@ function calculateCategoryProductScore(
   const categoryScore = categoryMatchesText(category, matchText) ? 88 : 0;
 
   return Math.max(queryScore, categoryScore);
+}
+
+export function productBelongsToCategory(
+  category: CatalogCategory,
+  product: ProductSearchResult,
+) {
+  const matchText = normalizeProductName(getProductMatchText(product));
+
+  if (category.name === "Alfajores") {
+    const isIngredientOrUtensil =
+      /\b(premezcla|harina|molde|receta)\b.*\balfajor(?:es)?\b/.test(matchText) ||
+      /\b(tapas?|masa)\b.*\b(?:para|de)\b.*\balfajor(?:es)?\b/.test(matchText) ||
+      /\bpara\b.*\b(?:hacer|preparar)?\s*alfajor(?:es)?\b/.test(matchText);
+
+    if (isIngredientOrUtensil) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function compareProductSearchResults(
