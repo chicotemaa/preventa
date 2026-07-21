@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import {
+  CATALOG_REBUILD_TIMEOUT_MS,
+  CATALOG_SOURCE_SYNC_TIMEOUT_MS,
   CATALOG_SYNC_MAX_TERMS,
   CATALOG_SYNC_SOURCE_IDS,
   getDailyCatalogSyncOffset,
 } from "@/lib/catalog-sync-sources";
-
-const SOURCE_SYNC_TIMEOUT_MS = 275_000;
-const REBUILD_TIMEOUT_MS = 20_000;
 
 export const maxDuration = 300;
 
@@ -50,6 +49,12 @@ export async function GET(request: Request) {
   const workerSecret = process.env.WORKER_CRON_SECRET ?? cronSecret;
   const baseWorkerUrl = workerUrl.replace(/\/$/, "");
   const offset = getDailyCatalogSyncOffset();
+  console.info("[catalog-cron] started", {
+    triggeredAt: new Date(startedAt).toISOString(),
+    sourceCount: CATALOG_SYNC_SOURCE_IDS.length,
+    maxTerms: CATALOG_SYNC_MAX_TERMS,
+    offset,
+  });
   const sources = await Promise.all(
     CATALOG_SYNC_SOURCE_IDS.map((sourceId) =>
       syncSource({
@@ -62,8 +67,26 @@ export async function GET(request: Request) {
   );
   const successfulSources = sources.filter((source) => source.ok).length;
   const updatedSources = sources.filter((source) => source.updated).length;
+  console.info("[catalog-cron] sources-complete", {
+    durationMs: Date.now() - startedAt,
+    successfulSources,
+    updatedSources,
+    failedSources: sources.length - successfulSources,
+    sources: sources.map((source) => ({
+      sourceId: source.sourceId,
+      ok: source.ok,
+      updated: source.updated,
+      httpStatus: source.httpStatus,
+      processedTerms: getProcessedTerms(source.progress),
+      error: source.error,
+    })),
+  });
 
   if (updatedSources === 0) {
+    console.error("[catalog-cron] no-valid-source-updates", {
+      durationMs: Date.now() - startedAt,
+      sources,
+    });
     return NextResponse.json(
       {
         error:
@@ -82,6 +105,10 @@ export async function GET(request: Request) {
   const consolidation = await rebuildCatalog(baseWorkerUrl, workerSecret);
 
   if (!consolidation.ok) {
+    console.error("[catalog-cron] rebuild-failed", {
+      durationMs: Date.now() - startedAt,
+      error: consolidation.error,
+    });
     return NextResponse.json(
       {
         error:
@@ -97,6 +124,14 @@ export async function GET(request: Request) {
       { status: 502 },
     );
   }
+
+  console.info("[catalog-cron] completed", {
+    durationMs: Date.now() - startedAt,
+    successfulSources,
+    updatedSources,
+    productsCount: consolidation.catalog?.productsCount ?? null,
+    lastSyncedAt: consolidation.catalog?.lastSyncedAt ?? null,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -126,7 +161,10 @@ async function syncSource({
   offset: number;
 }): Promise<SourceSyncSummary> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SOURCE_SYNC_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    CATALOG_SOURCE_SYNC_TIMEOUT_MS,
+  );
 
   try {
     const response = await fetch(`${baseWorkerUrl}/catalog/sync/source`, {
@@ -191,7 +229,10 @@ async function syncSource({
 
 async function rebuildCatalog(baseWorkerUrl: string, workerSecret: string) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REBUILD_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    CATALOG_REBUILD_TIMEOUT_MS,
+  );
 
   try {
     const response = await fetch(`${baseWorkerUrl}/catalog/rebuild`, {
@@ -220,10 +261,21 @@ async function rebuildCatalog(baseWorkerUrl: string, workerSecret: string) {
       catalog: null,
       error:
         error instanceof Error && error.name === "AbortError"
-          ? "El worker no consolido el catalogo dentro de 20 segundos."
+          ? `El worker no consolido el catalogo dentro de ${Math.round(
+              CATALOG_REBUILD_TIMEOUT_MS / 1000,
+            )} segundos.`
           : "No se pudo conectar con el worker para consolidar el catalogo.",
     };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function getProcessedTerms(progress: unknown) {
+  if (!progress || typeof progress !== "object") {
+    return 0;
+  }
+
+  const processedTerms = (progress as { processedTerms?: unknown }).processedTerms;
+  return typeof processedTerms === "number" ? processedTerms : 0;
 }

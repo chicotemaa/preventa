@@ -1,4 +1,9 @@
-export const CATALOG_SYNC_MAX_TERMS = 80;
+// A small daily window keeps all source requests and the final consolidation
+// inside Vercel's five-minute cron execution limit. Snapshots are merged in
+// Supabase, so subsequent days progressively cover the complete term list.
+export const CATALOG_SYNC_MAX_TERMS = 12;
+export const CATALOG_SOURCE_SYNC_TIMEOUT_MS = 150_000;
+export const CATALOG_REBUILD_TIMEOUT_MS = 100_000;
 
 export const CATALOG_SYNC_SOURCE_IDS = [
   "aguiar-arcor-resistencia",

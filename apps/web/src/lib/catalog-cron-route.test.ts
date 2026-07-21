@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { GET } from "@/app/api/cron/catalog-sync/route";
-import { CATALOG_SYNC_SOURCE_IDS } from "./catalog-sync-sources";
+import {
+  CATALOG_REBUILD_TIMEOUT_MS,
+  CATALOG_SOURCE_SYNC_TIMEOUT_MS,
+  CATALOG_SYNC_MAX_TERMS,
+  CATALOG_SYNC_SOURCE_IDS,
+} from "./catalog-sync-sources";
 
 test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
   const originalFetch = globalThis.fetch;
@@ -34,7 +39,7 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
     return Response.json({
       ok: true,
       productsCount: 10,
-      progress: { processedTerms: 80 },
+      progress: { processedTerms: CATALOG_SYNC_MAX_TERMS },
     });
   };
 
@@ -64,7 +69,10 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
       (sourceBodies[0] as { sourceId: string }).sourceId,
       CATALOG_SYNC_SOURCE_IDS[0],
     );
-    assert.equal((sourceBodies[0] as { maxTerms: number }).maxTerms, 80);
+    assert.equal(
+      (sourceBodies[0] as { maxTerms: number }).maxTerms,
+      CATALOG_SYNC_MAX_TERMS,
+    );
     assert.equal(
       (sourceBodies[0] as { deferCatalogRebuild: boolean })
         .deferCatalogRebuild,
@@ -76,6 +84,13 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
     restoreEnv("WORKER_CRON_SECRET", originalWorkerCronSecret);
     restoreEnv("WORKER_URL", originalWorkerUrl);
   }
+});
+
+test("reserva tiempo para consolidar antes del limite de Vercel", () => {
+  assert.ok(
+    CATALOG_SOURCE_SYNC_TIMEOUT_MS + CATALOG_REBUILD_TIMEOUT_MS <=
+      260_000,
+  );
 });
 
 test("el cron rechaza produccion sin WORKER_URL explicito", async () => {
