@@ -108,6 +108,22 @@ export async function selectSourceCatalogSnapshotsFromSupabase() {
   return rows.map(mapSnapshotRowToRecord);
 }
 
+export async function selectSourceCatalogSnapshotFromSupabase(sourceId: string) {
+  const rows = await requestSupabase<SupabaseSourceSnapshotRow[]>(
+    "source_catalog_snapshots",
+    {
+      method: "GET",
+      searchParams: {
+        source_id: `eq.${sourceId}`,
+        select: "*",
+        limit: "1",
+      },
+    },
+  );
+
+  return rows[0] ? mapSnapshotRowToRecord(rows[0]) : null;
+}
+
 export async function upsertSourceCatalogSnapshotsToSupabase(
   snapshots: SourceCatalogSnapshot[],
 ) {

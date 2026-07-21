@@ -34,6 +34,15 @@ import { scrapingSources } from "./sources/argentina.js";
 
 const CARREFOUR_COMERCIANTE_SOURCE_ID = "carrefour-comerciante-maxi";
 const AGUIAR_TOKIN_SOURCE_ID = "aguiar-arcor-resistencia";
+let catalogLoadPromise: ReturnType<typeof loadCatalogFromDisk> | null = null;
+
+function ensureCatalogLoaded() {
+  catalogLoadPromise ??= loadCatalogFromDisk().catch((error) => {
+    catalogLoadPromise = null;
+    throw error;
+  });
+  return catalogLoadPromise;
+}
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
@@ -231,6 +240,7 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/catalog") {
+    await ensureCatalogLoaded();
     sendJson(response, 200, getCatalogSnapshot());
     return;
   }
@@ -258,6 +268,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    await ensureCatalogLoaded();
     const snapshot = await syncCatalog();
     sendJson(response, 200, snapshot);
     return;
@@ -272,6 +283,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    await ensureCatalogLoaded();
     const syncState = syncCatalogInBackground();
     sendJson(response, 202, {
       ok: true,
@@ -314,6 +326,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    await ensureCatalogLoaded();
     const snapshot = await rebuildCatalogFromStoredSources();
     sendJson(response, 200, {
       ok: true,
@@ -324,16 +337,19 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === "POST" && url.pathname === "/catalog/search") {
+    await ensureCatalogLoaded();
     await handleCatalogSearch(request, response);
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/catalog/category-search") {
+    await ensureCatalogLoaded();
     await handleCatalogCategorySearch(request, response);
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/catalog/price-list") {
+    await ensureCatalogLoaded();
     await handleCatalogPriceList(request, response);
     return;
   }
@@ -444,14 +460,12 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-await loadCatalogFromDisk();
-
 server.listen(config.port, "0.0.0.0", () => {
   console.log(`Worker listening on http://localhost:${config.port}`);
 
   if (config.autoSyncOnStartup) {
     console.log("Starting catalog sync in background");
-    syncCatalogInBackground();
+    void ensureCatalogLoaded().then(() => syncCatalogInBackground());
   }
 });
 

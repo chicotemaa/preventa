@@ -10,6 +10,7 @@ import type {
 } from "./types.js";
 import {
   requiresSupabaseSourceStore,
+  selectSourceCatalogSnapshotFromSupabase,
   selectSourceCatalogSnapshotsFromSupabase,
   selectSourceSessionRecordsFromSupabase,
   shouldUseSupabaseSourceStore,
@@ -253,13 +254,13 @@ export async function getSourceSessionStates(): Promise<SourceSessionState[]> {
 export async function saveSourceCatalogSnapshot(
   snapshot: SourceCatalogSnapshot,
 ) {
-  const store = await readSnapshotStore();
-  store.snapshots[snapshot.sourceId] = preserveUsableSnapshotOnFailedRefresh(
-    store.snapshots[snapshot.sourceId],
+  const current = await getSourceCatalogSnapshot(snapshot.sourceId);
+  const storedSnapshot = preserveUsableSnapshotOnFailedRefresh(
+    current ?? undefined,
     snapshot,
   );
-  await writeSnapshotStore(store, snapshot.sourceId);
-  return getSourceCatalogSnapshotSummary(snapshot.sourceId);
+  await writeSourceCatalogSnapshot(storedSnapshot);
+  return summarizeSourceCatalogSnapshot(storedSnapshot);
 }
 
 function preserveUsableSnapshotOnFailedRefresh(
@@ -308,7 +309,13 @@ function preserveUsableSnapshotOnFailedRefresh(
 }
 
 export async function getSourceCatalogSnapshot(sourceId: string) {
-  const store = await readSnapshotStore();
+  const supabaseSnapshot = await readSupabaseSourceSnapshot(sourceId);
+
+  if (supabaseSnapshot !== undefined) {
+    return supabaseSnapshot;
+  }
+
+  const store = await readFileSnapshotStore();
   return store.snapshots[sourceId] ?? null;
 }
 
@@ -321,22 +328,12 @@ export async function getSourceCatalogSnapshotSummary(
     return null;
   }
 
-  const { products, ...summary } = snapshot;
-  return {
-    ...summary,
-    sampleProducts: products.slice(0, 8),
-  };
+  return summarizeSourceCatalogSnapshot(snapshot);
 }
 
 export async function getSourceCatalogSnapshotSummaries() {
-  const store = await readSnapshotStore();
-  return Promise.all(
-    Object.keys(store.snapshots).map(getSourceCatalogSnapshotSummary),
-  ).then((snapshots) =>
-    snapshots.filter(
-      (snapshot): snapshot is SourceCatalogSnapshotSummary => snapshot !== null,
-    ),
-  );
+  const snapshots = await getStoredSourceCatalogSnapshots();
+  return snapshots.map(summarizeSourceCatalogSnapshot);
 }
 
 export async function getStoredSourceCatalogSnapshots() {
@@ -461,6 +458,10 @@ async function readSnapshotStore(): Promise<SnapshotStoreFile> {
     return supabaseStore;
   }
 
+  return readFileSnapshotStore();
+}
+
+async function readFileSnapshotStore(): Promise<SnapshotStoreFile> {
   try {
     const raw = await readFile(snapshotsPath, "utf8");
     const parsed = JSON.parse(raw) as SnapshotStoreFile;
@@ -474,13 +475,15 @@ async function readSnapshotStore(): Promise<SnapshotStoreFile> {
   }
 }
 
-async function writeSnapshotStore(store: SnapshotStoreFile, sourceId: string) {
-  const wroteToSupabase = await writeSupabaseSnapshotStore(store, sourceId);
+async function writeSourceCatalogSnapshot(snapshot: SourceCatalogSnapshot) {
+  const wroteToSupabase = await writeSupabaseSourceSnapshot(snapshot);
 
   if (wroteToSupabase) {
     return;
   }
 
+  const store = await readFileSnapshotStore();
+  store.snapshots[snapshot.sourceId] = snapshot;
   await mkdir(dataDir, { recursive: true });
   await writeFile(snapshotsPath, JSON.stringify(store, null, 2), "utf8");
 }
@@ -542,21 +545,27 @@ async function readSupabaseSnapshotStore(): Promise<SnapshotStoreFile | null> {
   }
 }
 
-async function writeSupabaseSnapshotStore(
-  store: SnapshotStoreFile,
-  sourceId: string,
-) {
+async function readSupabaseSourceSnapshot(sourceId: string) {
+  if (!shouldUseSupabaseSourceStore()) {
+    return undefined;
+  }
+
+  try {
+    const snapshot = await selectSourceCatalogSnapshotFromSupabase(sourceId);
+    clearSupabaseStoreError("leer snapshot de fuente");
+    return snapshot;
+  } catch (error) {
+    handleSupabaseStoreError("leer snapshot de fuente", error);
+    return undefined;
+  }
+}
+
+async function writeSupabaseSourceSnapshot(snapshot: SourceCatalogSnapshot) {
   if (!shouldUseSupabaseSourceStore()) {
     return false;
   }
 
   try {
-    const snapshot = store.snapshots[sourceId];
-
-    if (!snapshot) {
-      return true;
-    }
-
     await upsertSourceCatalogSnapshotsToSupabase([snapshot]);
     clearSupabaseStoreError("guardar snapshots");
     return true;
@@ -564,6 +573,16 @@ async function writeSupabaseSnapshotStore(
     handleSupabaseStoreError("guardar snapshots", error);
     return false;
   }
+}
+
+function summarizeSourceCatalogSnapshot(
+  snapshot: SourceCatalogSnapshot,
+): SourceCatalogSnapshotSummary {
+  const { products, ...summary } = snapshot;
+  return {
+    ...summary,
+    sampleProducts: products.slice(0, 8),
+  };
 }
 
 function handleSupabaseStoreError(operation: string, error: unknown) {
