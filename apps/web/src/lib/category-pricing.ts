@@ -439,7 +439,9 @@ function buildDecisionRow(
   };
 }
 
-function buildSourceHealthSummary(sources: SourceSearchStatus[]): SourceHealthSummary {
+export function buildSourceHealthSummary(
+  sources: SourceSearchStatus[],
+): SourceHealthSummary {
   const usedSourceIds = new Set<string>();
   const items: SourceHealthItem[] = [];
 

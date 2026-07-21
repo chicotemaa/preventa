@@ -103,7 +103,7 @@ Notas:
 - `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false` evita consultas directas a Tokin al evaluar listas importadas.
 - `CATALOG_SYNC_SEED_MAX_TERMS=160` limita cuantas semillas de `worker/data/catalog-search-seeds.txt` usa el cron diario.
 - `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
-- El cron diario no ejecuta `/catalog/sync` completo: sincroniza cada fuente en paralelo, procesa bloques rotativos de 80 terminos y consolida en Supabase los snapshots obtenidos. Asi conserva avances aunque una fuente falle o tarde demasiado.
+- El cron diario no ejecuta `/catalog/sync` completo: consulta cuatro fuentes por dia (Aguiar/Tokin, Maxiconsumo Chaco y dos rotativas), procesa dos terminos por fuente y consolida en Supabase los snapshots acumulados. Asi conserva avances dentro del limite de Vercel aunque una fuente falle o tarde demasiado.
 
 ## Correr localmente
 
@@ -135,6 +135,8 @@ npm run dev:worker
 - `/`: explorador de categorias y familias.
 - `/busqueda-general`: busqueda individual por nombre, SKU, codigo interno o EAN.
 - `/importacion`: carga de Excel/lista semanal, comparacion y exportacion.
+- `/revisiones`: asuntos operativos de la ultima lista guardada.
+- `/alertas`: alertas del catalogo diario, cobertura y diferencias mayoristas.
 - `/evolucion`: evolucion de precios con corridas guardadas.
 - `/historial`: historial y detalle de corridas guardadas.
 - `/configuracion`: validacion de sesiones privadas de fuentes mayoristas.
@@ -254,12 +256,11 @@ El frontend incluye un cron de Vercel en `apps/web/vercel.json`:
 
 - Todos los dias 12:00 Argentina: `0 15 * * *` UTC.
 
-El cron llama `GET /api/cron/catalog-sync`, que valida `CRON_SECRET` y dispara
-`POST /catalog/sync/background` en el worker. El endpoint del worker responde
-rapido y la sincronizacion sigue en background, por eso no bloquea la funcion de
-Vercel. El cron no recorre fuentes dentro de la funcion serverless: el worker
-persistente ejecuta la sincronizacion completa, evita corridas superpuestas y
-expone `syncStartedAt` y `syncProgress` en `GET /catalog`.
+El cron llama `GET /api/cron/catalog-sync`, valida `CRON_SECRET`, actualiza un
+bloque rotativo de fuentes/terminos y luego consolida los snapshots del worker.
+Despues analiza las familias configuradas, persiste alertas deduplicadas en
+Supabase y, si Resend esta configurado, envia un resumen por correo. Una falla de
+alertas o correo no invalida una actualizacion correcta del catalogo.
 `WORKER_URL` es obligatorio en produccion; no se usa un worker publico de
 respaldo porque podria ocultar una configuracion incorrecta.
 
@@ -277,6 +278,13 @@ CRON_SECRET=<clave-larga-aleatoria>
 WORKER_CRON_SECRET=<misma-clave-si-el-worker-usa-CATALOG_SYNC_SECRET>
 CATEGORY_SEARCH_MODE=catalog
 ENABLE_LIVE_SEARCH=false
+ALERT_CATEGORY_QUERIES=alfajores,jugos en polvo,galletitas,mermeladas,chocolates,salsas y aderezos,cereales y barritas,golosinas
+ALERT_CATEGORY_TIMEOUT_MS=20000
+
+# Correo opcional
+RESEND_API_KEY=<api-key-de-resend>
+ALERT_EMAIL_TO=<destinatario>
+ALERT_EMAIL_FROM=Aguiar Alertas <alertas@dominio-verificado.com>
 
 # Worker
 CATALOG_SYNC_SECRET=<misma-clave>
@@ -297,6 +305,12 @@ catalogo final se reconstruye desde los snapshots guardados por fuente.
 El archivo `worker/data/catalog-search-seeds.txt` agrega familias y lineas de la
 lista general de articulos para que el cron precargue mas productos y la
 importacion de Excel compare contra el snapshot, sin scraping por cada carga.
+
+Las alertas requieren ejecutar la migracion
+`supabase/migrations/20260721210000_pricing_alerts.sql`. Se deduplican por
+fuente/producto/tipo y usan estados `Nueva`, `Revisada` y `Resuelta`. Si una
+familia falla durante la corrida, el sistema conserva las alertas anteriores en
+lugar de resolverlas de forma incorrecta.
 
 La importacion conserva por separado el precio recibido en el Excel y el precio
 obtenido de Tokin/Arcor. El Excel tiene prioridad; Tokin se usa como fallback

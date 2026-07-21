@@ -11,13 +11,14 @@ La aplicacion ayuda a preparar y revisar listas de precios semanales. El usuario
 - Revisar precio unitario y precio por bulto cuando la fuente lo informa.
 - Importar una lista de Excel, comparar contra fuentes externas y exportar el resultado.
 - Guardar corridas para analizar evolucion.
+- Revisar alertas generadas por la actualizacion diaria sin esperar scraping en vivo.
 
 ## Mapa visual
 
 ```text
 Aguiar Gestion de Precios
 
-[ Categorias ] [ Busqueda general ] [ Importacion ] [ Evolucion ] [ Historial ] [ Configuracion ]
+[ Categorias ] [ Busqueda general ] [ Importacion ] [ Revisiones ] [ Alertas ] [ Evolucion ] [ Historial ] [ Configuracion ]
 
 Categorias
   Buscar familia
@@ -37,6 +38,11 @@ Importacion
 Evolucion / Historial
   Ver corridas guardadas
   Comparar cambios de precios
+
+Alertas
+  Ver diferencias contra mayoristas
+  Revisar fuentes criticas sin datos
+  Marcar alertas como revisadas o resueltas
 
 Configuracion
   Validar sesiones privadas de fuentes mayoristas
@@ -176,6 +182,29 @@ diaria. Sus precios deben leerse como ofertas con vigencia y no como confirmacio
 de catalogo completo o stock disponible.
 
 Si una fuente no existe todavia en el sistema, queda preparada para ordenarse correctamente cuando se agregue.
+
+## Pagina: Alertas
+
+Ruta: `/alertas`
+
+La actualizacion diaria analiza automaticamente las familias principales y deja
+señales operativas. La pantalla separa:
+
+- Criticas: catalogo vencido o fuente propia/principal sin datos.
+- Precios: Aguiar por encima del mejor mayorista o minorista debajo del mayorista.
+- Oportunidades: Aguiar por debajo de una referencia mayorista comparable.
+- Fuentes: credenciales, timeouts o fuentes criticas pendientes.
+
+Una alerta no modifica precios. Si falta cobertura mayorista, el match es debil
+o no hay precio propio, la recomendacion queda limitada a revisar/validar.
+
+Flujo recomendado:
+
+1. Abrir `Alertas` despues de la actualizacion de las 12:00.
+2. Empezar por `Criticas` y `Precios`.
+3. Marcar `Revisada` cuando el caso ya tiene responsable.
+4. Marcar `Resolver` cuando el problema deja de requerir accion.
+5. El cron vuelve a abrir una alerta resuelta si el mismo problema reaparece.
 
 ## Precio unitario y bulto
 
@@ -364,6 +393,8 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `POST /api/price-list/save`
 - `GET /api/price-list/history`
 - `GET /api/price-list/evolution`
+- `GET /api/alerts`
+- `PATCH /api/alerts/:alertId`
 - `GET /api/source-sessions`
 - `POST /api/source-sessions/carrefour-comerciante/validate`
 - `POST /api/source-sessions/carrefour-comerciante/save`
@@ -399,6 +430,10 @@ SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_PERSIST_PRICE_LISTS=true
+ALERT_CATEGORY_QUERIES=alfajores,jugos en polvo,galletitas,mermeladas,chocolates,salsas y aderezos,cereales y barritas,golosinas
+RESEND_API_KEY=<opcional>
+ALERT_EMAIL_TO=<opcional>
+ALERT_EMAIL_FROM=<opcional>
 ```
 
 Worker:
@@ -473,10 +508,11 @@ Flujo:
 
 1. Vercel ejecuta `GET /api/cron/catalog-sync`.
 2. La ruta valida `CRON_SECRET`.
-3. La ruta llama al worker en `POST /catalog/sync/background`.
-4. El worker valida `CATALOG_SYNC_SECRET`.
-5. El worker sincroniza fuentes en background y actualiza `catalog_snapshots`.
-6. Las paginas consultan categorias en modo `catalog`.
+3. La ruta actualiza un bloque diario mediante `POST /catalog/sync/source`.
+4. El worker valida `CATALOG_SYNC_SECRET` y guarda cada snapshot de fuente.
+5. La ruta consolida el catalogo con `POST /catalog/rebuild`.
+6. Analiza las familias configuradas y guarda alertas en `pricing_alerts`.
+7. Las paginas consultan categorias en modo `catalog`.
 
 Si una actualizacion falla o devuelve menos del 20% de un catalogo grande, el
 worker conserva el ultimo snapshot valido. La interfaz muestra la fecha del

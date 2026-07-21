@@ -32,7 +32,23 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
     if (requestedUrl.endsWith("/catalog/rebuild")) {
       return Response.json({
         ok: true,
-        catalog: { status: "ready", productsCount: 120 },
+        catalog: {
+          status: "ready",
+          productsCount: 120,
+          lastSyncedAt: new Date().toISOString(),
+          sources: [],
+        },
+      });
+    }
+
+    if (requestedUrl.endsWith("/catalog/category-search")) {
+      return Response.json({
+        query: "alfajores",
+        normalizedQuery: "alfajores",
+        searchedAt: new Date().toISOString(),
+        durationMs: 1,
+        groups: [],
+        sources: [],
       });
     }
 
@@ -66,7 +82,13 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
         .length,
       expectedSourceIds.length,
     );
-    assert.equal(requestedUrls.at(-1), "https://worker.example.test/catalog/rebuild");
+    assert.equal(
+      requestedUrls[expectedSourceIds.length],
+      "https://worker.example.test/catalog/rebuild",
+    );
+    assert.ok(
+      requestedUrls.some((url) => url.endsWith("/catalog/category-search")),
+    );
     assert.equal(
       (sourceBodies[0] as { sourceId: string }).sourceId,
       expectedSourceIds[0],

@@ -7,6 +7,8 @@ import {
   getDailyCatalogSyncOffset,
   getDailyCatalogSyncSourceIds,
 } from "@/lib/catalog-sync-sources";
+import { refreshPricingAlertsAfterCatalogSync } from "@/lib/pricing-alert-sync";
+import type { CatalogMetadata } from "@/types/search";
 
 export const maxDuration = 300;
 
@@ -129,12 +131,19 @@ export async function GET(request: Request) {
     );
   }
 
+  const alerts = await refreshPricingAlertsSafely(
+    baseWorkerUrl,
+    consolidation.catalog as CatalogMetadata | null,
+  );
+
   console.info("[catalog-cron] completed", {
     durationMs: Date.now() - startedAt,
     successfulSources,
     updatedSources,
     productsCount: consolidation.catalog?.productsCount ?? null,
     lastSyncedAt: consolidation.catalog?.lastSyncedAt ?? null,
+    alertsGenerated: alerts?.persistence.generated ?? null,
+    alertError: alerts?.persistence.errorMessage ?? null,
   });
 
   return NextResponse.json({
@@ -151,7 +160,25 @@ export async function GET(request: Request) {
     failedSources: sources.length - successfulSources,
     sources,
     catalog: consolidation.catalog,
+    alerts,
   });
+}
+
+async function refreshPricingAlertsSafely(
+  baseWorkerUrl: string,
+  catalog: CatalogMetadata | null,
+) {
+  try {
+    return await refreshPricingAlertsAfterCatalogSync({
+      workerUrl: baseWorkerUrl,
+      catalog,
+    });
+  } catch (error) {
+    console.error("[catalog-cron] alert-refresh-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 async function syncSource({
