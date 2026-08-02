@@ -7,6 +7,7 @@ import {
   getDailyCatalogSyncOffset,
   getDailyCatalogSyncSourceIds,
 } from "@/lib/catalog-sync-sources";
+import { refreshDailyEvolutionSnapshot } from "@/lib/catalog-evolution-snapshot";
 import { refreshPricingAlertsAfterCatalogSync } from "@/lib/pricing-alert-sync";
 import type { CatalogMetadata } from "@/types/search";
 
@@ -131,10 +132,13 @@ export async function GET(request: Request) {
     );
   }
 
-  const alerts = await refreshPricingAlertsSafely(
-    baseWorkerUrl,
-    consolidation.catalog as CatalogMetadata | null,
-  );
+  const [alerts, evolutionSnapshot] = await Promise.all([
+    refreshPricingAlertsSafely(
+      baseWorkerUrl,
+      consolidation.catalog as CatalogMetadata | null,
+    ),
+    refreshDailyEvolutionSnapshotSafely(baseWorkerUrl),
+  ]);
 
   console.info("[catalog-cron] completed", {
     durationMs: Date.now() - startedAt,
@@ -144,6 +148,9 @@ export async function GET(request: Request) {
     lastSyncedAt: consolidation.catalog?.lastSyncedAt ?? null,
     alertsGenerated: alerts?.persistence.generated ?? null,
     alertError: alerts?.persistence.errorMessage ?? null,
+    evolutionSaved: evolutionSnapshot.saved,
+    evolutionItemsCount: evolutionSnapshot.itemsCount ?? null,
+    evolutionError: evolutionSnapshot.errorMessage ?? null,
   });
 
   return NextResponse.json({
@@ -161,7 +168,24 @@ export async function GET(request: Request) {
     sources,
     catalog: consolidation.catalog,
     alerts,
+    evolutionSnapshot,
   });
+}
+
+async function refreshDailyEvolutionSnapshotSafely(baseWorkerUrl: string) {
+  try {
+    return await refreshDailyEvolutionSnapshot({ workerUrl: baseWorkerUrl });
+  } catch (error) {
+    console.error("[catalog-cron] evolution-snapshot-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      enabled: true,
+      attempted: true,
+      saved: false,
+      errorMessage: "No se pudo generar la captura diaria de evolucion.",
+    };
+  }
 }
 
 async function refreshPricingAlertsSafely(

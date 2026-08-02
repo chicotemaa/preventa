@@ -389,6 +389,8 @@ export type PriceListRunSummary = {
   missingOwnPriceCount?: number | null;
   storageVersion?: number | null;
   catalogLastSyncedAt?: string | null;
+  origin?: "legacy" | "manual_import" | "scheduled_catalog";
+  sourceRunId?: string | null;
 };
 
 export type PriceListRunSource = {
@@ -500,6 +502,7 @@ export type PriceEvolutionPoint = {
   gapPercent: number | null;
   decisionLabel: string;
   sourcePrices: PriceListSourcePrice[];
+  ownPriceSnapshotStatus?: "stored" | "not_stored_legacy";
 };
 
 export type PriceEvolutionProduct = {

@@ -6,6 +6,10 @@ import type {
 } from "@/types/search";
 import { isSupabaseConfigured, selectSupabaseRows } from "./supabase-admin";
 import { parseStoredPriceListDetail } from "./price-list-storage";
+import {
+  repairLegacySourcePrice,
+  repairLegacyText,
+} from "./legacy-text";
 
 const RUNS_LIMIT = 30;
 
@@ -20,6 +24,7 @@ type RunRow = {
   items_count: number | null;
   matched_count: number | null;
   unmatched_count: number | null;
+  metadata: unknown;
 };
 
 type EvolutionItemRow = {
@@ -46,7 +51,7 @@ export async function getPriceEvolution(): Promise<PriceEvolutionResponse> {
   try {
     const runRows = await selectSupabaseRows<RunRow[]>("price_list_runs", {
       select:
-        "id,list_name,status,week_start,searched_at,created_at,duration_ms,items_count,matched_count,unmatched_count",
+        "id,list_name,status,week_start,searched_at,created_at,duration_ms,items_count,matched_count,unmatched_count,metadata",
       order: "created_at.desc",
       limit: RUNS_LIMIT,
     });
@@ -103,33 +108,43 @@ function buildProducts(
 
     const productKey = buildProductKey(row);
     const storedDetail = parseStoredPriceListDetail(row.source_prices);
+    const currentPrice = parseDatabaseNumber(row.current_price);
+    const sourcePrices = storedDetail.sourcePrices.map(repairLegacySourcePrice);
     const product = products.get(productKey) ?? {
       productKey,
-      description: row.description || "Articulo sin descripcion",
-      business: storedDetail.dimensions.business ?? null,
-      rubro: row.rubro,
-      segment: storedDetail.dimensions.segment ?? null,
-      subrubro: storedDetail.dimensions.subrubro ?? null,
-      line: storedDetail.dimensions.line ?? null,
+      description:
+        repairLegacyText(row.description) || "Articulo sin descripcion",
+      business: repairLegacyText(storedDetail.dimensions.business) ?? null,
+      rubro: repairLegacyText(row.rubro),
+      segment: repairLegacyText(storedDetail.dimensions.segment) ?? null,
+      subrubro: repairLegacyText(storedDetail.dimensions.subrubro) ?? null,
+      line: repairLegacyText(storedDetail.dimensions.line) ?? null,
       code: row.code,
       ean13Di: row.ean13_di,
       ean13Bu: row.ean13_bu,
       points: [],
       sourceNames: [],
     };
-    const sourcePrices = storedDetail.sourcePrices;
+    const ownPriceSnapshotStatus =
+      storedDetail.isLegacy && !storedDetail.ownPrice && !currentPrice
+        ? "not_stored_legacy"
+        : "stored";
     const point: PriceEvolutionPoint = {
       runId: row.run_id,
       searchedAt: run.searchedAt,
       createdAt: run.createdAt,
-      araPrice: parseDatabaseNumber(row.current_price),
+      araPrice: currentPrice,
       ownPrice: storedDetail.ownPrice,
       referencePrice: parseDatabaseNumber(row.best_price),
       suggestedPrice: parseDatabaseNumber(row.suggested_price),
       bestSourceName: row.best_source_name,
       gapPercent: parseDatabaseNumber(row.gap_percent),
-      decisionLabel: row.decision_label,
+      decisionLabel:
+        ownPriceSnapshotStatus === "not_stored_legacy"
+          ? "Carga histórica sin precio propio guardado"
+          : repairLegacyText(row.decision_label),
       sourcePrices,
+      ownPriceSnapshotStatus,
     };
 
     product.points.push(point);
@@ -178,7 +193,7 @@ function buildProductKey(row: EvolutionItemRow) {
     return `ean-bu:${row.ean13_bu}`;
   }
 
-  return `description:${normalizeProductText(row.description ?? "")}`;
+  return `description:${normalizeProductText(repairLegacyText(row.description ?? ""))}`;
 }
 
 function normalizeProductText(value: string) {
@@ -191,6 +206,8 @@ function normalizeProductText(value: string) {
 }
 
 function mapRunRow(row: RunRow): PriceListRunSummary {
+  const metadata = parseRunMetadata(row.metadata);
+
   return {
     id: row.id,
     listName: row.list_name,
@@ -202,7 +219,28 @@ function mapRunRow(row: RunRow): PriceListRunSummary {
     itemsCount: row.items_count ?? 0,
     matchedCount: row.matched_count ?? 0,
     unmatchedCount: row.unmatched_count ?? 0,
+    origin: metadata.origin,
+    sourceRunId: metadata.sourceRunId,
   };
+}
+
+function parseRunMetadata(value: unknown) {
+  const metadata =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const origin =
+    metadata.origin === "scheduled_catalog"
+      ? "scheduled_catalog"
+      : metadata.origin === "manual_import"
+        ? "manual_import"
+        : "legacy";
+
+  return {
+    origin,
+    sourceRunId:
+      typeof metadata.sourceRunId === "string" ? metadata.sourceRunId : null,
+  } as const;
 }
 
 function parseDatabaseNumber(value: number | string | null) {

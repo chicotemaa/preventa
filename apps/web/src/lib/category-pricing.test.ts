@@ -57,6 +57,128 @@ test("consolida los modos unidad y bulto de Tokin", () => {
   assert.equal(consolidated[0]?.packageQuantity, 36);
 });
 
+test("normaliza display y bulto Tokin antes de comparar jugos en polvo", () => {
+  const display = createProduct(
+    "aguiar-arcor-resistencia",
+    "Aguiar Resistencia",
+    "mayorista",
+    4_769.63,
+  );
+  display.brand = "BC";
+  display.category = "Jugos en polvo";
+  display.rawName = "Jugo en polvo BC limonada 7gr.";
+  display.normalizedName = "jugo en polvo bc limonada 7 gr";
+  const bulto = {
+    ...display,
+    sku: "bulto",
+    price: 76_313.94,
+    comparisonPrice: 76_313.94,
+  };
+  const consolidated = consolidateProductVariants([display, bulto]);
+
+  assert.equal(consolidated.length, 1);
+  assert.equal(consolidated[0]?.comparisonPrice, 264.98);
+  assert.equal(consolidated[0]?.price, 76_313.94);
+  assert.equal(consolidated[0]?.packageQuantity, 288);
+  assert.equal(consolidated[0]?.alternatePrices?.length, 3);
+  assert.match(
+    consolidated[0]?.packageLabel ?? "",
+    /16 displays.*288 unidades/,
+  );
+});
+
+test("normaliza displays Tokin sin bulto usando otros sabores del mismo formato", () => {
+  const firstDisplay = createProduct(
+    "aguiar-arcor-resistencia",
+    "Aguiar Resistencia",
+    "mayorista",
+    4_769.63,
+  );
+  firstDisplay.brand = "Arcor";
+  firstDisplay.category = "Jugos en polvo";
+  firstDisplay.rawName = "Jugo en Polvo Arcor Durazno 15gr.";
+  firstDisplay.normalizedName = "jugo en polvo arcor durazno 15 gr";
+  const firstBulto = {
+    ...firstDisplay,
+    sku: "first-bulto",
+    price: 57_235.48,
+    comparisonPrice: 57_235.48,
+  };
+  const secondDisplay = {
+    ...firstDisplay,
+    sku: "second-display",
+    rawName: "Jugo en Polvo Arcor Anana 15gr.",
+    normalizedName: "jugo en polvo arcor anana 15 gr",
+  };
+  const standaloneDisplay = {
+    ...firstDisplay,
+    sku: "standalone-display",
+    rawName: "Jugo en Polvo Arcor Limonada 15gr.",
+    normalizedName: "jugo en polvo arcor limonada 15 gr",
+  };
+  const consolidated = consolidateProductVariants([
+    firstDisplay,
+    firstBulto,
+    secondDisplay,
+    standaloneDisplay,
+  ]);
+  const normalizedStandalone = consolidated.find(
+    (product) => product.sku === "standalone-display",
+  );
+
+  assert.equal(normalizedStandalone?.comparisonPrice, 264.98);
+  assert.equal(normalizedStandalone?.packageQuantity, 18);
+  assert.equal(normalizedStandalone?.alternatePrices?.length, 2);
+});
+
+test("normaliza displays comerciales de golosinas antes de comparar", () => {
+  const cases = [
+    {
+      rawName: "Turrón de maní Arcor 25gr.",
+      displayPrice: 11_040.57,
+      bultoPrice: 44_162.29,
+      expectedUnitPrice: 220.81,
+      expectedUnits: 200,
+    },
+    {
+      rawName: "Bombón Bon o Bon blanco 15gr.",
+      displayPrice: 11_669.01,
+      bultoPrice: 140_028.06,
+      expectedUnitPrice: 388.97,
+      expectedUnits: 360,
+    },
+    {
+      rawName: "Gomitas Mogul Ositos x 30gr",
+      displayPrice: 5_366.91,
+      bultoPrice: 64_402.89,
+      expectedUnitPrice: 447.24,
+      expectedUnits: 144,
+    },
+  ];
+
+  for (const item of cases) {
+    const display = createProduct(
+      "aguiar-arcor-resistencia",
+      "Aguiar Resistencia",
+      "mayorista",
+      item.displayPrice,
+    );
+    display.category = "Golosinas";
+    display.rawName = item.rawName;
+    display.normalizedName = item.rawName.toLowerCase();
+    const bulto = {
+      ...display,
+      sku: `${item.rawName}-bulto`,
+      price: item.bultoPrice,
+      comparisonPrice: item.bultoPrice,
+    };
+    const [normalized] = consolidateProductVariants([display, bulto]);
+
+    assert.equal(normalized?.comparisonPrice, item.expectedUnitPrice);
+    assert.equal(normalized?.packageQuantity, item.expectedUnits);
+  }
+});
+
 test("explica la diferencia sin exigir interpretar el signo", () => {
   assert.equal(formatGapExplanation(12.34), "Aguiar 12,3% más caro");
   assert.equal(formatGapExplanation(-5.06), "Aguiar 5,1% más barato");

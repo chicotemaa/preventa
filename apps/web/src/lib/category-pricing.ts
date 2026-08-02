@@ -329,6 +329,7 @@ export function getComparablePrice(product: ProductSearchResult) {
 
 export function consolidateProductVariants(products: ProductSearchResult[]) {
   const groups = new Map<string, ProductSearchResult[]>();
+  const displayAnchors = buildKnownTokinDisplayAnchors(products);
 
   for (const product of products) {
     const key = [
@@ -340,7 +341,12 @@ export function consolidateProductVariants(products: ProductSearchResult[]) {
     groups.set(key, [...(groups.get(key) ?? []), product]);
   }
 
-  return Array.from(groups.values()).map(consolidateProductGroup);
+  return Array.from(groups.values()).map((group) =>
+    consolidateProductGroup(
+      group,
+      displayAnchors.get(getKnownTokinDisplayFormatKey(group[0]!) ?? ""),
+    ),
+  );
 }
 
 function buildDecisionRows(
@@ -1137,9 +1143,12 @@ function findBestProductCell(products: ProductSearchResult[]) {
   return findBestCell(products.map(toPriceCell));
 }
 
-function consolidateProductGroup(products: ProductSearchResult[]): ProductSearchResult {
+function consolidateProductGroup(
+  products: ProductSearchResult[],
+  displayAnchor?: number,
+): ProductSearchResult {
   if (products.length === 1) {
-    return products[0]!;
+    return normalizeStandaloneKnownTokinDisplay(products[0]!, displayAnchor);
   }
 
   const sorted = [...products].sort(
@@ -1165,6 +1174,45 @@ function consolidateProductGroup(products: ProductSearchResult[]): ProductSearch
   );
 
   if (inferredQuantity) {
+    const displayQuantity = findKnownTokinDisplayQuantity(lowest);
+
+    if (displayQuantity) {
+      const unitPrice = roundCurrency(getComparablePrice(lowest) / displayQuantity);
+      const totalUnits = displayQuantity * inferredQuantity;
+
+      return {
+        ...lowest,
+        price: highest.price,
+        comparisonPrice: unitPrice,
+        packageQuantity: totalUnits,
+        packageLabel:
+          `bulto x ${inferredQuantity} displays (${totalUnits} unidades)`,
+        priceCondition:
+          `Unidad equivalente; display x ${displayQuantity}; ` +
+          `bulto x ${inferredQuantity} displays`,
+        alternatePrices: dedupeAlternatePrices([
+          {
+            label: "Unidad",
+            price: unitPrice,
+            comparisonPrice: unitPrice,
+          },
+          {
+            label: `Display x ${displayQuantity}`,
+            price: getComparablePrice(lowest),
+            comparisonPrice: unitPrice,
+          },
+          {
+            label: `Bulto x ${inferredQuantity} displays`,
+            price: highest.price,
+            comparisonPrice: unitPrice,
+          },
+        ]),
+        confidenceScore: Math.max(
+          ...products.map((product) => product.confidenceScore),
+        ),
+      };
+    }
+
     return {
       ...lowest,
       price: highest.price,
@@ -1182,6 +1230,173 @@ function consolidateProductGroup(products: ProductSearchResult[]): ProductSearch
     alternatePrices,
     confidenceScore: Math.max(...products.map((product) => product.confidenceScore)),
   };
+}
+
+function buildKnownTokinDisplayAnchors(products: ProductSearchResult[]) {
+  const pricesByFormat = new Map<string, number[]>();
+
+  for (const product of products) {
+    const key = getKnownTokinDisplayFormatKey(product);
+
+    if (!key || product.packageQuantity) {
+      continue;
+    }
+
+    pricesByFormat.set(key, [...(pricesByFormat.get(key) ?? []), product.price]);
+  }
+
+  const anchors = new Map<string, number>();
+
+  for (const [key, prices] of pricesByFormat) {
+    const frequencies = new Map<number, number>();
+
+    for (const price of prices) {
+      const roundedPrice = roundCurrency(price);
+      frequencies.set(roundedPrice, (frequencies.get(roundedPrice) ?? 0) + 1);
+    }
+
+    const anchor = Array.from(frequencies.entries())
+      .filter(([, count]) => count >= 2)
+      .map(([price]) => price)
+      .sort((first, second) => first - second)[0];
+
+    if (anchor) {
+      anchors.set(key, anchor);
+    }
+  }
+
+  return anchors;
+}
+
+function normalizeStandaloneKnownTokinDisplay(
+  product: ProductSearchResult,
+  displayPrice: number | undefined,
+) {
+  const displayQuantity = findKnownTokinDisplayQuantity(product);
+
+  if (!displayQuantity || !displayPrice) {
+    return product;
+  }
+
+  const ratio = product.price / displayPrice;
+  const displaysPerPackage = Math.round(ratio);
+
+  if (Math.abs(ratio - displaysPerPackage) > 0.03) {
+    return product;
+  }
+
+  const unitPrice = roundCurrency(displayPrice / displayQuantity);
+
+  if (displaysPerPackage <= 1) {
+    return {
+      ...product,
+      comparisonPrice: unitPrice,
+      packageQuantity: displayQuantity,
+      packageLabel: `display x ${displayQuantity} unidades`,
+      priceCondition: `Unidad equivalente; display x ${displayQuantity}`,
+      alternatePrices: [
+        {
+          label: "Unidad",
+          price: unitPrice,
+          comparisonPrice: unitPrice,
+        },
+        {
+          label: `Display x ${displayQuantity}`,
+          price: product.price,
+          comparisonPrice: unitPrice,
+        },
+      ],
+    };
+  }
+
+  if (displaysPerPackage > 200) {
+    return product;
+  }
+
+  const totalUnits = displayQuantity * displaysPerPackage;
+
+  return {
+    ...product,
+    comparisonPrice: unitPrice,
+    packageQuantity: totalUnits,
+    packageLabel:
+      `bulto x ${displaysPerPackage} displays (${totalUnits} unidades)`,
+    priceCondition:
+      `Unidad equivalente; display x ${displayQuantity}; ` +
+      `bulto x ${displaysPerPackage} displays`,
+    alternatePrices: [
+      {
+        label: "Unidad",
+        price: unitPrice,
+        comparisonPrice: unitPrice,
+      },
+      {
+        label: `Display x ${displayQuantity}`,
+        price: displayPrice,
+        comparisonPrice: unitPrice,
+      },
+      {
+        label: `Bulto x ${displaysPerPackage} displays`,
+        price: product.price,
+        comparisonPrice: unitPrice,
+      },
+    ],
+  };
+}
+
+function getKnownTokinDisplayFormatKey(product: ProductSearchResult) {
+  const rule = findKnownTokinDisplayRule(product);
+
+  if (!rule) {
+    return null;
+  }
+
+  return [product.sourceId, rule.id, rule.quantity].join("|");
+}
+
+function findKnownTokinDisplayQuantity(product: ProductSearchResult) {
+  if (getSourceChannel(product) !== "own") {
+    return null;
+  }
+
+  return findKnownTokinDisplayRule(product)?.quantity ?? null;
+}
+
+function findKnownTokinDisplayRule(product: ProductSearchResult) {
+  const text = normalizeDecisionText(
+    [product.category, product.rawName].filter(Boolean).join(" "),
+  );
+  const juicePresentation = text.match(
+    /\bjugo en polvo\b.*\b(7|15)\s*(?:g|gr)\b/,
+  )?.[1];
+
+  if (juicePresentation) {
+    return {
+      id: `jugo-en-polvo-${juicePresentation}g`,
+      quantity: 18,
+    };
+  }
+
+  if (/\bturron\b/.test(text) && /\b(?:25|30)\s*(?:g|gr)\b/.test(text)) {
+    return { id: "turron-arcor-individual", quantity: 50 };
+  }
+
+  if (
+    /\b(?:bon o bon|bonobon)\b/.test(text) &&
+    /\b15\s*(?:g|gr)\b/.test(text)
+  ) {
+    return { id: "bon-o-bon-15g", quantity: 30 };
+  }
+
+  if (
+    /\bmogul\b/.test(text) &&
+    /\b(?:gomitas?|ositos|tiburon)\b/.test(text) &&
+    /\b30\s*(?:g|gr)\b/.test(text)
+  ) {
+    return { id: "gomitas-mogul-30g", quantity: 12 };
+  }
+
+  return null;
 }
 
 function inferPackageQuantity(
@@ -1214,6 +1429,10 @@ function dedupeAlternatePrices(
   }
 
   return Array.from(byPrice.values()).sort((first, second) => first.price - second.price);
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function findBestCell(

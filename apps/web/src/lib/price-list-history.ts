@@ -13,6 +13,10 @@ import {
   updateSupabaseRows,
 } from "./supabase-admin";
 import { parseStoredPriceListDetail } from "./price-list-storage";
+import {
+  repairLegacySourcePrice,
+  repairLegacyText,
+} from "./legacy-text";
 
 const HISTORY_LIMIT = 20;
 const INCOMPLETE_RUN_CLEANUP_AGE_MS = 5 * 60 * 1000;
@@ -246,10 +250,20 @@ function mapRunRow(row: RunRow): PriceListRunSummary {
     missingOwnPriceCount: metadata.missingOwnPriceCount,
     storageVersion: metadata.storageVersion,
     catalogLastSyncedAt: row.catalog_last_synced_at,
+    origin: metadata.origin,
+    sourceRunId: metadata.sourceRunId,
   };
 }
 
-function parseRunMetadata(value: unknown) {
+function parseRunMetadata(value: unknown): {
+  ownPriceCount: number | null;
+  excelPriceCount: number | null;
+  tokinPriceCount: number | null;
+  missingOwnPriceCount: number | null;
+  storageVersion: number | null;
+  origin: NonNullable<PriceListRunSummary["origin"]>;
+  sourceRunId: string | null;
+} {
   const metadata =
     value && typeof value === "object"
       ? (value as Record<string, unknown>)
@@ -261,6 +275,14 @@ function parseRunMetadata(value: unknown) {
     tokinPriceCount: parseMetadataNumber(metadata.tokinPriceCount),
     missingOwnPriceCount: parseMetadataNumber(metadata.missingOwnPriceCount),
     storageVersion: parseMetadataNumber(metadata.storageVersion),
+    origin:
+      metadata.origin === "scheduled_catalog"
+        ? "scheduled_catalog"
+        : metadata.origin === "manual_import"
+          ? "manual_import"
+          : "legacy",
+    sourceRunId:
+      typeof metadata.sourceRunId === "string" ? metadata.sourceRunId : null,
   };
 }
 
@@ -290,13 +312,13 @@ function mapItemRow(row: ItemRow): PriceListRunItem {
   return {
     id: row.id,
     rowNumber: row.row_number ?? 0,
-    business: storedDetail.dimensions.business ?? null,
-    rubro: row.rubro,
-    segment: storedDetail.dimensions.segment ?? null,
-    subrubro: storedDetail.dimensions.subrubro ?? null,
-    line: storedDetail.dimensions.line ?? null,
+    business: repairLegacyText(storedDetail.dimensions.business) ?? null,
+    rubro: repairLegacyText(row.rubro),
+    segment: repairLegacyText(storedDetail.dimensions.segment) ?? null,
+    subrubro: repairLegacyText(storedDetail.dimensions.subrubro) ?? null,
+    line: repairLegacyText(storedDetail.dimensions.line) ?? null,
     uxb: storedDetail.dimensions.uxb ?? null,
-    description: row.description,
+    description: repairLegacyText(row.description),
     code: row.code,
     ean13Di: row.ean13_di,
     ean13Bu: row.ean13_bu,
@@ -324,7 +346,7 @@ function mapItemRow(row: ItemRow): PriceListRunItem {
     decisionStatus: row.decision_status,
     decisionLabel: row.decision_label,
     matchedCount: row.matched_count ?? 0,
-    sourcePrices: storedDetail.sourcePrices,
+    sourcePrices: storedDetail.sourcePrices.map(repairLegacySourcePrice),
   };
 }
 

@@ -27,8 +27,16 @@ type PersistenceResult = {
   errorMessage?: string;
 };
 
+export type PriceListRunSaveOptions = {
+  origin?: "manual_import" | "scheduled_catalog";
+  listName?: string;
+  sourceRunId?: string | null;
+  allowWithoutOwnPrice?: boolean;
+};
+
 export async function savePriceListRun(
   response: PriceListResponse,
+  options: PriceListRunSaveOptions = {},
 ): Promise<PersistenceResult> {
   if (
     process.env.SUPABASE_PERSIST_PRICE_LISTS === "false" ||
@@ -39,7 +47,7 @@ export async function savePriceListRun(
 
   const ownPriceSummary = summarizePriceListOwnPrices(response.results);
 
-  if (!ownPriceSummary.canPersist) {
+  if (!ownPriceSummary.canPersist && !options.allowWithoutOwnPrice) {
     return {
       enabled: true,
       requested: true,
@@ -50,8 +58,10 @@ export async function savePriceListRun(
   }
 
   const weekStart = getWeekStart(new Date(response.searchedAt));
+  const origin = options.origin ?? "manual_import";
   const runPayload = {
-    list_name: `Lista semanal ${formatDateKey(weekStart)}`,
+    list_name:
+      options.listName ?? `Lista semanal ${formatDateKey(weekStart)}`,
     week_start: formatDateKey(weekStart),
     searched_at: response.searchedAt,
     duration_ms: response.durationMs,
@@ -62,6 +72,8 @@ export async function savePriceListRun(
     catalog_last_synced_at: response.catalog.lastSyncedAt ?? null,
     status: ownPriceSummary.coverageComplete ? "review" : "draft",
     metadata: {
+      origin,
+      sourceRunId: options.sourceRunId ?? null,
       region: response.catalog.region,
       brands: response.catalog.brands,
       productsCount: response.catalog.productsCount,

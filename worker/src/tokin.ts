@@ -109,9 +109,11 @@ export async function extractProductsFromTokin(
   const session = await getTokinSession();
   const payload = await postTokinSearch(session, query, source.maxCards ?? 80);
 
-  return (payload.results ?? [])
+  const products = (payload.results ?? [])
     .flatMap((product) => toTokinProductResults(product, source, query))
     .filter((result): result is ProductSearchResult => result !== null);
+
+  return consolidateTokinPriceModes(products);
 }
 
 async function getTokinSession(): Promise<TokinSession> {
@@ -232,7 +234,7 @@ function toTokinProductResults(
     .map((variant) => toTokinProductResult(product, source, query, variant))
     .filter((result): result is ProductSearchResult => result !== null);
 
-  return consolidateTokinPriceModes(results);
+  return results;
 }
 
 function toTokinProductResult(
@@ -467,6 +469,7 @@ function applyTokinUnitAndPackagePricing(
 
 export function consolidateTokinPriceModes(products: ProductSearchResult[]) {
   const byProduct = new Map<string, ProductSearchResult[]>();
+  const displayAnchors = buildKnownTokinDisplayAnchors(products);
 
   for (const product of products) {
     const key = [product.normalizedName, product.imageUrl ?? ""].join("|");
@@ -474,8 +477,14 @@ export function consolidateTokinPriceModes(products: ProductSearchResult[]) {
   }
 
   return Array.from(byProduct.values()).flatMap((variants) => {
-    if (variants.length < 2 || variants.some((variant) => variant.packageQuantity)) {
-      return variants;
+    if (variants.length < 2) {
+      const product = variants[0]!;
+      return [
+        normalizeStandaloneKnownTokinDisplay(
+          product,
+          displayAnchors.get(getKnownTokinDisplayFormatKey(product) ?? ""),
+        ),
+      ];
     }
 
     const sorted = [...variants].sort((first, second) => first.price - second.price);
@@ -489,6 +498,50 @@ export function consolidateTokinPriceModes(products: ProductSearchResult[]) {
       packageQuantity > 200 ||
       Math.abs(ratio - packageQuantity) > 0.03
     ) {
+      return variants;
+    }
+
+    const displayQuantity = findKnownTokinDisplayQuantity(unitVariant);
+
+    if (displayQuantity) {
+      const unitPrice = roundMoney(unitVariant.price / displayQuantity);
+      const totalUnits = displayQuantity * packageQuantity;
+
+      return [
+        {
+          ...unitVariant,
+          sku: unitVariant.sku ?? packageVariant.sku,
+          price: packageVariant.price,
+          comparisonPrice: unitPrice,
+          priceCondition:
+            `Unidad equivalente; display x ${displayQuantity}; ` +
+            `bulto x ${packageQuantity} displays`,
+          alternatePrices: [
+            {
+              label: "Unidad",
+              price: unitPrice,
+              comparisonPrice: unitPrice,
+            },
+            {
+              label: `Display x ${displayQuantity}`,
+              price: unitVariant.price,
+              comparisonPrice: unitPrice,
+            },
+            {
+              label: `Bulto x ${packageQuantity} displays`,
+              price: packageVariant.price,
+              comparisonPrice: unitPrice,
+            },
+          ],
+          packageQuantity: totalUnits,
+          packageLabel:
+            `bulto x ${packageQuantity} displays (${totalUnits} unidades)`,
+          stockQuantity: unitVariant.stockQuantity,
+        },
+      ];
+    }
+
+    if (variants.some((variant) => variant.packageQuantity)) {
       return variants;
     }
 
@@ -517,6 +570,169 @@ export function consolidateTokinPriceModes(products: ProductSearchResult[]) {
       },
     ];
   });
+}
+
+function buildKnownTokinDisplayAnchors(products: ProductSearchResult[]) {
+  const pricesByFormat = new Map<string, number[]>();
+
+  for (const product of products) {
+    const key = getKnownTokinDisplayFormatKey(product);
+
+    if (!key || product.packageQuantity) {
+      continue;
+    }
+
+    pricesByFormat.set(key, [...(pricesByFormat.get(key) ?? []), product.price]);
+  }
+
+  const anchors = new Map<string, number>();
+
+  for (const [key, prices] of pricesByFormat) {
+    const frequencies = new Map<number, number>();
+
+    for (const price of prices) {
+      const roundedPrice = roundMoney(price);
+      frequencies.set(roundedPrice, (frequencies.get(roundedPrice) ?? 0) + 1);
+    }
+
+    const anchor = Array.from(frequencies.entries())
+      .filter(([, count]) => count >= 2)
+      .map(([price]) => price)
+      .sort((first, second) => first - second)[0];
+
+    if (anchor) {
+      anchors.set(key, anchor);
+    }
+  }
+
+  return anchors;
+}
+
+function normalizeStandaloneKnownTokinDisplay(
+  product: ProductSearchResult,
+  displayPrice: number | undefined,
+) {
+  const displayQuantity = findKnownTokinDisplayQuantity(product);
+
+  if (!displayQuantity || !displayPrice) {
+    return product;
+  }
+
+  const ratio = product.price / displayPrice;
+  const displaysPerPackage = Math.round(ratio);
+
+  if (Math.abs(ratio - displaysPerPackage) > 0.03) {
+    return product;
+  }
+
+  const unitPrice = roundMoney(displayPrice / displayQuantity);
+
+  if (displaysPerPackage <= 1) {
+    return {
+      ...product,
+      comparisonPrice: unitPrice,
+      priceCondition: `Unidad equivalente; display x ${displayQuantity}`,
+      alternatePrices: [
+        {
+          label: "Unidad",
+          price: unitPrice,
+          comparisonPrice: unitPrice,
+        },
+        {
+          label: `Display x ${displayQuantity}`,
+          price: product.price,
+          comparisonPrice: unitPrice,
+        },
+      ],
+      packageQuantity: displayQuantity,
+      packageLabel: `display x ${displayQuantity} unidades`,
+    };
+  }
+
+  if (displaysPerPackage > 200) {
+    return product;
+  }
+
+  const totalUnits = displayQuantity * displaysPerPackage;
+
+  return {
+    ...product,
+    comparisonPrice: unitPrice,
+    priceCondition:
+      `Unidad equivalente; display x ${displayQuantity}; ` +
+      `bulto x ${displaysPerPackage} displays`,
+    alternatePrices: [
+      {
+        label: "Unidad",
+        price: unitPrice,
+        comparisonPrice: unitPrice,
+      },
+      {
+        label: `Display x ${displayQuantity}`,
+        price: displayPrice,
+        comparisonPrice: unitPrice,
+      },
+      {
+        label: `Bulto x ${displaysPerPackage} displays`,
+        price: product.price,
+        comparisonPrice: unitPrice,
+      },
+    ],
+    packageQuantity: totalUnits,
+    packageLabel:
+      `bulto x ${displaysPerPackage} displays (${totalUnits} unidades)`,
+  };
+}
+
+function getKnownTokinDisplayFormatKey(product: ProductSearchResult) {
+  const rule = findKnownTokinDisplayRule(product);
+
+  if (!rule) {
+    return null;
+  }
+
+  return [product.sourceId, rule.id, rule.quantity].join("|");
+}
+
+function findKnownTokinDisplayQuantity(product: ProductSearchResult) {
+  return findKnownTokinDisplayRule(product)?.quantity ?? null;
+}
+
+function findKnownTokinDisplayRule(product: ProductSearchResult) {
+  const text = normalizeProductName(
+    [product.category, product.rawName].filter(Boolean).join(" "),
+  );
+  const juicePresentation = text.match(
+    /\bjugo en polvo\b.*\b(7|15)\s*(?:g|gr)\b/,
+  )?.[1];
+
+  if (juicePresentation) {
+    return {
+      id: `jugo-en-polvo-${juicePresentation}g`,
+      quantity: 18,
+    };
+  }
+
+  if (/\bturron\b/.test(text) && /\b(?:25|30)\s*(?:g|gr)\b/.test(text)) {
+    return { id: "turron-arcor-individual", quantity: 50 };
+  }
+
+  if (
+    /\b(?:bon o bon|bonobon)\b/.test(text) &&
+    /\b15\s*(?:g|gr)\b/.test(text)
+  ) {
+    return { id: "bon-o-bon-15g", quantity: 30 };
+  }
+
+  if (
+    /\bmogul\b/.test(text) &&
+    /\b(?:gomitas?|ositos|tiburon)\b/.test(text) &&
+    /\b30\s*(?:g|gr)\b/.test(text)
+  ) {
+    return { id: "gomitas-mogul-30g", quantity: 12 };
+  }
+
+  return null;
 }
 
 function roundMoney(value: number) {

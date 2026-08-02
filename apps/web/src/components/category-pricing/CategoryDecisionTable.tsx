@@ -271,9 +271,18 @@ function PriceCell({ cell }: { cell: CategoryDecisionRow["bestOverall"] }) {
     return <span className="text-[#9aa5b1]">-</span>;
   }
 
+  const usesEquivalentUnit =
+    Boolean(cell.product.packageQuantity && cell.product.packageQuantity > 1) &&
+    Math.abs(cell.product.price - cell.price) >= 0.01;
+
   return (
     <div>
       <div className="font-bold text-[#17202a]">{currencyFormatter.format(cell.price)}</div>
+      {usesEquivalentUnit ? (
+        <div className="mt-0.5 text-[10px] font-bold uppercase text-[#25634b]">
+          Por unidad equivalente
+        </div>
+      ) : null}
       <div className="mt-0.5 line-clamp-1 text-[11px] text-[#667789]">
         {cell.sourceName}
       </div>

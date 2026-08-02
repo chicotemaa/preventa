@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   Loader2,
   LineChart as LineChartIcon,
   RefreshCw,
@@ -9,6 +10,11 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { compareSourcePriority } from "@/lib/source-priority";
+import {
+  getComparableEvolutionWholesaleSource,
+  getEvolutionSourceIssue,
+  isLegacyEvolutionPoint,
+} from "@/lib/price-evolution-quality";
 import type {
   PriceEvolutionPoint,
   PriceEvolutionProduct,
@@ -115,6 +121,10 @@ export function PriceEvolution() {
         </button>
       </div>
 
+      {payload && !isLoading && payload.runs.length > 0 ? (
+        <EvolutionRunCoverage runs={payload.runs} />
+      ) : null}
+
       {payload && !payload.enabled && !isLoading ? (
         <StateMessage>
           La evolución queda disponible cuando Supabase esté configurado.
@@ -217,12 +227,16 @@ function ProductSelector({
                 </span>
                 <span className="mt-2 flex items-center justify-between gap-3 text-xs">
                   <span className="text-[#526170]">
-                    {product.points.length} cargas
+                    {product.points.length} capturas
                   </span>
                   <span className="font-semibold text-[#173d2f]">
-                    {formatCurrency(
-                      latestPoint ? getPointSelectedOwnPrice(latestPoint) : null,
-                    )}
+                    {latestPoint && isLegacyEvolutionPoint(latestPoint)
+                      ? "No guardado"
+                      : formatCurrency(
+                          latestPoint
+                            ? getPointSelectedOwnPrice(latestPoint)
+                            : null,
+                        )}
                   </span>
                 </span>
               </button>
@@ -231,6 +245,39 @@ function ProductSelector({
         </div>
       )}
     </aside>
+  );
+}
+
+function EvolutionRunCoverage({
+  runs,
+}: {
+  runs: PriceEvolutionResponse["runs"];
+}) {
+  const automaticRuns = runs.filter(
+    (run) => run.origin === "scheduled_catalog",
+  );
+  const manualRuns = runs.length - automaticRuns.length;
+  const latestAutomaticRun = automaticRuns[0] ?? null;
+
+  if (automaticRuns.length === 0) {
+    return (
+      <div className="mt-4 flex items-start gap-2 rounded-md border border-[#f0d2a2] bg-[#fff8e8] px-3 py-3 text-sm text-[#7a520d]">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        <p className="leading-5">
+          <strong>{manualRuns} cargas manuales guardadas.</strong> Todavía no hay
+          capturas automáticas del catálogo. El primer punto diario se genera con
+          el cron de las 12:00 después de publicar esta versión.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-[#cbd9ee] bg-[#f4f8ff] px-3 py-3 text-sm text-[#31516f]">
+      <strong>{runs.length} capturas guardadas:</strong> {manualRuns} manuales y{" "}
+      {automaticRuns.length} automáticas. Última actualización automática:{" "}
+      {formatDateTime(latestAutomaticRun?.searchedAt ?? "")}.
+    </div>
   );
 }
 
@@ -262,25 +309,39 @@ function ProductEvolutionDetail({
             </p>
           </div>
           <span className="w-fit rounded bg-[#eaf2ff] px-2 py-1 text-xs font-semibold text-[#1d5f8f]">
-            {stats.sourcesCount} fuentes
+            {stats.sourcesCount} {stats.sourcesCount === 1 ? "fuente" : "fuentes"}
           </span>
         </div>
 
+        {stats.legacyPointsCount > 0 ? (
+          <div className="mt-4 flex items-start gap-2 rounded-md border border-[#f0d2a2] bg-[#fff8e8] px-3 py-3 text-sm text-[#7a520d]">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <div className="font-semibold">Historial anterior incompleto</div>
+              <p className="mt-1 leading-5">
+                {stats.legacyPointsCount === product.points.length
+                  ? "Estas cargas no guardaron los precios de Excel ni Tokin/Arcor."
+                  : `${stats.legacyPointsCount} cargas no guardaron los precios de Excel ni Tokin/Arcor.`} La referencia minorista queda visible solo para auditoría y no se usa como mayorista.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-6">
           <EvolutionMetric
-            label="Excel actual"
+            label="Excel última carga"
             value={formatCurrency(stats.lastExcel)}
           />
           <EvolutionMetric
-            label="Tokin/Arcor actual"
+            label="Tokin última carga"
             value={formatCurrency(stats.lastTokin)}
           />
           <EvolutionMetric
-            label="Precio propio usado"
+            label="Precio usado en carga"
             value={formatCurrency(stats.lastSelectedOwn)}
           />
           <EvolutionMetric
-            label="Mejor mayorista"
+            label="Mayorista en carga"
             value={formatCurrency(stats.lastWholesale)}
           />
           <EvolutionMetric
@@ -295,10 +356,10 @@ function ProductEvolutionDetail({
       </div>
 
       <div className="grid min-w-0 gap-4 p-3 sm:p-4">
-        <PriceEvolutionChart points={product.points} />
+        <PriceEvolutionChart product={product} points={product.points} />
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <EvolutionTimelineTable points={pointsDesc} />
+          <EvolutionTimelineTable product={product} points={pointsDesc} />
           <SourceEvolutionTable product={product} points={pointsDesc} />
         </div>
       </div>
@@ -306,7 +367,13 @@ function ProductEvolutionDetail({
   );
 }
 
-function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
+function PriceEvolutionChart({
+  product,
+  points,
+}: {
+  product: PriceEvolutionProduct;
+  points: PriceEvolutionPoint[];
+}) {
   const width = 720;
   const height = 240;
   const padding = { top: 22, right: 24, bottom: 38, left: 64 };
@@ -317,7 +384,7 @@ function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
   );
   const wholesaleSeries = buildDerivedChartSeries(
     points,
-    getPointBestWholesalePrice,
+    (point) => getPointBestWholesalePrice(product, point),
   );
   const values = [
     ...excelSeries,
@@ -327,10 +394,13 @@ function PriceEvolutionChart({ points }: { points: PriceEvolutionPoint[] }) {
   ].map((point) => point.value);
 
   if (values.length === 0) {
+    const isEntirelyLegacy = points.every(isLegacyEvolutionPoint);
+
     return (
       <StateMessage>
-        Este producto todavía no tiene precios propios o mayoristas suficientes
-        para graficar.
+        {isEntirelyLegacy
+          ? "Estas cargas anteriores no guardaron precios propios y no contienen una referencia mayorista comparable."
+          : "Este producto todavía no tiene precios propios o mayoristas suficientes para graficar."}
       </StateMessage>
     );
   }
@@ -504,8 +574,10 @@ function ChartPolyline({
 }
 
 function EvolutionTimelineTable({
+  product,
   points,
 }: {
+  product: PriceEvolutionProduct;
   points: PriceEvolutionPoint[];
 }) {
   return (
@@ -530,8 +602,14 @@ function EvolutionTimelineTable({
                   {formatShortDate(point.searchedAt)}
                 </div>
               </div>
-              <span className={gapClassName(getPointWholesaleGapPercent(point))}>
-                {formatSignedPercent(getPointWholesaleGapPercent(point))}
+              <span
+                className={gapClassName(
+                  getPointWholesaleGapPercent(product, point),
+                )}
+              >
+                {formatSignedPercent(
+                  getPointWholesaleGapPercent(product, point),
+                )}
               </span>
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
@@ -549,15 +627,19 @@ function EvolutionTimelineTable({
               />
               <MobileValue
                 label="Mejor mayorista"
-                value={formatCurrency(getPointBestWholesalePrice(point))}
+                value={formatCurrency(
+                  getPointBestWholesalePrice(product, point),
+                )}
               />
               <MobileValue
                 label="Fuente"
-                value={getPointBestWholesaleSource(point)?.storeName || "-"}
+                value={
+                  getPointBestWholesaleSource(product, point)?.storeName || "-"
+                }
               />
             </dl>
             <div className="mt-3 text-xs font-medium text-[#667789]">
-              {point.decisionLabel}
+              {getPointDecisionLabel(point)}
             </div>
           </article>
         ))}
@@ -596,18 +678,27 @@ function EvolutionTimelineTable({
                 </td>
                 <td className="px-3 py-2 text-[#173d2f]">
                   <div className="font-semibold">
-                    {formatCurrency(getPointBestWholesalePrice(point))}
+                    {formatCurrency(
+                      getPointBestWholesalePrice(product, point),
+                    )}
                   </div>
                   <div className="mt-1 text-[#667789]">
-                    {getPointBestWholesaleSource(point)?.storeName || "-"}
+                    {getPointBestWholesaleSource(product, point)?.storeName ||
+                      "-"}
                   </div>
                 </td>
                 <td className="px-3 py-2">
-                  <span className={gapClassName(getPointWholesaleGapPercent(point))}>
-                    {formatSignedPercent(getPointWholesaleGapPercent(point))}
+                  <span
+                    className={gapClassName(
+                      getPointWholesaleGapPercent(product, point),
+                    )}
+                  >
+                    {formatSignedPercent(
+                      getPointWholesaleGapPercent(product, point),
+                    )}
                   </span>
                   <div className="mt-1 text-[#667789]">
-                    {point.decisionLabel}
+                    {getPointDecisionLabel(point)}
                   </div>
                 </td>
               </tr>
@@ -671,37 +762,46 @@ function SourceEvolutionTable({
                     {formatShortDate(point.searchedAt)}
                   </div>
                   <div className="mt-3 divide-y divide-[#e5e9ef] rounded-md border border-[#e5e9ef] bg-white">
-                    {sourceRows.map(({ sourceName, sourcePrice }) => (
-                      <div
-                        key={`${point.runId}-${sourceName}-mobile`}
-                        className="flex items-start justify-between gap-3 px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="break-words text-sm font-medium text-[#17202a]">
-                            {sourceName}
-                          </div>
-                          {sourcePrice ? (
-                            <div className="mt-1 text-xs text-[#667789]">
-                              {sourcePrice.storeType}
-                            </div>
-                          ) : null}
-                        </div>
+                    {sourceRows.map(({ sourceName, sourcePrice }) => {
+                      const sourceIssue = sourcePrice
+                        ? getEvolutionSourceIssue(product, sourcePrice)
+                        : null;
+
+                      return (
                         <div
-                          className={`shrink-0 text-right text-sm ${
-                            sourcePrice
-                              ? "font-semibold text-[#173d2f]"
-                              : "text-[#9aa5b1]"
-                          }`}
+                          key={`${point.runId}-${sourceName}-mobile`}
+                          className="flex items-start justify-between gap-3 px-3 py-2"
                         >
-                          {sourcePrice
-                            ? formatComparableSourceCurrency(sourcePrice)
-                            : "Sin precio"}
-                          {sourcePrice ? (
-                            <PackagePriceDetail price={sourcePrice} />
-                          ) : null}
+                          <div className="min-w-0">
+                            <div className="break-words text-sm font-medium text-[#17202a]">
+                              {sourceName}
+                            </div>
+                            {sourcePrice ? (
+                              <div className="mt-1 text-xs text-[#667789]">
+                                {sourcePrice.storeType}
+                              </div>
+                            ) : null}
+                            {sourceIssue ? (
+                              <SourceIssueLabel label={sourceIssue.label} />
+                            ) : null}
+                          </div>
+                          <div
+                            className={`shrink-0 text-right text-sm ${
+                              sourcePrice
+                                ? "font-semibold text-[#173d2f]"
+                                : "text-[#9aa5b1]"
+                            }`}
+                          >
+                            {sourcePrice
+                              ? formatComparableSourceCurrency(sourcePrice)
+                              : "Sin precio"}
+                            {sourcePrice ? (
+                              <PackagePriceDetail price={sourcePrice} />
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </article>
               );
@@ -729,6 +829,9 @@ function SourceEvolutionTable({
                       const sourcePrice = point.sourcePrices.find(
                         (price) => price.storeName === sourceName,
                       );
+                      const sourceIssue = sourcePrice
+                        ? getEvolutionSourceIssue(product, sourcePrice)
+                        : null;
 
                       return (
                         <td
@@ -744,6 +847,9 @@ function SourceEvolutionTable({
                               <div className="mt-1 text-[#667789]">
                                 {sourcePrice.storeType}
                               </div>
+                              {sourceIssue ? (
+                                <SourceIssueLabel label={sourceIssue.label} />
+                              ) : null}
                             </div>
                           ) : (
                             <span className="text-[#9aa5b1]">Sin precio</span>
@@ -780,6 +886,15 @@ function MobileValue({ label, value }: { label: string; value: string }) {
     <div className="min-w-0">
       <dt className="text-xs font-medium text-[#667789]">{label}</dt>
       <dd className="mt-1 break-words font-semibold text-[#17202a]">{value}</dd>
+    </div>
+  );
+}
+
+function SourceIssueLabel({ label }: { label: string }) {
+  return (
+    <div className="mt-1 inline-flex items-center gap-1 rounded bg-[#fff1ef] px-1.5 py-1 text-[11px] font-semibold text-[#9a3428]">
+      <AlertTriangle className="h-3 w-3 shrink-0" />
+      <span>{label}. No comparable</span>
     </div>
   );
 }
@@ -835,7 +950,7 @@ function buildEvolutionStats(product: PriceEvolutionProduct) {
   );
   const wholesaleBounds = getFirstAndLastDerivedPrice(
     product.points,
-    getPointBestWholesalePrice,
+    (point) => getPointBestWholesalePrice(product, point),
   );
 
   return {
@@ -852,6 +967,7 @@ function buildEvolutionStats(product: PriceEvolutionProduct) {
       wholesaleBounds.last,
     ),
     sourcesCount: product.sourceNames.length,
+    legacyPointsCount: product.points.filter(isLegacyEvolutionPoint).length,
   };
 }
 
@@ -897,6 +1013,10 @@ function getPointSelectedOwnPrice(point: PriceEvolutionPoint) {
 }
 
 function getPointSelectedOwnLabel(point: PriceEvolutionPoint) {
+  if (isLegacyEvolutionPoint(point)) {
+    return "No guardado en esta carga";
+  }
+
   if (point.ownPrice?.selectedSource === "tokin") {
     return "Tokin/Arcor";
   }
@@ -908,24 +1028,34 @@ function getPointSelectedOwnLabel(point: PriceEvolutionPoint) {
   return point.araPrice ? "Propio histórico" : "Sin precio propio";
 }
 
-function getPointBestWholesaleSource(point: PriceEvolutionPoint) {
-  return point.sourcePrices
-    .filter((price) => price.storeType === "mayorista")
-    .sort(
-      (first, second) =>
-        getComparablePrice(first) - getComparablePrice(second),
-    )[0] ?? null;
+function getPointDecisionLabel(point: PriceEvolutionPoint) {
+  return isLegacyEvolutionPoint(point)
+    ? "Precio propio no guardado en esta carga"
+    : point.decisionLabel;
 }
 
-function getPointBestWholesalePrice(point: PriceEvolutionPoint) {
-  const source = getPointBestWholesaleSource(point);
+function getPointBestWholesaleSource(
+  product: PriceEvolutionProduct,
+  point: PriceEvolutionPoint,
+) {
+  return getComparableEvolutionWholesaleSource(product, point);
+}
+
+function getPointBestWholesalePrice(
+  product: PriceEvolutionProduct,
+  point: PriceEvolutionPoint,
+) {
+  const source = getPointBestWholesaleSource(product, point);
 
   return source ? getComparablePrice(source) : null;
 }
 
-function getPointWholesaleGapPercent(point: PriceEvolutionPoint) {
+function getPointWholesaleGapPercent(
+  product: PriceEvolutionProduct,
+  point: PriceEvolutionPoint,
+) {
   const ownPrice = getPointSelectedOwnPrice(point);
-  const wholesalePrice = getPointBestWholesalePrice(point);
+  const wholesalePrice = getPointBestWholesalePrice(product, point);
 
   if (!ownPrice || !wholesalePrice) {
     return null;
@@ -1094,6 +1224,20 @@ function formatShortDate(value: string) {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
+  });
+}
+
+function formatDateTime(value: string) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Date(value).toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
