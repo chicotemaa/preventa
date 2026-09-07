@@ -27,6 +27,7 @@ export type WatchlistItemRow = {
   code: string | null;
   ean13_di: string | null;
   ean13_bu: string | null;
+  current_price?: number | string | null;
   source_prices: unknown;
 };
 
@@ -143,7 +144,7 @@ async function loadLatestManualWatchlist() {
       "price_list_run_items",
       {
         select:
-          "row_number,rubro,description,code,ean13_di,ean13_bu,source_prices",
+          "row_number,rubro,description,code,ean13_di,ean13_bu,current_price,source_prices",
         filters: { run_id: `eq.${run.id}` },
         order: "row_number.asc",
         limit: MAX_WATCHLIST_ITEMS,
@@ -184,7 +185,10 @@ export function buildWatchlistItems(rows: WatchlistItemRow[]) {
         code,
         ean13Di,
         ean13Bu,
-        currentPrice: storedDetail.ownPrice?.excelPrice ?? undefined,
+        currentPrice:
+          storedDetail.ownPrice?.excelPrice ??
+          normalizeOptionalPrice(row.current_price) ??
+          undefined,
       },
     ];
   });
@@ -352,4 +356,9 @@ function isPriceListResponse(value: unknown): value is PriceListResponse {
 function normalizeOptionalString(value: string | null) {
   const normalized = value?.trim();
   return normalized || undefined;
+}
+
+function normalizeOptionalPrice(value: number | string | null | undefined) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

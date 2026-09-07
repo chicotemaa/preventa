@@ -6,14 +6,14 @@ export function buildPriceListOwnPrice(
 ): PriceListOwnPrice {
   const excelPrice = normalizePrice(excelPriceValue);
   const tokinPrice = normalizePrice(tokinPriceValue);
-  const selectedPrice = excelPrice ?? tokinPrice;
-  const selectedSource = excelPrice ? "excel" : tokinPrice ? "tokin" : null;
+  const selectedPrice = excelPrice;
+  const selectedSource = excelPrice ? "excel" : null;
   const selectionReason = excelPrice
     ? tokinPrice
       ? "excel_priority"
       : "excel_only"
     : tokinPrice
-      ? "tokin_fallback"
+      ? "tokin_reference_only"
       : "missing";
 
   return {

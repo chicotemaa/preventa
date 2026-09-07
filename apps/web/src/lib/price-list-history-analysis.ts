@@ -26,6 +26,7 @@ export type HistoryItemAnalysis = PriceListDecisionAnalysis & {
   tokinPrice: number | null;
   selectedOwnPrice: number | null;
   selectedOwnPriceLabel: string;
+  excelVsTokinGapRatio: number | null;
   ownPriceWasStored: boolean;
   bestWholesale: PriceListSourcePrice | null;
   bestRetail: PriceListSourcePrice | null;
@@ -50,10 +51,10 @@ export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis 
     !ownPriceWasStored && !item.currentPrice
       ? {
           ...baseAnalysis,
-          label: "Precio propio no guardado",
+          label: "Precio Excel no guardado",
           action: "Generar una nueva carga",
           helper:
-            "Esta carga anterior no guardo las referencias de Excel y Tokin.",
+            "Esta carga anterior no guardo el precio Excel ni la referencia Arcor de Tokin.",
           tone: "neutral" as const,
         }
       : baseAnalysis;
@@ -63,9 +64,14 @@ export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis 
     item,
     excelPrice: item.ownPrice?.excelPrice ?? null,
     tokinPrice: item.ownPrice?.tokinPrice ?? null,
-    selectedOwnPrice:
-      item.ownPrice?.selectedPrice ?? normalizeOptionalNumber(item.currentPrice),
+    selectedOwnPrice: item.ownPrice
+      ? normalizeOptionalNumber(item.ownPrice.excelPrice)
+      : normalizeOptionalNumber(item.currentPrice),
     selectedOwnPriceLabel: getStoredOwnPriceLabel(item),
+    excelVsTokinGapRatio: calculateGapRatio(
+      item.ownPrice?.excelPrice ?? null,
+      item.ownPrice?.tokinPrice ?? null,
+    ),
     ownPriceWasStored,
     bestWholesale:
       getBestPriceListSourceByType(result, "mayorista") ?? null,
@@ -176,7 +182,7 @@ function buildResult(item: PriceListRunItem): PriceListItemResult {
       ean13Di: item.ean13Di ?? undefined,
       ean13Bu: item.ean13Bu ?? undefined,
       currentPrice:
-        item.ownPrice?.selectedPrice ?? item.currentPrice ?? undefined,
+        (item.ownPrice ? item.ownPrice.excelPrice : item.currentPrice) ?? undefined,
     },
     ownPrice: item.ownPrice ?? undefined,
     queryUsed: null,
@@ -193,11 +199,7 @@ function isAttentionAnalysis(analysis: HistoryItemAnalysis) {
 }
 
 function getStoredOwnPriceLabel(item: PriceListRunItem) {
-  if (item.ownPrice?.selectedSource === "tokin") {
-    return "Tokin/Arcor";
-  }
-
-  if (item.ownPrice?.selectedSource === "excel") {
+  if (item.ownPrice?.excelPrice) {
     return "Excel";
   }
 
@@ -208,11 +210,23 @@ function getStoredOwnPriceLabel(item: PriceListRunItem) {
     return "No guardado en esta carga";
   }
 
-  return item.currentPrice ? "Propio histórico" : "Sin precio propio";
+  return item.currentPrice ? "Excel histórico" : "Sin precio Excel";
 }
 
 function normalizeOptionalNumber(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
+    : null;
+}
+
+function calculateGapRatio(
+  value: number | null | undefined,
+  reference: number | null | undefined,
+) {
+  const normalizedValue = normalizeOptionalNumber(value);
+  const normalizedReference = normalizeOptionalNumber(reference);
+
+  return normalizedValue && normalizedReference
+    ? (normalizedValue - normalizedReference) / normalizedReference
     : null;
 }

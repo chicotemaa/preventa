@@ -34,14 +34,14 @@ const filterOptions: Array<{ value: CategoryDecisionFilter; label: string }> = [
   { value: "alerts", label: "Con alertas" },
   { value: "critical_gap", label: "Diferencia critica" },
   { value: "opportunities", label: "Oportunidades" },
-  { value: "missing_aguiar", label: "Sin equivalente Aguiar" },
+  { value: "missing_aguiar", label: "Sin referencia Arcor" },
   { value: "weak_match", label: "Equivalencia dudosa" },
   { value: "sources_with_data", label: "Fuentes con datos" },
 ];
 
 const sortOptions: Array<{ value: CategoryDecisionSort; label: string }> = [
   { value: "wholesale_price", label: "Menor precio mayorista" },
-  { value: "gap_desc", label: "Mayor diferencia vs Aguiar" },
+  { value: "gap_desc", label: "Mayor diferencia vs referencia Arcor" },
   { value: "retail_price", label: "Menor precio minorista" },
   { value: "confidence_desc", label: "Mayor confianza" },
   { value: "winning_source", label: "Fuente ganadora" },
@@ -97,8 +97,8 @@ export function CategoryPricingDashboard({
           <div>
             <h3 className="text-lg font-bold text-[#17202a]">Mesa de decision</h3>
             <p className="mt-1 text-sm text-[#667789]">
-              Primero se muestran los artículos propios. La posición de Aguiar se calcula contra
-              el mejor precio del mercado comparable, priorizando referencias mayoristas.
+              Esta vista explora el catálogo: Tokin funciona como referencia Arcor frente al
+              mercado. La decisión comercial final usa el precio Excel en Importación.
             </p>
           </div>
           <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#cfd8e3] bg-white px-3 py-2 text-sm text-[#526170] lg:min-w-[300px]">
@@ -189,7 +189,7 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
           helper={`${dashboard.totalProducts} registros encontrados`}
         />
         <SummaryMetric
-          label="Artículos Aguiar / Tokin"
+          label="Referencias Arcor · Tokin"
           value={dashboard.aguiarProductsCount}
           helper={
             dashboard.visibleAguiarProductsCount < dashboard.aguiarProductsCount
@@ -203,7 +203,7 @@ function ExecutiveSummary({ dashboard }: { dashboard: CategoryPricingDashboardMo
           helper={`${dashboard.comparableRowsCount} comparaciones válidas`}
         />
         <SummaryMetric
-          label="Aguiar más caro"
+          label="Referencia Arcor más alta"
           value={dashboard.aboveMarketRowsCount}
           helper="Requieren revisión"
           tone={dashboard.aboveMarketRowsCount > 0 ? "danger" : "neutral"}

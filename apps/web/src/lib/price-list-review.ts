@@ -223,7 +223,11 @@ function getItemIdentityKeys(item: PriceListRunItem) {
 }
 
 function getSelectedOwnPrice(item: PriceListRunItem | null) {
-  return item?.ownPrice?.selectedPrice ?? item?.currentPrice ?? null;
+  if (!item) {
+    return null;
+  }
+
+  return item.ownPrice ? item.ownPrice.excelPrice : item.currentPrice ?? null;
 }
 
 function calculateVariation(current: number | null, previous: number | null) {

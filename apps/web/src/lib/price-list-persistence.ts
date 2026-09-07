@@ -53,7 +53,7 @@ export async function savePriceListRun(
       requested: true,
       saved: false,
       errorMessage:
-        "No se guardo la carga: ningun articulo tiene precio propio de Excel ni Tokin. La evolucion necesita al menos una referencia propia.",
+        "No se guardo la carga: ningun articulo tiene precio comercial en el Excel. Tokin se conserva como referencia Arcor, pero no reemplaza al Excel.",
     };
   }
 
@@ -78,7 +78,7 @@ export async function savePriceListRun(
       brands: response.catalog.brands,
       productsCount: response.catalog.productsCount,
       storageVersion: PRICE_LIST_STORAGE_VERSION,
-      ownPricePolicy: "excel_first_then_tokin",
+      ownPricePolicy: "excel_commercial_tokin_reference",
       ownPriceCount: ownPriceSummary.ownPriceCount,
       excelPriceCount: ownPriceSummary.excelPriceCount,
       tokinPriceCount: ownPriceSummary.tokinPriceCount,

@@ -41,7 +41,7 @@ export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary
       </summary>
 
       <div className="flex flex-col gap-4 border-t border-[#e5e9ef] p-3">
-        <SourceHealthGroup title="Fuente propia" items={ownItems} />
+        <SourceHealthGroup title="Referencia Arcor" items={ownItems} />
         <SourceHealthGroup title="Mayoristas prioritarios" items={wholesaleItems} emphasized />
         <SourceHealthGroup title="Minoristas de referencia" items={retailItems} />
       </div>
@@ -156,7 +156,7 @@ function MetricChip({
 }
 
 function ChannelChip({ channel }: { channel: SourceChannel }) {
-  const label = channel === "own" ? "Propio" : channel === "mayorista" ? "Mayorista" : "Minorista";
+  const label = channel === "own" ? "Referencia Arcor" : channel === "mayorista" ? "Mayorista" : "Minorista";
   const className =
     channel === "own"
       ? "bg-[#edf3ff] text-[#153d7b]"

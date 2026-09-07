@@ -201,7 +201,7 @@ export function PriceHistoryDecisionPanel({
             <SignalButton
               label="Mayorista más barato"
               value={summary.aboveWholesale}
-              helper="Precio propio arriba"
+              helper="Precio Excel arriba"
               tone="warning"
               isActive={filter === "above_wholesale"}
               onClick={() => setFilter("above_wholesale")}
@@ -217,7 +217,7 @@ export function PriceHistoryDecisionPanel({
               icon={<CircleCheck className="h-4 w-4" />}
             />
             <SignalButton
-              label="Precio propio mejor"
+              label="Excel más competitivo"
               value={summary.opportunities}
               helper="Posible margen"
               tone="info"
@@ -227,13 +227,13 @@ export function PriceHistoryDecisionPanel({
             />
             <SignalButton
               label={
-                isLegacyWithoutOwnPrices ? "Propio no guardado" : "Falta propio"
+                isLegacyWithoutOwnPrices ? "Excel no guardado" : "Falta Excel"
               }
               value={summary.missingOwn}
               helper={
                 isLegacyWithoutOwnPrices
                   ? "Carga con formato anterior"
-                  : "Excel y Tokin vacíos"
+                  : "Precio comercial Excel vacío"
               }
               tone="neutral"
               isActive={filter === "missing_own"}
@@ -388,9 +388,9 @@ function HistoryDecisionTable({
         <thead className="sticky top-0 z-10 bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
           <tr>
             <th className="px-3 py-3">Artículo</th>
-            <th className="px-3 py-3">Excel</th>
-            <th className="px-3 py-3">Tokin</th>
-            <th className="px-3 py-3">Precio usado</th>
+            <th className="px-3 py-3">Precio comercial Excel</th>
+            <th className="px-3 py-3">Referencia Arcor</th>
+            <th className="px-3 py-3">Suba vs Arcor</th>
             <th className="px-3 py-3">Mejor mayorista</th>
             <th className="px-3 py-3">Mejor minorista</th>
             <th className="px-3 py-3">Dif. vs mayorista</th>
@@ -425,13 +425,8 @@ function HistoryDecisionTable({
                   analysis.ownPriceWasStored ? "-" : "No guardado"
                 }
               />
-              <td className="px-3 py-3">
-                <div className="font-bold text-[#17202a]">
-                  {formatCurrency(analysis.selectedOwnPrice)}
-                </div>
-                <div className="mt-1 text-[#667789]">
-                  {analysis.selectedOwnPriceLabel}
-                </div>
+              <td className="px-3 py-3 font-bold text-[#7a4a16]">
+                {formatGap(analysis.excelVsTokinGapRatio, "referencia Arcor")}
               </td>
               <MarketPriceCell price={analysis.bestWholesale} />
               <MarketPriceCell price={analysis.bestRetail} />
@@ -498,18 +493,19 @@ function HistoryDecisionCards({
 
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             <MobilePrice
-              label="Excel"
+              label="Precio comercial Excel"
               value={analysis.excelPrice}
               missingLabel={analysis.ownPriceWasStored ? "-" : "No guardado"}
             />
             <MobilePrice
-              label="Tokin"
+              label="Referencia Arcor"
               value={analysis.tokinPrice}
               missingLabel={analysis.ownPriceWasStored ? "-" : "No guardado"}
             />
             <MobilePrice
-              label={`Usado · ${analysis.selectedOwnPriceLabel}`}
-              value={analysis.selectedOwnPrice}
+              label="Suba vs Arcor"
+              value={null}
+              textValue={formatGap(analysis.excelVsTokinGapRatio, "referencia Arcor")}
             />
             <MobilePrice
               label={`Mayorista · ${analysis.bestWholesale?.storeName ?? "-"}`}
@@ -577,10 +573,12 @@ function MobilePrice({
   label,
   value,
   missingLabel = "-",
+  textValue,
 }: {
   label: string;
   value: number | null;
   missingLabel?: string;
+  textValue?: string;
 }) {
   return (
     <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2">
@@ -588,7 +586,7 @@ function MobilePrice({
         {label}
       </div>
       <div className="mt-1 font-extrabold text-[#17202a]">
-        {value === null ? missingLabel : formatCurrency(value)}
+        {textValue ?? (value === null ? missingLabel : formatCurrency(value))}
       </div>
     </div>
   );
@@ -735,13 +733,13 @@ function gapClassName(analysis: HistoryItemAnalysis) {
   return `${base} bg-[#e4f6ed] text-[#16613c]`;
 }
 
-function formatGap(value: number | null) {
+function formatGap(value: number | null, reference = "mayorista") {
   if (value === null) {
     return "Sin dato";
   }
 
   const sign = value > 0 ? "+" : "";
-  return `${sign}${percentFormatter.format(value * 100)}% vs mayorista`;
+  return `${sign}${percentFormatter.format(value * 100)}% vs ${reference}`;
 }
 
 function formatCurrency(value: number | null) {
@@ -795,10 +793,9 @@ function downloadRunResultCsv(
     "Codigo",
     "EAN 13 DI",
     "EAN 13 BU",
-    "Precio Excel",
-    "Precio Tokin/Arcor",
-    "Precio propio usado",
-    "Origen precio propio",
+    "Precio comercial Excel",
+    "Referencia Arcor Tokin",
+    "Suba Excel vs referencia Arcor %",
     "Mejor mayorista",
     "Fuente mayorista",
     "Mejor minorista",
@@ -817,8 +814,9 @@ function downloadRunResultCsv(
     analysis.item.ean13Bu ?? "",
     csvAmount(analysis.excelPrice),
     csvAmount(analysis.tokinPrice),
-    csvAmount(analysis.selectedOwnPrice),
-    analysis.selectedOwnPriceLabel,
+    analysis.excelVsTokinGapRatio === null
+      ? ""
+      : (analysis.excelVsTokinGapRatio * 100).toFixed(2),
     csvAmount(getHistoryComparablePrice(analysis.bestWholesale)),
     analysis.bestWholesale?.storeName ?? "",
     csvAmount(getHistoryComparablePrice(analysis.bestRetail)),
@@ -843,8 +841,8 @@ function downloadRunAguiarCsv(
     "EAN 13 DI",
     "EAN 13 BU",
     "Descripcion",
-    "Precio Tokin/Arcor",
-    "Precio Excel",
+    "Precio comercial Excel",
+    "Referencia Arcor Tokin",
     "Precio sugerido",
     "Accion",
   ];
@@ -853,8 +851,8 @@ function downloadRunAguiarCsv(
     analysis.item.ean13Di ?? "",
     analysis.item.ean13Bu ?? "",
     analysis.item.description ?? "",
-    csvAmount(analysis.tokinPrice),
     csvAmount(analysis.excelPrice),
+    csvAmount(analysis.tokinPrice),
     csvAmount(analysis.item.suggestedPrice),
     analysis.action,
   ]);

@@ -103,7 +103,9 @@ export function PriceEvolution() {
             <span className="min-w-0">Evolución de precios</span>
           </h1>
           <p className="mt-1 text-sm text-[#667789]">
-            Evolución separada de Excel, Tokin/Arcor y referencias mayoristas.
+            Excel es el precio comercial. Tokin se conserva por separado como
+            referencia Arcor y el mercado mayorista muestra la posición
+            competitiva.
           </p>
         </div>
         <button
@@ -320,8 +322,8 @@ function ProductEvolutionDetail({
               <div className="font-semibold">Historial anterior incompleto</div>
               <p className="mt-1 leading-5">
                 {stats.legacyPointsCount === product.points.length
-                  ? "Estas cargas no guardaron los precios de Excel ni Tokin/Arcor."
-                  : `${stats.legacyPointsCount} cargas no guardaron los precios de Excel ni Tokin/Arcor.`} La referencia minorista queda visible solo para auditoría y no se usa como mayorista.
+                  ? "Estas cargas no guardaron el precio Excel ni la referencia Arcor de Tokin."
+                  : `${stats.legacyPointsCount} cargas no guardaron el precio Excel ni la referencia Arcor de Tokin.`} La referencia minorista queda visible solo para auditoría y no se usa como mayorista.
               </p>
             </div>
           </div>
@@ -333,20 +335,20 @@ function ProductEvolutionDetail({
             value={formatCurrency(stats.lastExcel)}
           />
           <EvolutionMetric
-            label="Tokin última carga"
+            label="Referencia Arcor · Tokin"
             value={formatCurrency(stats.lastTokin)}
           />
           <EvolutionMetric
-            label="Precio usado en carga"
-            value={formatCurrency(stats.lastSelectedOwn)}
+            label="Suba Excel vs Arcor"
+            value={formatSignedPercent(stats.excelVsTokinPercent)}
           />
           <EvolutionMetric
             label="Mayorista en carga"
             value={formatCurrency(stats.lastWholesale)}
           />
           <EvolutionMetric
-            label="Var. precio usado"
-            value={formatSignedPercent(stats.selectedOwnVariationPercent)}
+            label="Var. precio Excel"
+            value={formatSignedPercent(stats.excelVariationPercent)}
           />
           <EvolutionMetric
             label="Var. mayorista"
@@ -436,7 +438,7 @@ function PriceEvolutionChart({
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="h-2 w-5 rounded bg-[#df2e38]" />
-            Tokin/Arcor
+            Referencia Arcor · Tokin
           </span>
           {legacyOwnSeries.length > 0 ? (
             <span className="inline-flex items-center gap-1">
@@ -614,16 +616,16 @@ function EvolutionTimelineTable({
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <MobileValue
-                label="Excel"
+                label="Precio comercial Excel"
                 value={formatCurrency(getPointExcelPrice(point))}
               />
               <MobileValue
-                label="Tokin/Arcor"
+                label="Referencia Arcor · Tokin"
                 value={formatCurrency(getPointTokinPrice(point))}
               />
               <MobileValue
-                label={`Usado · ${getPointSelectedOwnLabel(point)}`}
-                value={formatCurrency(getPointSelectedOwnPrice(point))}
+                label="Suba Excel vs Arcor"
+                value={formatSignedPercent(getPointExcelVsTokinGapPercent(point))}
               />
               <MobileValue
                 label="Mejor mayorista"
@@ -649,9 +651,9 @@ function EvolutionTimelineTable({
           <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
             <tr>
               <th className="px-3 py-2">Fecha</th>
-              <th className="px-3 py-2">Excel</th>
-              <th className="px-3 py-2">Tokin/Arcor</th>
-              <th className="px-3 py-2">Precio usado</th>
+              <th className="px-3 py-2">Precio comercial Excel</th>
+              <th className="px-3 py-2">Referencia Arcor</th>
+              <th className="px-3 py-2">Suba vs Arcor</th>
               <th className="px-3 py-2">Mejor mayorista</th>
               <th className="px-3 py-2">Diferencia vs mayorista</th>
             </tr>
@@ -668,13 +670,8 @@ function EvolutionTimelineTable({
                 <td className="px-3 py-2 font-semibold text-[#153d7b]">
                   {formatCurrency(getPointTokinPrice(point))}
                 </td>
-                <td className="px-3 py-2 text-[#17202a]">
-                  <div className="font-semibold">
-                    {formatCurrency(getPointSelectedOwnPrice(point))}
-                  </div>
-                  <div className="mt-1 text-[#667789]">
-                    {getPointSelectedOwnLabel(point)}
-                  </div>
+                <td className="px-3 py-2 font-semibold text-[#7a4a16]">
+                  {formatSignedPercent(getPointExcelVsTokinGapPercent(point))}
                 </td>
                 <td className="px-3 py-2 text-[#173d2f]">
                   <div className="font-semibold">
@@ -944,10 +941,6 @@ function buildEvolutionStats(product: PriceEvolutionProduct) {
     product.points,
     getPointTokinPrice,
   );
-  const selectedOwnBounds = getFirstAndLastDerivedPrice(
-    product.points,
-    getPointSelectedOwnPrice,
-  );
   const wholesaleBounds = getFirstAndLastDerivedPrice(
     product.points,
     (point) => getPointBestWholesalePrice(product, point),
@@ -956,11 +949,14 @@ function buildEvolutionStats(product: PriceEvolutionProduct) {
   return {
     lastExcel: excelBounds.last,
     lastTokin: tokinBounds.last,
-    lastSelectedOwn: selectedOwnBounds.last,
     lastWholesale: wholesaleBounds.last,
-    selectedOwnVariationPercent: calculateVariationPercent(
-      selectedOwnBounds.first,
-      selectedOwnBounds.last,
+    excelVsTokinPercent: calculateReferenceGapPercent(
+      excelBounds.last,
+      tokinBounds.last,
+    ),
+    excelVariationPercent: calculateVariationPercent(
+      excelBounds.first,
+      excelBounds.last,
     ),
     wholesaleVariationPercent: calculateVariationPercent(
       wholesaleBounds.first,
@@ -1001,7 +997,9 @@ function buildDerivedChartSeries(
 }
 
 function getPointExcelPrice(point: PriceEvolutionPoint) {
-  return point.ownPrice?.excelPrice ?? null;
+  return point.ownPrice
+    ? point.ownPrice.excelPrice
+    : point.araPrice;
 }
 
 function getPointTokinPrice(point: PriceEvolutionPoint) {
@@ -1009,28 +1007,19 @@ function getPointTokinPrice(point: PriceEvolutionPoint) {
 }
 
 function getPointSelectedOwnPrice(point: PriceEvolutionPoint) {
-  return point.ownPrice?.selectedPrice ?? point.araPrice;
+  return getPointExcelPrice(point);
 }
 
-function getPointSelectedOwnLabel(point: PriceEvolutionPoint) {
-  if (isLegacyEvolutionPoint(point)) {
-    return "No guardado en esta carga";
-  }
-
-  if (point.ownPrice?.selectedSource === "tokin") {
-    return "Tokin/Arcor";
-  }
-
-  if (point.ownPrice?.selectedSource === "excel") {
-    return "Excel";
-  }
-
-  return point.araPrice ? "Propio histórico" : "Sin precio propio";
+function getPointExcelVsTokinGapPercent(point: PriceEvolutionPoint) {
+  return calculateReferenceGapPercent(
+    getPointExcelPrice(point),
+    getPointTokinPrice(point),
+  );
 }
 
 function getPointDecisionLabel(point: PriceEvolutionPoint) {
   return isLegacyEvolutionPoint(point)
-    ? "Precio propio no guardado en esta carga"
+    ? "Precio Excel no guardado en esta carga"
     : point.decisionLabel;
 }
 
@@ -1080,6 +1069,17 @@ function calculateVariationPercent(first: number | null, last: number | null) {
   }
 
   return ((last - first) / first) * 100;
+}
+
+function calculateReferenceGapPercent(
+  value: number | null,
+  reference: number | null,
+) {
+  if (!value || !reference) {
+    return null;
+  }
+
+  return ((value - reference) / reference) * 100;
 }
 
 function getLatestPoint(product: PriceEvolutionProduct) {

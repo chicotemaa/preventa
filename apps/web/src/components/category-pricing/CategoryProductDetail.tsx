@@ -81,7 +81,7 @@ export function CategoryProductDetail({
         <div className="min-h-0 flex-1 overflow-y-auto">
           <details open className="group">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#17202a]">
-              Tokin / Aguiar ({ownProducts.length})
+              Referencia Arcor / Tokin ({ownProducts.length})
             </summary>
             <ProductGrid
               products={ownProducts}

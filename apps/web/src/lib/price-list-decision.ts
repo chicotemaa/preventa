@@ -55,7 +55,7 @@ export function sortPriceListResultPrices(
     bestSource,
     bestPrice: bestSource ? getPriceListComparablePrice(bestSource) : null,
     status:
-      bestSource || getPriceListOwnPrice(result)
+      bestSource || getPriceListOwnPrice(result) || getPriceListTokinPrice(result)
         ? "matched"
         : "not_found",
   };
@@ -130,10 +130,10 @@ export function analyzePriceListDecision(
     return {
       kind: "missing_own_price",
       tone: "warning",
-      label: "Falta precio propio",
-      action: "Cargar precio Aguiar/Tokin",
+      label: "Falta precio Excel",
+      action: "Cargar precio en Excel",
       helper:
-        "Hay referencia de mercado, pero falta precio propio para decidir.",
+        "Hay referencia de mercado, pero falta el precio comercial del Excel para decidir.",
       currentPrice,
       referencePrice,
       referenceSource,
@@ -213,9 +213,9 @@ export function analyzePriceListDecision(
     return {
       kind: "above_wholesale_critical",
       tone: "danger",
-      label: "Aguiar caro vs mayorista",
+      label: "Excel caro vs mayorista",
       action: "Revisar baja o promo",
-      helper: "El precio propio supera por mas de 10% al mejor mayorista.",
+      helper: "El precio del Excel supera por mas de 10% al mejor mayorista.",
       currentPrice,
       referencePrice,
       referenceSource,
@@ -229,9 +229,9 @@ export function analyzePriceListDecision(
     return {
       kind: "above_wholesale_warning",
       tone: "warning",
-      label: "Aguiar arriba del mayorista",
+      label: "Excel arriba del mayorista",
       action: "Monitorear / ajustar",
-      helper: "El precio propio esta entre 5% y 10% arriba del mayorista.",
+      helper: "El precio del Excel esta entre 5% y 10% arriba del mayorista.",
       currentPrice,
       referencePrice,
       referenceSource,
@@ -247,7 +247,7 @@ export function analyzePriceListDecision(
       tone: "info",
       label: "Oportunidad de margen",
       action: "Evaluar suba selectiva",
-      helper: "Aguiar esta bastante por debajo del mayorista comparable.",
+      helper: "El precio del Excel esta bastante por debajo del mayorista comparable.",
       currentPrice,
       referencePrice,
       referenceSource,
@@ -262,7 +262,7 @@ export function analyzePriceListDecision(
     tone: "success",
     label: "Competitivo",
     action: "Mantener",
-    helper: "Aguiar esta dentro de un rango competitivo vs mayoristas.",
+    helper: "El precio del Excel esta dentro de un rango competitivo vs mayoristas.",
     currentPrice,
     referencePrice,
     referenceSource,
@@ -303,37 +303,25 @@ export function summarizePriceListDecisions(
 }
 
 export function getOwnPriceSourceLabel(result: PriceListItemResult) {
-  if (result.ownPrice?.selectedSource === "tokin") {
-    return "Tokin/Arcor";
-  }
-
-  if (result.ownPrice?.selectedSource === "excel") {
+  if (getPriceListExcelPrice(result)) {
     return "Excel";
   }
 
-  if (
-    result.diagnostics?.aguiarPriceNormalization?.status === "normalized" ||
-    result.diagnostics?.directAguiar?.status === "matched"
-  ) {
-    return "Tokin/Arcor";
-  }
-
-  if (normalizeOptionalNumber(result.input.currentPrice)) {
-    return "Excel";
-  }
-
-  return "pendiente";
+  return "Sin precio Excel";
 }
 
 export function getPriceListOwnPrice(result: PriceListItemResult) {
-  return (
-    normalizeOptionalNumber(result.ownPrice?.selectedPrice) ??
-    normalizeOptionalNumber(result.input.currentPrice)
-  );
+  if (result.ownPrice) {
+    return normalizeOptionalNumber(result.ownPrice.excelPrice);
+  }
+
+  return normalizeOptionalNumber(result.input.currentPrice);
 }
 
 export function getPriceListExcelPrice(result: PriceListItemResult) {
-  return normalizeOptionalNumber(result.ownPrice?.excelPrice);
+  return result.ownPrice
+    ? normalizeOptionalNumber(result.ownPrice.excelPrice)
+    : normalizeOptionalNumber(result.input.currentPrice);
 }
 
 export function getPriceListTokinPrice(result: PriceListItemResult) {

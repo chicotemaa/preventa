@@ -312,8 +312,8 @@ export function formatGapExplanation(value: number | null) {
   }
 
   return value > 0
-    ? `Aguiar ${magnitude}% más caro`
-    : `Aguiar ${magnitude}% más barato`;
+    ? `Ref. Arcor ${magnitude}% más alta`
+    : `Ref. Arcor ${magnitude}% más baja`;
 }
 
 export function countDecisionRowsByFilter(
@@ -652,7 +652,7 @@ function buildAlerts(
     alerts.push({
       severity: "critical",
       label: "Diferencia critica",
-      message: "Aguiar esta mas de 10% arriba del mejor mayorista.",
+      message: "La referencia Arcor esta mas de 10% arriba del mejor mayorista.",
     });
   } else if (
     row.gapVsAguiarPercent !== null &&
@@ -661,7 +661,7 @@ function buildAlerts(
     alerts.push({
       severity: "warning",
       label: "Arriba del mercado",
-      message: "Aguiar esta por encima de la referencia disponible.",
+      message: "La referencia Arcor esta por encima del mercado disponible.",
     });
   }
 
@@ -689,8 +689,8 @@ function buildRowRecommendation(
   if (!row.aguiarPrice && row.bestOverall) {
     return {
       kind: "insufficient_reference",
-      label: "Sin equivalente Aguiar",
-      reason: "Es un producto de mercado sin equivalencia confirmada en el surtido propio.",
+      label: "Sin referencia Arcor",
+      reason: "Es un producto de mercado sin equivalencia confirmada en Tokin.",
       tone: "neutral",
       targetPrice: null,
     };
@@ -753,28 +753,28 @@ function buildRowRecommendation(
   if (row.gapVsAguiarPercent !== null && row.gapVsAguiarPercent > 10) {
     return {
       kind: "compete",
-      label: "Competir: baja o promo",
-      reason: "Aguiar esta mas de 10% arriba del mejor mayorista confiable.",
+      label: "Revisar en Importación",
+      reason: "La referencia Arcor esta mas de 10% arriba del mejor mayorista. La decisión requiere precio Excel.",
       tone: "danger",
-      targetPrice: row.bestWholesale ? roundMoney(row.bestWholesale.price * 0.99) : null,
+      targetPrice: null,
     };
   }
 
   if (row.gapVsAguiarPercent !== null && row.gapVsAguiarPercent > 5) {
     return {
       kind: "monitor",
-      label: "Monitorear / ajustar",
-      reason: "Aguiar esta entre 5% y 10% arriba de la referencia.",
+      label: "Revisar en Importación",
+      reason: "La referencia Arcor esta entre 5% y 10% arriba del mercado. La decisión requiere precio Excel.",
       tone: "warning",
-      targetPrice: row.bestWholesale ? roundMoney(row.bestWholesale.price) : null,
+      targetPrice: null,
     };
   }
 
   if (row.gapVsAguiarPercent !== null && row.gapVsAguiarPercent < -8) {
     return {
       kind: "margin_opportunity",
-      label: "Oportunidad de margen",
-      reason: "Aguiar esta por debajo del mercado; revisar captura de margen.",
+      label: "Referencia Arcor baja",
+      reason: "Tokin esta por debajo del mercado; validar el precio comercial en Importación.",
       tone: "info",
       targetPrice: null,
     };
@@ -782,8 +782,8 @@ function buildRowRecommendation(
 
   return {
     kind: "maintain",
-    label: "Mantener",
-    reason: "Aguiar esta dentro del rango competitivo de +/-5%.",
+    label: "Referencia alineada",
+    reason: "La referencia Arcor esta dentro del rango de mercado. La decisión final usa Excel.",
     tone: "success",
     targetPrice: null,
   };
@@ -828,7 +828,7 @@ function buildCategoryRecommendation(
     return {
       kind: "monitor",
       label: "Ajuste selectivo",
-      reason: "La diferencia promedio muestra a Aguiar por encima del mercado.",
+      reason: "La referencia Arcor aparece por encima del mercado. Validar con precios Excel.",
       tone: "warning",
       targetPrice: null,
     };
@@ -837,8 +837,8 @@ function buildCategoryRecommendation(
   if (averageGapValue !== null && averageGapValue < -8) {
     return {
       kind: "margin_opportunity",
-      label: "Oportunidad de margen categoria",
-      reason: "Aguiar aparece por debajo de la referencia en promedio.",
+      label: "Referencia Arcor baja",
+      reason: "Tokin aparece por debajo del mercado en promedio. Validar con precios Excel.",
       tone: "info",
       targetPrice: null,
     };
@@ -975,7 +975,7 @@ function isExcelReferenceProduct(product: ProductSearchResult) {
 
 function getCommercialPriorityLabel(priority: CommercialPriority) {
   if (priority === "tokin") {
-    return "Tokin/Aguiar";
+    return "Referencia Arcor";
   }
 
   if (priority === "excel") {

@@ -43,6 +43,21 @@ test("prioriza mayorista aunque el minorista tenga un precio menor", () => {
   assert.equal(analysis.kind, "above_wholesale_warning");
 });
 
+test("una referencia Tokin antigua no reemplaza un Excel faltante", () => {
+  const analysis = analyzeHistoryItem(
+    createItem({
+      tokinPrice: 1_050,
+      selectedPrice: 1_050,
+      selectedSource: "tokin",
+      sources: [createSource("maxi", "Maxiconsumo Chaco", "mayorista", 1_000)],
+    }),
+  );
+
+  assert.equal(analysis.tokinPrice, 1_050);
+  assert.equal(analysis.selectedOwnPrice, null);
+  assert.equal(analysis.kind, "missing_own_price");
+});
+
 test("semaforo separa alertas y oportunidades", () => {
   const alert = analyzeHistoryItem(
     createItem({
@@ -69,7 +84,7 @@ test("semaforo separa alertas y oportunidades", () => {
   assert.deepEqual(filterHistoryAnalyses(analyses, "opportunity"), [opportunity]);
 });
 
-test("una carga anterior informa que el precio propio no fue guardado", () => {
+test("una carga anterior informa que el precio Excel no fue guardado", () => {
   const item = createItem({
     selectedPrice: 1_000,
     selectedSource: "excel",
@@ -83,7 +98,7 @@ test("una carga anterior informa que el precio propio no fue guardado", () => {
 
   assert.equal(analysis.ownPriceWasStored, false);
   assert.equal(analysis.selectedOwnPriceLabel, "No guardado en esta carga");
-  assert.equal(analysis.label, "Precio propio no guardado");
+  assert.equal(analysis.label, "Precio Excel no guardado");
   assert.equal(analysis.action, "Generar una nueva carga");
 });
 

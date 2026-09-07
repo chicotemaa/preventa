@@ -20,12 +20,11 @@ export function summarizePriceListOwnPrices(
 
   for (const result of results) {
     const excelPrice = normalizePrice(
-      result.ownPrice?.excelPrice ?? result.input.currentPrice,
+      result.ownPrice
+        ? result.ownPrice.excelPrice
+        : result.input.currentPrice,
     );
     const tokinPrice = normalizePrice(result.ownPrice?.tokinPrice);
-    const selectedPrice = normalizePrice(
-      result.ownPrice?.selectedPrice ?? excelPrice ?? tokinPrice,
-    );
 
     if (excelPrice !== null) {
       excelPriceCount += 1;
@@ -35,7 +34,7 @@ export function summarizePriceListOwnPrices(
       tokinPriceCount += 1;
     }
 
-    if (selectedPrice !== null) {
+    if (excelPrice !== null) {
       ownPriceCount += 1;
     }
   }

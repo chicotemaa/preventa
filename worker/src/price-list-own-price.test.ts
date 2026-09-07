@@ -24,13 +24,13 @@ test("usa Excel cuando Tokin no tiene un precio valido", () => {
   });
 });
 
-test("usa Tokin cuando el Excel no trae precio", () => {
+test("conserva Tokin como referencia Arcor cuando el Excel no trae precio", () => {
   assert.deepEqual(buildPriceListOwnPrice(null, 1_000), {
     excelPrice: null,
     tokinPrice: 1_000,
-    selectedPrice: 1_000,
-    selectedSource: "tokin",
-    selectionReason: "tokin_fallback",
+    selectedPrice: null,
+    selectedSource: null,
+    selectionReason: "tokin_reference_only",
     excelVsTokinGapRatio: null,
   });
 });

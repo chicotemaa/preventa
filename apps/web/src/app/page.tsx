@@ -210,9 +210,10 @@ export default function Home() {
             Explorador de categorías
           </h1>
           <p className="max-w-3xl text-sm leading-6 text-white/88 sm:text-base">
-            Elegí una categoría o subcategoría para ver primero el surtido
-            completo disponible de Aguiar/Tokin y después los productos
-            equivalentes de la competencia.
+            Elegí una categoría o subcategoría para ver primero la referencia
+            Arcor disponible en Tokin y después los productos equivalentes de
+            la competencia. El precio comercial se define desde el Excel en
+            Importación.
           </p>
         </div>
       </section>
@@ -296,8 +297,8 @@ function LiveProductSearch() {
           Buscar individual
         </h2>
         <p className="text-sm text-[#5d6b7a]">
-          Escribí o elegí una categoría o subcategoría para ver el surtido de
-          Tokin/Aguiar y compararlo contra la competencia.
+          Escribí o elegí una categoría o subcategoría para ver la referencia
+          Arcor disponible en Tokin y compararla contra la competencia.
         </p>
       </div>
 
@@ -552,8 +553,9 @@ function PriceListImport() {
             Importar lista de artículos
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-[#6f625d]">
-            Excel o CSV con Rubro, Descripción, Código y EAN. Opcional:
-            Precio Aguiar. Si Aguiar no tiene precio, la celda queda vacía.
+            Excel o CSV con Rubro, Descripción, Código y EAN. El precio del
+            archivo es la base comercial; Tokin se conserva por separado como
+            referencia Arcor y nunca reemplaza un precio faltante del Excel.
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:shrink-0">
@@ -742,7 +744,7 @@ function CategorySearchResults({
                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                   <div className="rounded bg-white px-3 py-2">
                     <div className="text-xs font-semibold uppercase text-[#667789]">
-                      Tokin / Aguiar
+                      Referencia Arcor
                     </div>
                     <div className="mt-1 font-bold text-[#173d2f]">
                       {group.tokinProducts.length}
@@ -855,7 +857,9 @@ function PriceListResults({
                 <tr>
                   <th className="w-[280px] px-2.5 py-3">Artículo</th>
                   <th className="w-[140px] px-2.5 py-3">Código / EAN</th>
-                  <th className="w-[145px] px-2.5 py-3">Precio Aguiar</th>
+                  <th className="w-[145px] px-2.5 py-3">
+                    Precio comercial Excel
+                  </th>
                   {visibleSources.length === 0 ? (
                     <th className="min-w-[170px] px-2.5 py-3">Fuentes</th>
                   ) : null}
@@ -1097,7 +1101,7 @@ function MatchingDiagnostics({ response }: { response: PriceListResponse }) {
                         </div>
                         <div>
                           <span className="font-semibold text-[#526170]">
-                            Precio Aguiar:
+                            Precio comercial Excel:
                           </span>{" "}
                           {formatCurrencyValue(
                             normalizeOptionalNumber(result.input.currentPrice),
@@ -1793,7 +1797,7 @@ function PriceListRow({
           }
         >
           <AraNumberInput
-            label="Precio Aguiar"
+            label="Precio comercial Excel"
             value={result.input.currentPrice ?? null}
             hideLabel
             onChange={(value) =>
@@ -1934,7 +1938,7 @@ function PriceListCards({
               }`}
             >
               <AraNumberInput
-                label="Precio Aguiar"
+                label="Precio comercial Excel"
                 value={result.input.currentPrice ?? null}
                 onChange={(value) =>
                   onItemInputChange(
@@ -3053,7 +3057,7 @@ function getDecisionStatusLabel(status: PriceDecisionStatus) {
     ready: "Listo",
     review_match: "Revisar match",
     no_reference: "Sin referencia",
-    missing_own_price: "Falta precio Aguiar",
+    missing_own_price: "Falta precio Excel",
     above_reference: "Muy arriba",
     opportunity: "Oportunidad",
   };
@@ -3250,7 +3254,7 @@ function downloadPriceListCsv(
     "Codigo",
     "EAN 13 DI",
     "EAN 13 BU",
-    "Precio Aguiar",
+    "Precio comercial Excel",
     "Estado",
     "Referencia unitaria",
     "Fuente referencia",
@@ -3301,7 +3305,7 @@ function downloadMatchingLogCsv(response: PriceListResponse) {
     "EAN 13 DI",
     "EAN 13 BU",
     "Estado",
-    "Precio Aguiar",
+    "Precio comercial Excel",
     "Fuente referencia",
     "Query usada",
     "Marca esperada",
@@ -3317,9 +3321,9 @@ function downloadMatchingLogCsv(response: PriceListResponse) {
     "Score base",
     "Score final",
     "Link candidato",
-    "Control precio Aguiar",
-    "Precio Aguiar original",
-    "Precio Aguiar normalizado",
+    "Control precio Excel",
+    "Precio Excel original",
+    "Precio Excel normalizado",
     "Precio referencia",
     "Motivo control Aguiar",
   ];
@@ -3511,7 +3515,7 @@ function downloadAraUploadCsv(
     "EAN 13 BU",
     "Descripcion",
     "Rubro",
-    "Precio Aguiar",
+    "Precio comercial Excel",
   ];
   const rows = results.map((result) => {
     return [

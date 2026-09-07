@@ -336,6 +336,7 @@ export type PriceListOwnPrice = {
   selectionReason?:
     | "excel_priority"
     | "excel_only"
+    | "tokin_reference_only"
     | "tokin_fallback"
     | "missing";
 };

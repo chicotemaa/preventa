@@ -57,7 +57,7 @@ function serializeOwnPrice(ownPrice: PriceListOwnPrice) {
           ? "excel_priority"
           : "excel_only"
         : ownPrice.tokinPrice
-          ? "tokin_fallback"
+          ? "tokin_reference_only"
           : "missing"),
   };
 }
@@ -184,6 +184,7 @@ function parseSelectionReason(
   if (
     value === "excel_priority" ||
     value === "excel_only" ||
+    value === "tokin_reference_only" ||
     value === "tokin_fallback" ||
     value === "missing"
   ) {
@@ -194,7 +195,7 @@ function parseSelectionReason(
     return tokinPrice ? "excel_priority" : "excel_only";
   }
 
-  return tokinPrice ? "tokin_fallback" : "missing";
+  return tokinPrice ? "tokin_reference_only" : "missing";
 }
 
 function parseSourcePrices(value: unknown): PriceListSourcePrice[] {

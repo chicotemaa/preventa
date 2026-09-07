@@ -38,7 +38,7 @@ test("un producto sin equivalente propio no informa confianza ficticia", () => {
 
   assert.equal(dashboard.rows[0]?.matchQuality, "not_comparable");
   assert.equal(dashboard.rows[0]?.confidenceScore, null);
-  assert.equal(dashboard.rows[0]?.recommendation.label, "Sin equivalente Aguiar");
+  assert.equal(dashboard.rows[0]?.recommendation.label, "Sin referencia Arcor");
 });
 
 test("consolida los modos unidad y bulto de Tokin", () => {
@@ -180,8 +180,8 @@ test("normaliza displays comerciales de golosinas antes de comparar", () => {
 });
 
 test("explica la diferencia sin exigir interpretar el signo", () => {
-  assert.equal(formatGapExplanation(12.34), "Aguiar 12,3% más caro");
-  assert.equal(formatGapExplanation(-5.06), "Aguiar 5,1% más barato");
+  assert.equal(formatGapExplanation(12.34), "Ref. Arcor 12,3% más alta");
+  assert.equal(formatGapExplanation(-5.06), "Ref. Arcor 5,1% más baja");
   assert.equal(formatGapExplanation(null), "Sin comparación");
 });
 

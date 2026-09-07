@@ -113,6 +113,7 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
           rowNumber: number;
           description: string;
           code: string;
+          currentPrice?: number;
         }>;
       };
 
@@ -140,11 +141,13 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
         results: request.items.map((input) => ({
           input,
           ownPrice: {
-            excelPrice: null,
+            excelPrice: input.currentPrice ?? null,
             tokinPrice: 700,
-            selectedPrice: 700,
-            selectedSource: "tokin",
-            excelVsTokinGapRatio: null,
+            selectedPrice: input.currentPrice ?? null,
+            selectedSource: input.currentPrice ? "excel" : null,
+            excelVsTokinGapRatio: input.currentPrice
+              ? (input.currentPrice - 700) / 700
+              : null,
           },
           queryUsed: "alfajor tatin",
           status: "matched",
@@ -175,6 +178,7 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
           code: String(1_004_056 + index),
           ean13_di: null,
           ean13_bu: null,
+          current_price: 1_000,
           source_prices: [],
         })),
       );
@@ -213,9 +217,9 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
       brands: [],
       productsCount: 100,
       storageVersion: 4,
-      ownPricePolicy: "excel_first_then_tokin",
+      ownPricePolicy: "excel_commercial_tokin_reference",
       ownPriceCount: 21,
-      excelPriceCount: 0,
+      excelPriceCount: 21,
       tokinPriceCount: 21,
       missingOwnPriceCount: 0,
       ownPriceCoverageRatio: 1,

@@ -141,7 +141,7 @@ function buildProducts(
       gapPercent: parseDatabaseNumber(row.gap_percent),
       decisionLabel:
         ownPriceSnapshotStatus === "not_stored_legacy"
-          ? "Carga histórica sin precio propio guardado"
+          ? "Carga histórica sin precio Excel guardado"
           : repairLegacyText(row.decision_label),
       sourcePrices,
       ownPriceSnapshotStatus,

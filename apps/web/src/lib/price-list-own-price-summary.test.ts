@@ -13,11 +13,11 @@ test("resume Excel, Tokin y faltantes sin contar precios de mercado", () => {
 
   assert.deepEqual(summary, {
     itemsCount: 4,
-    ownPriceCount: 3,
+    ownPriceCount: 2,
     excelPriceCount: 2,
     tokinPriceCount: 2,
-    missingOwnPriceCount: 1,
-    coverageRatio: 0.75,
+    missingOwnPriceCount: 2,
+    coverageRatio: 0.5,
     canPersist: true,
     coverageComplete: false,
   });
@@ -37,7 +37,7 @@ function buildResult(
   inputPrice?: number,
 ): PriceListItemResult {
   const normalizedExcelPrice = excelPrice ?? inputPrice ?? null;
-  const selectedPrice = normalizedExcelPrice ?? tokinPrice;
+  const selectedPrice = normalizedExcelPrice;
 
   return {
     input: {
@@ -46,16 +46,16 @@ function buildResult(
       currentPrice: inputPrice,
     },
     ownPrice: {
-      excelPrice,
+      excelPrice: normalizedExcelPrice,
       tokinPrice,
       selectedPrice,
-      selectedSource: normalizedExcelPrice ? "excel" : tokinPrice ? "tokin" : null,
+      selectedSource: normalizedExcelPrice ? "excel" : null,
       selectionReason: normalizedExcelPrice
         ? tokinPrice
           ? "excel_priority"
           : "excel_only"
         : tokinPrice
-          ? "tokin_fallback"
+          ? "tokin_reference_only"
           : "missing",
       excelVsTokinGapRatio: null,
     },

@@ -275,7 +275,7 @@ function RunList({
               <span className="mt-2 block text-xs text-[#526170]">
                 {typeof run.ownPriceCount !== "number"
                   ? `${run.matchedCount}/${run.itemsCount} con mercado · carga anterior`
-                  : `${run.ownPriceCount}/${run.itemsCount} con precio propio`}
+                  : `${run.ownPriceCount}/${run.itemsCount} con precio Excel`}
               </span>
               {typeof run.missingOwnPriceCount === "number" && run.missingOwnPriceCount > 0 ? (
                 <span className="mt-1 block text-xs font-semibold text-[#8a5a0a]">

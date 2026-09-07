@@ -192,7 +192,7 @@ export function PricingReviewDashboard() {
           <SummaryButton label="Competitivos" value={dashboard.summary.competitive} active={filter === "competitive"} onClick={() => setFilter("competitive")} tone="success" />
           <SummaryButton label="Oportunidad de margen" value={dashboard.summary.opportunities} active={filter === "opportunity"} onClick={() => setFilter("opportunity")} tone="info" />
           <SummaryButton label="Variación semanal" value={dashboard.summary.weeklyChanges} active={filter === "weekly_change"} onClick={() => setFilter("weekly_change")} tone="warning" />
-          <SummaryButton label="Sin precio propio" value={dashboard.summary.missingOwn} active={filter === "missing_own"} onClick={() => setFilter("missing_own")} tone="neutral" />
+          <SummaryButton label="Sin precio Excel" value={dashboard.summary.missingOwn} active={filter === "missing_own"} onClick={() => setFilter("missing_own")} tone="neutral" />
           <SummaryButton label="Sin mayorista" value={dashboard.summary.withoutWholesale} active={filter === "without_wholesale"} onClick={() => setFilter("without_wholesale")} tone="neutral" />
           <SummaryButton label="Match dudoso" value={dashboard.summary.weakMatch} active={filter === "weak_match"} onClick={() => setFilter("weak_match")} tone="neutral" />
           <SummaryButton label="Todos" value={dashboard.summary.total} active={filter === "all"} onClick={() => setFilter("all")} tone="neutral" />
@@ -247,7 +247,7 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
           <thead className="sticky top-[68px] z-10 bg-[#f8fafc] text-xs uppercase text-[#667789]">
             <tr>
               <th className="px-4 py-3">Artículo</th>
-              <th className="px-3 py-3">Precio propio</th>
+              <th className="px-3 py-3">Precio comercial Excel</th>
               <th className="px-3 py-3">Mejor mayorista</th>
               <th className="px-3 py-3">Dif. vs mayorista</th>
               <th className="px-3 py-3">Variación semanal</th>
@@ -284,7 +284,7 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
             <h3 className="text-sm font-semibold text-[#17202a]">{item.analysis.item.description ?? "Sin descripción"}</h3>
             <p className="mt-1 text-xs text-[#667789]">{item.analysis.item.code ?? item.analysis.item.ean13Di ?? "Sin código"}</p>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <PriceMetric label="Propio" value={formatPrice(item.analysis.selectedOwnPrice)} />
+              <PriceMetric label="Excel" value={formatPrice(item.analysis.selectedOwnPrice)} />
               <PriceMetric label="Mayorista" value={formatPrice(getHistoryComparablePrice(item.analysis.bestWholesale))} />
               <PriceMetric label="Diferencia" value={formatPercent(item.analysis.gapRatio)} />
               <PriceMetric label="Semana anterior" value={formatWeeklyVariation(item)} />

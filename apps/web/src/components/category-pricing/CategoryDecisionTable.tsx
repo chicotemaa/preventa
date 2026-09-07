@@ -55,10 +55,10 @@ export function CategoryDecisionTable({
           <thead className="sticky top-0 z-10 bg-[#edf1f5] text-[11px] uppercase tracking-[0.05em] text-[#526170]">
             <tr>
               <th className="w-[25%] px-3 py-3">Producto comparable</th>
-              <th className="w-[11%] px-3 py-3">Aguiar</th>
+              <th className="w-[11%] px-3 py-3">Ref. Arcor</th>
               <th className="w-[13%] px-3 py-3">Mejor mayorista</th>
               <th className="w-[13%] px-3 py-3">Mejor minorista</th>
-              <th className="w-[15%] px-3 py-3">Posición de Aguiar</th>
+              <th className="w-[15%] px-3 py-3">Posición ref. Arcor</th>
               <th className="w-[10%] px-3 py-3">Equivalencia</th>
               <th className="w-[15%] px-3 py-3">Acción</th>
               <th className="w-[8%] px-3 py-3">Detalle</th>
@@ -158,11 +158,11 @@ export function CategoryDecisionTable({
               </span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <MobileMetric label="Aguiar" value={formatCellPrice(row.aguiarPrice)} />
+              <MobileMetric label="Referencia Arcor" value={formatCellPrice(row.aguiarPrice)} />
               <MobileMetric label="Mayorista" value={formatCellPrice(row.bestWholesale)} />
               <MobileMetric label="Minorista" value={formatCellPrice(row.bestRetail)} />
               <MobileMetric
-                label="Posición de Aguiar"
+                label="Posición ref. Arcor"
                 value={formatGapExplanation(row.gapVsAguiarPercent)}
               />
             </div>
@@ -317,7 +317,7 @@ function ChannelChip({ channel }: { channel: CategoryDecisionRow["winningChannel
     return null;
   }
 
-  const label = channel === "own" ? "Propio" : channel === "mayorista" ? "Mayorista" : "Minorista";
+  const label = channel === "own" ? "Referencia Arcor" : channel === "mayorista" ? "Mayorista" : "Minorista";
   const className =
     channel === "own"
       ? "bg-[#edf3ff] text-[#153d7b]"

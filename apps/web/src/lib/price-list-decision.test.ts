@@ -52,6 +52,31 @@ test("usa Excel como precio propio y conserva Tokin por separado", () => {
   assert.equal(result.ownPrice?.tokinPrice, 1_000);
 });
 
+test("no usa Tokin como precio comercial cuando falta Excel", () => {
+  const result = createResult({
+    ownPrice: {
+      excelPrice: null,
+      tokinPrice: 1_000,
+      selectedPrice: 1_000,
+      selectedSource: "tokin",
+      selectionReason: "tokin_fallback",
+      excelVsTokinGapRatio: null,
+    },
+    sourcePrices: [
+      createSourcePrice({
+        sourceId: "maxiconsumo-chaco-auth",
+        storeName: "Maxiconsumo Chaco",
+        storeType: "mayorista",
+        price: 1_100,
+      }),
+    ],
+  });
+
+  assert.equal(getPriceListOwnPrice(result), null);
+  assert.equal(getOwnPriceSourceLabel(result), "Sin precio Excel");
+  assert.equal(analyzePriceListDecision(result).kind, "missing_own_price");
+});
+
 test("bloquea una recomendacion fuerte cuando el match es debil", () => {
   const result = createResult({
     currentPrice: 1_300,

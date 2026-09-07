@@ -204,8 +204,8 @@ export default function ImportacionPage() {
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#667789]">
                 El archivo debe incluir Rubro, Descripción, Código y EAN. Si
                 trae Precio Aguiar, ese valor se usa para la comparación.
-                Tokin/Arcor queda visible como control y se usa solo cuando el
-                Excel no trae precio.
+                Tokin queda visible como referencia Arcor, pero nunca reemplaza
+                al precio comercial del Excel.
               </p>
             </div>
 
@@ -253,8 +253,8 @@ export default function ImportacionPage() {
                 Guardar esta carga para evolución
               </span>
               <span className="mt-1 block text-sm text-[#667789]">
-                Se guarda al terminar solo si existe al menos un precio propio
-                de Excel o Tokin. Los artículos faltantes quedan señalados.
+                Se guarda al terminar solo si existe al menos un precio en el
+                Excel. La referencia Arcor de Tokin se conserva por separado.
               </span>
             </span>
           </label>
@@ -296,11 +296,10 @@ export default function ImportacionPage() {
         {summary ? (
           <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
             <Metric label="Artículos" value={summary.total} />
-            <Metric label="Con precio propio" value={summary.ownPriceCount} />
-            <Metric label="Desde Excel" value={summary.excelPriceCount} />
-            <Metric label="Desde Tokin" value={summary.tokinPriceCount} />
+            <Metric label="Con precio Excel" value={summary.excelPriceCount} />
+            <Metric label="Referencia Arcor" value={summary.tokinPriceCount} />
             <Metric
-              label="Falta precio propio"
+              label="Falta precio Excel"
               value={summary.missingOwnPriceCount}
               tone={summary.missingOwnPriceCount > 0 ? "warning" : "success"}
             />
@@ -339,14 +338,14 @@ function HistorySavePanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm font-bold text-[#17202a]">
-            Referencia propia para evolución
+            Precio comercial para evolución
           </div>
           <p className="mt-1 text-sm leading-5 text-[#667789]">
             {cannotSave
-              ? "No se puede guardar todavía: ningún artículo tiene precio de Excel ni Tokin."
+              ? "No se puede guardar todavía: ningún artículo tiene precio comercial en el Excel."
               : missingOwnPriceCount > 0
-                ? `${ownPriceCount}/${itemsCount} artículos tienen precio propio. La carga se puede guardar, pero quedará marcada para revisión.`
-                : `Los ${itemsCount} artículos tienen una referencia propia y están listos para historial.`}
+                ? `${ownPriceCount}/${itemsCount} artículos tienen precio en el Excel. La carga se puede guardar, pero quedará marcada para revisión.`
+                : `Los ${itemsCount} artículos tienen precio Excel y están listos para historial.`}
           </p>
         </div>
         <button
@@ -374,8 +373,8 @@ function HistorySavePanel({
 
       {saved ? (
         <div className="mt-3 rounded-md border border-[#bfe5cf] bg-[#f4fbf7] px-3 py-2 text-sm text-[#16613c]">
-          Carga guardada con Excel y Tokin separados. Ya está disponible en
-          Historial y Evolución.
+          Carga guardada: Excel quedó como precio comercial y Tokin como
+          referencia Arcor. Ya está disponible en Historial y Evolución.
         </div>
       ) : null}
     </section>
@@ -446,20 +445,20 @@ function formatDecisionGap(
   }
 
   const prefix = gapRatio > 0 ? "+" : "";
-  return `${prefix}${percentFormatter.format(gapRatio)} vs ${referenceChannelLabel}`;
+  return `Excel ${prefix}${percentFormatter.format(gapRatio)} vs ${referenceChannelLabel}`;
 }
 
 function formatOwnPriceDifference(gapRatio: number | null | undefined) {
   if (gapRatio === null || gapRatio === undefined) {
-    return "Sin ambos precios para comparar";
+    return "-";
   }
 
   if (Math.abs(gapRatio) < 0.001) {
-    return "Coincide con el Excel";
+    return "0,0%";
   }
 
   const prefix = gapRatio > 0 ? "+" : "";
-  return `Excel ${prefix}${percentFormatter.format(gapRatio)} vs Tokin`;
+  return `${prefix}${percentFormatter.format(gapRatio)}`;
 }
 
 function ImportResults({ response }: { response: PriceListResponse }) {
@@ -533,8 +532,8 @@ function ImportResults({ response }: { response: PriceListResponse }) {
           Resultado de importación
         </h2>
         <p className="text-sm text-[#667789]">
-          Artículos en el orden del Excel. La referencia prioritaria usa
-          mayoristas primero y minoristas solo si no hay mayorista comparable.
+          El precio comercial siempre sale del Excel. Tokin muestra la referencia
+          Arcor y el mercado prioriza mayoristas antes que minoristas.
         </p>
       </div>
 
@@ -575,7 +574,7 @@ function ImportResults({ response }: { response: PriceListResponse }) {
             icon={<CircleCheck className="h-4 w-4" />}
           />
           <ImportSignalButton
-            label="Precio propio mejor"
+            label="Excel más competitivo"
             value={counts.opportunities}
             tone="info"
             active={filter === "opportunity"}
@@ -583,7 +582,7 @@ function ImportResults({ response }: { response: PriceListResponse }) {
             icon={<TrendingDown className="h-4 w-4" />}
           />
           <ImportSignalButton
-            label="Falta propio"
+            label="Falta Excel"
             value={counts.missingOwn}
             tone="neutral"
             active={filter === "missing_own"}
@@ -750,10 +749,8 @@ function formatBatchProgress(progress: PriceListBatchProgress | null) {
 function ImportResultCard({ result }: { result: PriceListItemResult }) {
   const comparisons = result.sourcePrices.slice(0, 5);
   const decision = analyzePriceListDecision(result);
-  const ownPriceLabel = getOwnPriceSourceLabel(result);
   const excelPrice = getPriceListExcelPrice(result);
   const tokinPrice = getPriceListTokinPrice(result);
-  const selectedOwnPrice = getPriceListOwnPrice(result);
 
   return (
     <article className="rounded-md border border-[#d9dee7] bg-white p-3">
@@ -775,7 +772,7 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
                 : "bg-[#fff1ef] text-[#8f2d20]"
             }`}
           >
-            {result.status === "matched" ? "Con precio" : "Sin precio"}
+            {result.status === "matched" ? "Con referencias" : "Sin datos"}
           </span>
           <span
             className={`rounded px-2 py-1 text-xs font-semibold ${decisionChipClassName(
@@ -788,21 +785,9 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Referencia prioritaria
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-[#173d2f]">
-            {formatCurrency(result.bestPrice)}
-          </div>
-          <div className="mt-1 text-xs text-[#667789]">
-            {result.bestSource?.storeName ?? "sin fuente"}{" "}
-            {result.bestSource ? `· ${formatStoreType(result.bestSource.storeType)}` : ""}
-          </div>
-        </div>
         <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Precio Excel
+            Precio comercial · Excel
           </div>
           <div className="mt-1 text-lg font-extrabold text-[#17202a]">
             {formatCurrency(excelPrice)}
@@ -813,24 +798,36 @@ function ImportResultCard({ result }: { result: PriceListItemResult }) {
         </div>
         <div className="rounded-md border border-[#cddcf2] bg-[#f5f8ff] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Precio Tokin/Arcor
+            Referencia Arcor · Tokin
           </div>
           <div className="mt-1 text-lg font-extrabold text-[#153d7b]">
             {formatCurrency(tokinPrice)}
           </div>
           <div className="mt-1 text-xs text-[#667789]">
-            {formatOwnPriceDifference(result.ownPrice?.excelVsTokinGapRatio)}
+            No reemplaza al precio del Excel
           </div>
         </div>
         <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Precio usado
+            Suba sobre referencia Arcor
           </div>
           <div className="mt-1 text-lg font-extrabold text-[#7a4a16]">
-            {formatCurrency(selectedOwnPrice)}
+            {formatOwnPriceDifference(result.ownPrice?.excelVsTokinGapRatio)}
           </div>
           <div className="mt-1 text-xs text-[#667789]">
-            Origen: {ownPriceLabel}
+            Precio Excel respecto de Tokin
+          </div>
+        </div>
+        <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
+            Mejor referencia de mercado
+          </div>
+          <div className="mt-1 text-lg font-extrabold text-[#173d2f]">
+            {formatCurrency(result.bestPrice)}
+          </div>
+          <div className="mt-1 text-xs text-[#667789]">
+            {result.bestSource?.storeName ?? "sin fuente"}{" "}
+            {result.bestSource ? `· ${formatStoreType(result.bestSource.storeType)}` : ""}
           </div>
         </div>
         <div className={`rounded-md border px-3 py-2 ${decisionCardClassName(decision.tone)}`}>
@@ -1035,11 +1032,11 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     "Articulo",
     "Descripcion ARTICULOS",
     "UxB",
-    "Precio Excel",
-    "Precio Tokin/Arcor",
-    "Precio propio usado",
-    "Origen precio propio",
-    "Diferencia Excel vs Tokin %",
+    "Precio comercial Excel",
+    "Referencia Arcor Tokin",
+    "Precio usado para comparar",
+    "Origen precio comercial",
+    "Suba Excel vs referencia Arcor %",
     "Ean 13 Unidad",
     "Ean 13 Dispaly",
     "Estado",
@@ -1051,7 +1048,7 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     "Fuente mayorista",
     "Mejor minorista",
     "Fuente minorista",
-    "Brecha vs referencia %",
+    "Brecha Excel vs referencia de mercado %",
     "Producto encontrado",
     "Link producto",
     "Confianza",
@@ -1099,7 +1096,7 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
       sortedResult.ownPrice?.excelVsTokinGapRatio ?? "",
       sortedResult.input.ean13Di ?? "",
       sortedResult.input.ean13Bu ?? "",
-      sortedResult.status === "matched" ? "Con precio" : "Sin precio",
+      sortedResult.status === "matched" ? "Con referencias" : "Sin datos",
       getPriceListSuggestedAction(sortedResult),
       sortedResult.bestPrice ?? "",
       sortedResult.bestSource?.storeName ?? "",
@@ -1174,7 +1171,7 @@ function downloadAguiarCsv(response: PriceListResponse) {
     "EAN 13 BU",
     "Descripcion",
     "Rubro",
-    "Precio Aguiar",
+    "Precio comercial Excel",
   ];
   const rows = response.results.map((result) => [
     result.input.code ?? "",
@@ -1451,7 +1448,7 @@ function getNoMatchReason(result: PriceListItemResult) {
   }
 
   if (!getPriceListOwnPrice(result)) {
-    return "Falta precio Aguiar en la lista";
+    return "Falta precio comercial en el Excel";
   }
 
   const bestConfidence = result.bestSource?.confidenceScore ?? 0;

@@ -406,7 +406,7 @@ function getAlertSourceLabel(alert: PersistedPricingAlert) {
 function formatAlertType(type: PersistedPricingAlert["type"]) {
   if (type === "source_unavailable") return "Cobertura de fuentes";
   if (type === "catalog_stale") return "Vigencia del catálogo";
-  if (type === "missing_own_price") return "Sin precio propio";
+  if (type === "missing_own_price") return "Sin precio Excel";
   return "Comparación de precios";
 }
 
