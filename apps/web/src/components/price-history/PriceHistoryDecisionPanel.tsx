@@ -1,5 +1,9 @@
 "use client";
 
+import { PriceFreshnessLabel } from "@/components/catalog/PriceFreshnessLabel";
+import { CostBreakdownDetail } from "@/components/price-list/CostConditionsEditor";
+import { PricingImpactDetail } from "@/components/price-list/PricingImpactDetail";
+
 import {
   AlertTriangle,
   CircleCheck,
@@ -233,7 +237,7 @@ export function PriceHistoryDecisionPanel({
               helper={
                 isLegacyWithoutOwnPrices
                   ? "Carga con formato anterior"
-                  : "Precio comercial Excel vacío"
+                  : "Precio de venta Excel vacío"
               }
               tone="neutral"
               isActive={filter === "missing_own"}
@@ -384,13 +388,14 @@ function HistoryDecisionTable({
 }) {
   return (
     <div className="hidden max-h-[720px] overflow-auto bg-white xl:block">
-      <table className="w-full min-w-[1380px] border-collapse text-left text-xs">
+      <table className="w-full min-w-[1480px] border-collapse text-left text-xs">
         <thead className="sticky top-0 z-10 bg-[#edf1f5] uppercase tracking-[0.04em] text-[#526170]">
           <tr>
             <th className="px-3 py-3">Artículo</th>
-            <th className="px-3 py-3">Precio comercial Excel</th>
-            <th className="px-3 py-3">Referencia Arcor</th>
-            <th className="px-3 py-3">Suba vs Arcor</th>
+            <th className="px-3 py-3">Precio de venta Excel</th>
+            <th className="px-3 py-3">Referencia Tokin</th>
+            <th className="px-3 py-3">Recargo sobre costo ajustado</th>
+            <th className="px-3 py-3">Margen ajustado est.</th>
             <th className="px-3 py-3">Mejor mayorista</th>
             <th className="px-3 py-3">Mejor minorista</th>
             <th className="px-3 py-3">Dif. vs mayorista</th>
@@ -420,13 +425,18 @@ function HistoryDecisionTable({
               />
               <PriceValue
                 value={analysis.tokinPrice}
+                helper={"Costo ajustado: " + formatCurrency(analysis.commercial.effectiveUnitCost)}
+                observedAt={analysis.item.ownPrice?.tokinObservedAt ?? null}
                 emphasize
                 missingLabel={
                   analysis.ownPriceWasStored ? "-" : "No guardado"
                 }
               />
               <td className="px-3 py-3 font-bold text-[#7a4a16]">
-                {formatGap(analysis.excelVsTokinGapRatio, "referencia Arcor")}
+                {formatGap(analysis.commercial.markupRatio, "costo ajustado")}
+              </td>
+              <td className="px-3 py-3 font-bold text-[#17202a]">
+                {formatGap(analysis.commercial.grossMarginRatio, "venta neta")}
               </td>
               <MarketPriceCell price={analysis.bestWholesale} />
               <MarketPriceCell price={analysis.bestRetail} />
@@ -449,6 +459,7 @@ function HistoryDecisionTable({
                 <div className="mt-1 leading-4 text-[#667789]">
                   {analysis.helper}
                 </div>
+                <PricingImpactDetail impact={analysis.impact} />
               </td>
               <td className="max-w-[260px] px-3 py-3">
                 <SourcePriceDetails analysis={analysis} />
@@ -493,19 +504,25 @@ function HistoryDecisionCards({
 
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             <MobilePrice
-              label="Precio comercial Excel"
+              label="Precio de venta Excel"
               value={analysis.excelPrice}
               missingLabel={analysis.ownPriceWasStored ? "-" : "No guardado"}
             />
             <MobilePrice
-              label="Referencia Arcor"
+              label="Referencia Tokin"
               value={analysis.tokinPrice}
               missingLabel={analysis.ownPriceWasStored ? "-" : "No guardado"}
             />
+            <MobilePrice label="Costo ajustado / unidad" value={analysis.commercial.effectiveUnitCost} />
             <MobilePrice
-              label="Suba vs Arcor"
+              label="Recargo sobre costo ajustado"
               value={null}
-              textValue={formatGap(analysis.excelVsTokinGapRatio, "referencia Arcor")}
+              textValue={formatGap(analysis.commercial.markupRatio, "costo ajustado")}
+            />
+            <MobilePrice
+              label="Margen ajustado est."
+              value={null}
+              textValue={formatGap(analysis.commercial.grossMarginRatio, "venta neta")}
             />
             <MobilePrice
               label={`Mayorista · ${analysis.bestWholesale?.storeName ?? "-"}`}
@@ -530,6 +547,7 @@ function HistoryDecisionCards({
             <div className="mt-1 text-xs leading-4 text-[#667789]">
               {analysis.helper}
             </div>
+            <PricingImpactDetail impact={analysis.impact} />
           </div>
           <div className="mt-3">
             <SourcePriceDetails analysis={analysis} />
@@ -544,14 +562,20 @@ function PriceValue({
   value,
   emphasize = false,
   missingLabel = "-",
+  observedAt,
+  helper,
 }: {
   value: number | null;
   emphasize?: boolean;
   missingLabel?: string;
+  observedAt?: string | null;
+  helper?: string;
 }) {
   return (
     <td className={`px-3 py-3 font-semibold ${emphasize ? "text-[#153d7b]" : "text-[#526170]"}`}>
       {value === null ? missingLabel : formatCurrency(value)}
+      {helper ? <div className="mt-1 text-xs text-[#526170]">{helper}</div> : null}
+      {value !== null && observedAt !== undefined ? <PriceFreshnessLabel observedAt={observedAt} /> : null}
     </td>
   );
 }
@@ -610,6 +634,12 @@ function SourcePriceDetails({ analysis }: { analysis: HistoryItemAnalysis }) {
         Ver {prices.length} precios
       </summary>
       <div className="mt-2 max-h-56 space-y-2 overflow-auto">
+        <CostBreakdownDetail result={{
+          input: { rowNumber: analysis.item.rowNumber, currentPrice: analysis.item.currentPrice ?? undefined },
+          ownPrice: analysis.item.ownPrice ?? undefined, costConditions: analysis.item.costConditions,
+          status: analysis.item.matchStatus, queryUsed: null, bestPrice: null, bestSource: null,
+          sourcePrices: analysis.item.sourcePrices, matchedCount: analysis.item.matchedCount,
+        }} />
         {prices.length === 0 ? (
           <div className="text-xs text-[#667789]">Sin comparaciones guardadas.</div>
         ) : (
@@ -627,6 +657,7 @@ function SourcePriceDetails({ analysis }: { analysis: HistoryItemAnalysis }) {
               <div className="mt-1 font-bold text-[#173d2f]">
                 {formatCurrency(getHistoryComparablePrice(price))}
               </div>
+              <PriceFreshnessLabel observedAt={price.observedAt} />
               <div className="mt-1 line-clamp-2 text-[#667789]">
                 {price.productName}
               </div>
@@ -683,14 +714,19 @@ function compareHistoryAnalyses(
   second: HistoryItemAnalysis,
 ) {
   const rank = {
-    above_wholesale_critical: 0,
-    above_wholesale_warning: 1,
-    weak_match: 2,
-    missing_own_price: 3,
-    no_reference: 4,
-    retail_only: 5,
-    competitive: 6,
-    margin_opportunity: 7,
+    below_supplier_cost: 0,
+    cost_pressure: 1,
+    above_wholesale_critical: 2,
+    below_target_margin: 3,
+    above_wholesale_warning: 4,
+    weak_match: 5,
+    outdated_reference: 5,
+    cost_unverified: 5,
+    missing_own_price: 6,
+    no_reference: 7,
+    retail_only: 8,
+    competitive: 9,
+    margin_opportunity: 10,
   } as const;
   const rankDifference = rank[first.kind] - rank[second.kind];
 
@@ -793,9 +829,10 @@ function downloadRunResultCsv(
     "Codigo",
     "EAN 13 DI",
     "EAN 13 BU",
-    "Precio comercial Excel",
-    "Referencia Arcor Tokin",
-    "Suba Excel vs referencia Arcor %",
+    "Precio de venta Excel",
+    "Referencia proveedor Tokin",
+    "Recargo sobre costo ajustado %",
+    "Margen ajustado estimado %",
     "Mejor mayorista",
     "Fuente mayorista",
     "Mejor minorista",
@@ -803,6 +840,7 @@ function downloadRunResultCsv(
     "Diferencia vs mayorista %",
     "Estado",
     "Accion",
+    "Costo ajustado unitario", "Venta neta unitaria", "Condiciones confirmadas", "Alcance del margen",
   ];
   const rows = analyses.map((analysis) => [
     analysis.item.rubro ?? "",
@@ -814,9 +852,12 @@ function downloadRunResultCsv(
     analysis.item.ean13Bu ?? "",
     csvAmount(analysis.excelPrice),
     csvAmount(analysis.tokinPrice),
-    analysis.excelVsTokinGapRatio === null
+    analysis.commercial.markupRatio === null
       ? ""
-      : (analysis.excelVsTokinGapRatio * 100).toFixed(2),
+      : (analysis.commercial.markupRatio * 100).toFixed(2),
+    analysis.commercial.grossMarginRatio === null
+      ? ""
+      : (analysis.commercial.grossMarginRatio * 100).toFixed(2),
     csvAmount(getHistoryComparablePrice(analysis.bestWholesale)),
     analysis.bestWholesale?.storeName ?? "",
     csvAmount(getHistoryComparablePrice(analysis.bestRetail)),
@@ -824,6 +865,8 @@ function downloadRunResultCsv(
     analysis.gapRatio === null ? "" : (analysis.gapRatio * 100).toFixed(2),
     analysis.label,
     analysis.action,
+    csvAmount(analysis.commercial.effectiveUnitCost), csvAmount(analysis.commercial.costBreakdown?.netSalePrice ?? null),
+    analysis.item.costConditions?.confirmedAt ?? "", analysis.commercial.economicsReason,
   ]);
 
   downloadCsv(
@@ -841,9 +884,9 @@ function downloadRunAguiarCsv(
     "EAN 13 DI",
     "EAN 13 BU",
     "Descripcion",
-    "Precio comercial Excel",
-    "Referencia Arcor Tokin",
-    "Precio sugerido",
+    "Precio de venta Excel",
+    "Costo proveedor Tokin",
+    "Piso precio margen objetivo",
     "Accion",
   ];
   const rows = analyses.map((analysis) => [

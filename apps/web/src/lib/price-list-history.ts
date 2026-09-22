@@ -137,11 +137,11 @@ export async function getPriceListRunDetail(
         filters: { run_id: `eq.${runId}` },
         order: "store_name.asc",
       }),
-      selectSupabaseRows<ItemRow[]>("price_list_run_items", {
+      selectAllRunItems({
         select:
           "id,row_number,rubro,description,code,ean13_di,ean13_bu,current_price,current_cost,match_status,best_price,best_source_name,best_source_type,best_product_name,best_product_url,best_confidence_score,margin_percent,gap_percent,suggested_price,decision_status,decision_label,matched_count,source_prices",
         filters: { run_id: `eq.${runId}` },
-        order: "row_number.asc",
+        order: "row_number.asc,id.asc",
       }),
     ]);
 
@@ -167,6 +167,16 @@ export async function getPriceListRunDetail(
           ? error.message
           : "No se pudo cargar el detalle.",
     };
+  }
+}
+
+async function selectAllRunItems(options: Parameters<typeof selectSupabaseRows>[1]) {
+  const items: ItemRow[] = [];
+  const pageSize = 500;
+  for (;;) {
+    const page = await selectSupabaseRows<ItemRow[]>("price_list_run_items", { ...options, limit: pageSize, offset: items.length });
+    items.push(...page);
+    if (page.length < pageSize) return items;
   }
 }
 
@@ -318,12 +328,14 @@ function mapItemRow(row: ItemRow): PriceListRunItem {
     subrubro: repairLegacyText(storedDetail.dimensions.subrubro) ?? null,
     line: repairLegacyText(storedDetail.dimensions.line) ?? null,
     uxb: storedDetail.dimensions.uxb ?? null,
+    businessActivity: storedDetail.dimensions.businessActivity,
     description: repairLegacyText(row.description),
     code: row.code,
     ean13Di: row.ean13_di,
     ean13Bu: row.ean13_bu,
     currentPrice,
     ownPrice: storedDetail.ownPrice,
+    costConditions: storedDetail.costConditions,
     matchDiagnostics: storedDetail.diagnostics,
     ownPriceSnapshotStatus:
       storedDetail.isLegacy && !storedDetail.ownPrice && !currentPrice

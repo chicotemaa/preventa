@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { summarizePriceObservations } from "./price-observations.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -365,6 +366,7 @@ export async function getStoredSourceCatalogStatuses(
     resultsCount: snapshot.productsCount,
     durationMs: snapshot.durationMs,
     snapshotSyncedAt: snapshot.syncedAt,
+    priceObservations: summarizePriceObservations(snapshot.products),
     usingStoredSnapshot:
       isOlderThan(snapshot.syncedAt, STORED_SNAPSHOT_WARNING_AGE_MS) ||
       snapshot.errors.some((error) =>

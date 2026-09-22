@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { confirmedCostConditions } from "./test-fixtures/cost-conditions";
 import {
   parseStoredPriceListDetail,
   serializeStoredPriceListDetail,
@@ -9,10 +10,12 @@ import type { PriceListSourcePrice } from "@/types/search";
 test("conserva Excel, Tokin y clasificacion en el historial nuevo", () => {
   const sourcePrice = createSourcePrice();
   const serialized = serializeStoredPriceListDetail({
+    costConditions: confirmedCostConditions,
     sourcePrices: [sourcePrice],
     ownPrice: {
       excelPrice: 1_100,
       tokinPrice: 1_000,
+      tokinObservedAt: "2026-09-22T15:00:00Z",
       selectedPrice: 1_100,
       selectedSource: "excel",
       excelVsTokinGapRatio: 0.1,
@@ -44,9 +47,12 @@ test("conserva Excel, Tokin y clasificacion en el historial nuevo", () => {
   const parsed = parseStoredPriceListDetail(serialized);
 
   assert.equal(parsed.isLegacy, false);
+  assert.deepEqual(parsed.costConditions, confirmedCostConditions);
   assert.equal(parsed.ownPrice?.selectedSource, "excel");
   assert.equal(parsed.ownPrice?.selectionReason, "excel_priority");
   assert.equal(parsed.ownPrice?.tokinPrice, 1_000);
+  assert.equal(parsed.ownPrice?.tokinObservedAt, "2026-09-22T15:00:00Z");
+  assert.equal(parsed.sourcePrices[0]?.observedAt, sourcePrice.observedAt);
   assert.equal(parsed.dimensions.subrubro, "Alfajores triples");
   assert.equal(parsed.dimensions.uxb, "24");
   assert.equal(parsed.sourcePrices[0]?.storeType, "mayorista");
@@ -58,6 +64,7 @@ test("sigue leyendo source_prices historicos guardados como array", () => {
 
   assert.equal(parsed.isLegacy, true);
   assert.equal(parsed.ownPrice, null);
+  assert.equal(parsed.costConditions, null);
   assert.equal(parsed.diagnostics, null);
   assert.equal(parsed.sourcePrices.length, 1);
   assert.equal(parsed.sourcePrices[0]?.storeName, "Maxiconsumo Chaco");
@@ -65,6 +72,7 @@ test("sigue leyendo source_prices historicos guardados como array", () => {
 
 function createSourcePrice(): PriceListSourcePrice {
   return {
+    observedAt: "2026-09-21T15:00:00Z",
     sourceId: "maxiconsumo-chaco-auth",
     storeName: "Maxiconsumo Chaco",
     storeType: "mayorista",

@@ -10,6 +10,10 @@
     "dev": "npm run dev --workspace apps/web",
     "dev:web": "npm run dev --workspace apps/web",
     "dev:worker": "npm run dev --workspace worker",
+    "demo:access": "node scripts/demo-access.mjs",
+    "demo:check": "tsx scripts/demo-readiness.mjs",
+    "demo:preview": "node scripts/demo-preview.mjs",
+    "demo:browser": "node scripts/demo-browser-check.mjs",
     "build": "npm run build --workspace worker && npm run build --workspace apps/web",
     "test": "npm run test --workspace worker && npm run test --workspace apps/web",
     "typecheck": "npm run typecheck --workspace worker && npm run typecheck --workspace apps/web"

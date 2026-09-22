@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { confirmedCostConditions } from "./test-fixtures/cost-conditions";
 import {
   analyzeHistoryItem,
   filterHistoryAnalyses,
@@ -22,13 +23,15 @@ test("historial compara el Excel y conserva Tokin como referencia separada", () 
   assert.equal(analysis.tokinPrice, 1_050);
   assert.equal(analysis.selectedOwnPrice, 1_200);
   assert.equal(analysis.selectedOwnPriceLabel, "Excel");
-  assert.equal(analysis.kind, "above_wholesale_critical");
+  assert.equal(analysis.kind, "cost_pressure");
+  assert.equal(analysis.action, "Negociar costo / revisar match");
 });
 
 test("prioriza mayorista aunque el minorista tenga un precio menor", () => {
   const analysis = analyzeHistoryItem(
     createItem({
       excelPrice: 1_000,
+      tokinPrice: 500,
       selectedPrice: 1_000,
       selectedSource: "excel",
       sources: [
@@ -62,6 +65,7 @@ test("semaforo separa alertas y oportunidades", () => {
   const alert = analyzeHistoryItem(
     createItem({
       excelPrice: 1_300,
+      tokinPrice: 500,
       selectedPrice: 1_300,
       selectedSource: "excel",
       sources: [createSource("maxi", "Maxiconsumo Chaco", "mayorista", 1_000)],
@@ -70,6 +74,7 @@ test("semaforo separa alertas y oportunidades", () => {
   const opportunity = analyzeHistoryItem(
     createItem({
       excelPrice: 800,
+      tokinPrice: 500,
       selectedPrice: 800,
       selectedSource: "excel",
       sources: [createSource("maxi", "Maxiconsumo Chaco", "mayorista", 1_000)],
@@ -102,6 +107,50 @@ test("una carga anterior informa que el precio Excel no fue guardado", () => {
   assert.equal(analysis.action, "Generar una nueva carga");
 });
 
+test("historial y revisiones usan el mismo mayorista confiable para precio, gap y accion", () => {
+  const reliable = createSource("maxi", "Maxiconsumo Chaco", "mayorista", 1_000);
+  const weak = {
+    ...createSource("weak", "Dudoso", "mayorista", 500),
+    confidenceScore: 0,
+  };
+  const analysis = analyzeHistoryItem(createItem({
+    excelPrice: 1_000,
+    tokinPrice: 500,
+    selectedPrice: 1_000,
+    selectedSource: "excel",
+    sources: [weak, reliable],
+  }));
+
+  assert.equal(analysis.kind, "competitive");
+  assert.equal(analysis.bestWholesale, reliable);
+  assert.equal(analysis.referenceSource, analysis.bestWholesale);
+  assert.equal(analysis.referencePrice, analysis.commercial.bestWholesalePrice);
+  assert.equal(analysis.gapRatio, analysis.commercial.gapVsBestWholesaleRatio);
+  assert.equal(analysis.gapRatio, 0);
+});
+
+test("historial sin confianza no declara oportunidad ni precio mayorista comparable", () => {
+  const source = {
+    ...createSource("maxi", "Maxiconsumo", "mayorista", 1_000),
+    confidenceScore: 0,
+  };
+  const analysis = analyzeHistoryItem(createItem({
+    excelPrice: 800,
+    selectedPrice: 800,
+    selectedSource: "excel",
+    sources: [source],
+  }));
+  const summary = summarizeHistoryItems([analysis]);
+
+  assert.equal(analysis.kind, "weak_match");
+  assert.equal(analysis.bestWholesale, null);
+  assert.equal(analysis.referenceSource, null);
+  assert.equal(analysis.gapRatio, null);
+  assert.equal(summary.opportunities, 0);
+  assert.equal(summary.attention, 1);
+  assert.equal(summary.withoutWholesale, 1);
+});
+
 function createItem({
   excelPrice = null,
   tokinPrice = null,
@@ -117,6 +166,7 @@ function createItem({
 }): PriceListRunItem {
   return {
     id: `item-${selectedPrice}`,
+    costConditions: confirmedCostConditions,
     rowNumber: 1,
     business: "Alimentos",
     rubro: "Golosinas",
@@ -132,6 +182,7 @@ function createItem({
     ownPrice: {
       excelPrice,
       tokinPrice,
+      tokinObservedAt: new Date().toISOString(),
       selectedPrice,
       selectedSource,
       excelVsTokinGapRatio:
@@ -162,6 +213,7 @@ function createSource(
   price: number,
 ): PriceListSourcePrice {
   return {
+    observedAt: new Date().toISOString(),
     sourceId,
     storeName,
     storeType,

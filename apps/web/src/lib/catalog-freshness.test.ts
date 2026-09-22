@@ -12,7 +12,7 @@ test("marca como fresco un catálogo diario reciente", () => {
   );
 
   assert.equal(freshness.tone, "success");
-  assert.equal(freshness.label, "Catálogo actualizado");
+  assert.equal(freshness.label, "Precios con fecha vigente");
 });
 
 test("avisa cuando se conserva el último snapshot válido", () => {
@@ -35,11 +35,15 @@ test("bloquea confianza ejecutiva si el catálogo supera 72 horas", () => {
   );
 
   assert.equal(freshness.tone, "danger");
-  assert.match(freshness.detail, /No conviene/i);
+  assert.match(freshness.detail, /no justifican recomendaciones/i);
 });
 
 function buildCatalog(lastSyncedAt: string): CatalogMetadata {
   return {
+    priceObservations: {
+      totalProducts: 10, datedProducts: 10,
+      oldestObservedAt: lastSyncedAt, newestObservedAt: lastSyncedAt,
+    },
     status: "ready",
     region: { id: "argentina", name: "Argentina", scopeLabel: "Nacional" },
     brands: [],
@@ -50,3 +54,18 @@ function buildCatalog(lastSyncedAt: string): CatalogMetadata {
     pendingSources: [],
   };
 }
+
+test("un cron reciente no renueva precios retenidos antiguos", () => {
+  const catalog = buildCatalog("2026-07-16T14:00:00Z");
+  catalog.lastSyncedAt = new Date(NOW).toISOString();
+  assert.equal(getCatalogFreshness(catalog, NOW).tone, "danger");
+});
+
+test("catálogos legacy y mezclas sin fecha no aparecen como actualizados", () => {
+  const catalog = buildCatalog(new Date(NOW).toISOString());
+  catalog.priceObservations!.datedProducts = 8;
+  assert.equal(getCatalogFreshness(catalog, NOW).tone, "warning");
+  assert.match(getCatalogFreshness(catalog, NOW).detail, /2 precios sin fecha/);
+  delete catalog.priceObservations;
+  assert.equal(getCatalogFreshness(catalog, NOW).label, "Vigencia de precios sin verificar");
+});

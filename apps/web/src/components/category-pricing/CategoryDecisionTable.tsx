@@ -1,5 +1,7 @@
 "use client";
 
+import { PriceFreshnessLabel } from "@/components/catalog/PriceFreshnessLabel";
+
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CategoryDecisionRow, PricingTone } from "@/lib/category-pricing";
@@ -278,6 +280,7 @@ function PriceCell({ cell }: { cell: CategoryDecisionRow["bestOverall"] }) {
   return (
     <div>
       <div className="font-bold text-[#17202a]">{currencyFormatter.format(cell.price)}</div>
+      <PriceFreshnessLabel observedAt={cell.product.observedAt} />
       {usesEquivalentUnit ? (
         <div className="mt-0.5 text-[10px] font-bold uppercase text-[#25634b]">
           Por unidad equivalente

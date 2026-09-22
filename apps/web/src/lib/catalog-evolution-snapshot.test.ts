@@ -2,10 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildWatchlistItems,
+  attachWatchlistContext,
   formatArgentinaDateKey,
   refreshDailyEvolutionSnapshot,
 } from "./catalog-evolution-snapshot";
 import { serializeStoredPriceListDetail } from "./price-list-storage";
+import { businessResult } from "./test-fixtures/pricing-business";
+
+test("cron conserva contexto del mismo articulo sin renovar fecha de ventas/stock ni confirmacion", () => {
+  const base = businessResult();
+  const rows = [{ row_number: 1, rubro: null, description: "Alfajor", code: base.input.code!, ean13_di: base.input.ean13Di!,
+    ean13_bu: null, source_prices: serializeStoredPriceListDetail(base) }];
+  const live = { ...base, costConditions: undefined, input: { ...base.input, businessActivity: undefined } };
+  const [restored] = attachWatchlistContext([live], rows);
+  assert.deepEqual(restored.costConditions, base.costConditions);
+  assert.deepEqual(restored.input.businessActivity, base.input.businessActivity);
+  assert.equal(attachWatchlistContext([{ ...live, input: { ...live.input, code: "different" } }], rows)[0].costConditions, undefined);
+  assert.equal(attachWatchlistContext([{ ...live, input: { ...live.input, uxb: "40" } }], rows)[0].costConditions, undefined);
+});
 
 test("reconstruye la cartera diaria desde la ultima lista manual", () => {
   const sourcePrices = serializeStoredPriceListDetail({
@@ -216,8 +230,9 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
       },
       brands: [],
       productsCount: 100,
-      storageVersion: 4,
-      ownPricePolicy: "excel_commercial_tokin_reference",
+      storageVersion: 5,
+      ownPricePolicy: "excel_sale_tokin_supplier_cost",
+      targetGrossMarginRatio: 0.2,
       ownPriceCount: 21,
       excelPriceCount: 21,
       tokinPriceCount: 21,

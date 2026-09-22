@@ -1,5 +1,8 @@
 "use client";
 
+import { PriceFreshnessLabel } from "@/components/catalog/PriceFreshnessLabel";
+import { CatalogCommercialPanel } from "@/components/price-list/CatalogCommercialPanel";
+
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { compareSourcePriority } from "@/lib/source-priority";
@@ -164,7 +167,13 @@ export default function BusquedaGeneralPage() {
           ) : null}
         </section>
 
-        {response ? <GeneralSearchResults response={response} /> : null}
+        {response ? <>
+          <CatalogCommercialPanel products={response.results} />
+          <details className="border-y border-[#d9dee7] py-3">
+            <summary className="cursor-pointer text-sm font-bold text-[#153d7b]">Ver detalle del catalogo ({response.results.length})</summary>
+            <GeneralSearchResults response={response} />
+          </details>
+        </> : null}
       </section>
     </main>
   );
@@ -271,6 +280,7 @@ function PriceBreakdown({ product }: { product: ProductSearchResult }) {
 
   return (
     <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      <div className="sm:col-span-2"><PriceFreshnessLabel observedAt={product.observedAt} /></div>
       <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
         <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
           Unidad

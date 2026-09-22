@@ -14,19 +14,21 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
   const originalCronSecret = process.env.CRON_SECRET;
   const originalWorkerCronSecret = process.env.WORKER_CRON_SECRET;
   const originalWorkerUrl = process.env.WORKER_URL;
+  const originalApiSecret = process.env.WORKER_API_SECRET;
   const requestedUrls: string[] = [];
   const sourceBodies: unknown[] = [];
 
   process.env.CRON_SECRET = "cron-test-secret";
   process.env.WORKER_CRON_SECRET = "worker-test-secret";
   process.env.WORKER_URL = "https://worker.example.test";
+  process.env.WORKER_API_SECRET = "a".repeat(32);
   globalThis.fetch = async (input, init) => {
     const requestedUrl = String(input);
     requestedUrls.push(requestedUrl);
     assert.equal(init?.method, "POST");
     assert.equal(
       new Headers(init?.headers).get("authorization"),
-      "Bearer worker-test-secret",
+      requestedUrl.endsWith("/catalog/category-search") ? `Bearer ${"a".repeat(32)}` : "Bearer worker-test-secret",
     );
 
     if (requestedUrl.endsWith("/catalog/rebuild")) {
@@ -107,6 +109,7 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
     restoreEnv("CRON_SECRET", originalCronSecret);
     restoreEnv("WORKER_CRON_SECRET", originalWorkerCronSecret);
     restoreEnv("WORKER_URL", originalWorkerUrl);
+    restoreEnv("WORKER_API_SECRET", originalApiSecret);
   }
 });
 

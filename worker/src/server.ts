@@ -1,5 +1,6 @@
 import http from "node:http";
 import { z } from "zod";
+import { workerAccessStatus } from "./api-access.js";
 import {
   buildCarrefourComercianteBrowserImportSnapshot,
   loginAndValidateCarrefourComercianteSession,
@@ -86,6 +87,7 @@ const carrefourComercianteCatalogSyncSchema = z.object({
 });
 
 const carrefourComercianteCatalogImportSchema = z.object({
+  capturedAt: z.string().datetime({ offset: true }).optional(),
   mode: z.enum(["replace", "append"]).optional(),
   query: z.string().trim().min(2).max(120),
   page: z.number().int().positive().max(200).optional(),
@@ -120,6 +122,7 @@ const carrefourComercianteCatalogImportSchema = z.object({
 
 const productSearchResultSnapshotImportSchema = z
   .object({
+    observedAt: z.string().datetime({ offset: true }).optional().nullable(),
     sourceId: z.string().trim().min(2).max(120).optional(),
     storeName: z.string().trim().min(2).max(160).optional(),
     storeType: z.enum(["mayorista", "minorista"]).optional(),
@@ -193,6 +196,12 @@ const server = http.createServer(async (request, response) => {
   }
 
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
+  response.setHeader("Cache-Control", "private, no-store");
+  const accessStatus = workerAccessStatus(request.method ?? "GET", url.pathname, request.headers.authorization);
+  if (accessStatus !== 200) {
+    sendJson(response, accessStatus, { error: accessStatus === 503 ? "Acceso privado del worker sin configurar." : "No autorizado." });
+    return;
+  }
 
   if (request.method === "GET" && url.pathname === "/") {
     sendJson(response, 200, {
@@ -235,7 +244,7 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/health") {
-    sendJson(response, 200, { ok: true, catalog: getCatalogMetadata() });
+    sendJson(response, 200, { ok: true });
     return;
   }
 

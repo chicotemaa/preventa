@@ -1,8 +1,11 @@
+import { requireAppAccess } from "@/lib/app-access";
 import { NextResponse } from "next/server";
 import { savePriceListRun } from "@/lib/price-list-persistence";
 import type { PriceListResponse } from "@/types/search";
 
 export async function POST(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   let body: { response?: PriceListResponse };
 
   try {

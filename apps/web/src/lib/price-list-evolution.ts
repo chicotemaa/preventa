@@ -135,6 +135,8 @@ function buildProducts(
       createdAt: run.createdAt,
       araPrice: currentPrice,
       ownPrice: storedDetail.ownPrice,
+      costConditions: storedDetail.costConditions,
+      costComparable: storedDetail.diagnostics?.aguiarPriceNormalization?.status !== "rejected",
       referencePrice: parseDatabaseNumber(row.best_price),
       suggestedPrice: parseDatabaseNumber(row.suggested_price),
       bestSourceName: row.best_source_name,

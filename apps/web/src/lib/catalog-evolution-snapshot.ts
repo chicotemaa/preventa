@@ -1,3 +1,4 @@
+import { workerFetch } from "@/lib/worker-request";
 import type {
   PriceListInputItem,
   PriceListResponse,
@@ -96,6 +97,7 @@ export async function refreshDailyEvolutionSnapshot({
       workerUrl,
       watchlist.items,
     );
+    response.results = attachWatchlistContext(response.results, watchlist.rows);
     const persistence = await savePriceListRun(response, {
       origin: "scheduled_catalog",
       listName,
@@ -130,7 +132,7 @@ async function loadLatestManualWatchlist() {
     "price_list_runs",
     {
       select: "id,list_name,metadata",
-      filters: { status: "neq.archived" },
+      filters: { status: "neq.archived", "metadata->>origin": "eq.manual_import" },
       order: "created_at.desc",
       limit: WATCHLIST_RUN_CANDIDATES,
     },
@@ -140,24 +142,42 @@ async function loadLatestManualWatchlist() {
   );
 
   for (const run of manualRuns) {
-    const itemRows = await selectSupabaseRows<WatchlistItemRow[]>(
-      "price_list_run_items",
-      {
+    const itemRows: WatchlistItemRow[] = [];
+    while (itemRows.length < MAX_WATCHLIST_ITEMS) {
+      const page = await selectSupabaseRows<WatchlistItemRow[]>("price_list_run_items", {
         select:
           "row_number,rubro,description,code,ean13_di,ean13_bu,current_price,source_prices",
         filters: { run_id: `eq.${run.id}` },
-        order: "row_number.asc",
-        limit: MAX_WATCHLIST_ITEMS,
-      },
-    );
+        order: "row_number.asc,id.asc",
+        limit: 500, offset: itemRows.length,
+      });
+      itemRows.push(...page);
+      if (page.length < 500) break;
+    }
     const items = buildWatchlistItems(itemRows);
 
     if (items.length > 0) {
-      return { runId: run.id, items };
+      return { runId: run.id, items, rows: itemRows };
     }
   }
 
   return null;
+}
+
+export function attachWatchlistContext(results: PriceListResponse["results"], rows: WatchlistItemRow[]) {
+  const byRow = new Map(rows.map(row => [row.row_number, row]));
+  return results.map(result => {
+    const row = byRow.get(result.input.rowNumber);
+    if (!row) return result;
+    const sameIdentity = Boolean(row.code || row.ean13_di) &&
+      (normalizeOptionalString(row.code) ?? "") === (result.input.code ?? "") &&
+      (normalizeOptionalString(row.ean13_di) ?? "") === (result.input.ean13Di ?? "");
+    if (!sameIdentity) return result;
+    const saved = parseStoredPriceListDetail(row.source_prices);
+    if ((saved.dimensions.uxb ?? "") !== (result.input.uxb ?? "")) return result;
+    return { ...result, costConditions: saved.costConditions,
+      input: { ...result.input, businessActivity: saved.dimensions.businessActivity } };
+  });
 }
 
 export function buildWatchlistItems(rows: WatchlistItemRow[]) {
@@ -186,8 +206,7 @@ export function buildWatchlistItems(rows: WatchlistItemRow[]) {
         ean13Di,
         ean13Bu,
         currentPrice:
-          storedDetail.ownPrice?.excelPrice ??
-          normalizeOptionalPrice(row.current_price) ??
+          (storedDetail.ownPrice ? storedDetail.ownPrice.excelPrice : normalizeOptionalPrice(row.current_price)) ??
           undefined,
       },
     ];
@@ -235,6 +254,10 @@ async function requestCatalogPriceListInBatches(
   const results = responses
     .flatMap((response) => response.results)
     .sort((first, second) => first.input.rowNumber - second.input.rowNumber);
+  const resultRows = new Set(results.map(result => result.input.rowNumber));
+  if (results.length !== items.length || resultRows.size !== items.length || items.some(item => !resultRows.has(item.rowNumber))) {
+    throw new Error("La captura diaria esta incompleta; se conserva la evaluacion anterior.");
+  }
   const matchedCount = results.filter(
     (result) => result.status === "matched",
   ).length;
@@ -261,7 +284,7 @@ async function requestCatalogPriceListBatch(
   );
 
   try {
-    const response = await fetch(
+    const response = await workerFetch(
       `${workerUrl.replace(/\/$/, "")}/catalog/price-list`,
       {
         method: "POST",

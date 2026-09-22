@@ -1,3 +1,4 @@
+import { workerFetch } from "@/lib/worker-request";
 import {
   buildPricingAlertCandidates,
   getAlertCategoryQueries,
@@ -87,7 +88,7 @@ async function fetchCategory(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(
+    const response = await workerFetch(
       `${workerUrl.replace(/\/$/, "")}/catalog/category-search`,
       {
         method: "POST",

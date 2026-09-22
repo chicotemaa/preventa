@@ -1,8 +1,17 @@
-import { compareSourcePriority } from "@/lib/source-priority";
 import type {
   PriceListItemResult,
   PriceListSourcePrice,
 } from "@/types/search";
+import {
+  analyzePriceListCommercial,
+  comparePriceListSourcePrices,
+  getCommercialComparablePrice,
+  getReliableSourcePrices,
+  isReliableSourcePrice,
+  type PriceListCommercialAnalysis,
+} from "./price-list-commercial";
+
+export { comparePriceListSourcePrices } from "./price-list-commercial";
 
 export type PriceListDecisionTone =
   | "danger"
@@ -14,11 +23,16 @@ export type PriceListDecisionTone =
 export type PriceListDecisionKind =
   | "above_wholesale_critical"
   | "above_wholesale_warning"
+  | "below_supplier_cost"
+  | "below_target_margin"
+  | "cost_pressure"
   | "competitive"
   | "margin_opportunity"
   | "missing_own_price"
   | "retail_only"
   | "weak_match"
+  | "outdated_reference"
+  | "cost_unverified"
   | "no_reference";
 
 export type PriceListDecisionAnalysis = {
@@ -33,6 +47,7 @@ export type PriceListDecisionAnalysis = {
   referenceChannelLabel: "mayorista" | "minorista" | "mercado";
   gapRatio: number | null;
   hasWholesaleReference: boolean;
+  commercial: PriceListCommercialAnalysis;
 };
 
 export type PriceListDecisionSummary = {
@@ -47,7 +62,7 @@ export function sortPriceListResultPrices(
   result: PriceListItemResult,
 ): PriceListItemResult {
   const sourcePrices = [...result.sourcePrices].sort(comparePriceListSourcePrices);
-  const bestSource = sourcePrices[0] ?? null;
+  const bestSource = getReliableSourcePrices(sourcePrices)[0] ?? null;
 
   return {
     ...result,
@@ -55,46 +70,23 @@ export function sortPriceListResultPrices(
     bestSource,
     bestPrice: bestSource ? getPriceListComparablePrice(bestSource) : null,
     status:
-      bestSource || getPriceListOwnPrice(result) || getPriceListTokinPrice(result)
+      sourcePrices.length > 0 ||
+      getPriceListOwnPrice(result) ||
+      getPriceListTokinPrice(result)
         ? "matched"
         : "not_found",
   };
 }
 
-export function comparePriceListSourcePrices(
-  first: PriceListSourcePrice,
-  second: PriceListSourcePrice,
-) {
-  const storeTypeRank = getStoreTypeRank(first) - getStoreTypeRank(second);
-
-  if (storeTypeRank !== 0) {
-    return storeTypeRank;
-  }
-
-  const priceDifference =
-    getPriceListComparablePrice(first) - getPriceListComparablePrice(second);
-
-  if (priceDifference !== 0) {
-    return priceDifference;
-  }
-
-  return compareSourcePriority(first, second);
-}
-
 export function getPriceListComparablePrice(price: PriceListSourcePrice) {
-  return normalizeOptionalNumber(price.comparisonPrice) ?? price.price;
+  return getCommercialComparablePrice(price);
 }
 
 export function getBestPriceListSourceByType(
   result: PriceListItemResult,
   storeType: PriceListSourcePrice["storeType"],
 ) {
-  return result.sourcePrices
-    .filter((sourcePrice) => sourcePrice.storeType === storeType)
-    .sort(
-      (first, second) =>
-        getPriceListComparablePrice(first) - getPriceListComparablePrice(second),
-    )[0];
+  return getReliableSourcePrices(result.sourcePrices, storeType)[0];
 }
 
 export function calculatePriceListGapRatio(
@@ -110,69 +102,125 @@ export function calculatePriceListGapRatio(
 
 export function analyzePriceListDecision(
   result: PriceListItemResult,
+  now = Date.now(),
 ): PriceListDecisionAnalysis {
-  const currentPrice = getPriceListOwnPrice(result);
-  const bestWholesale = getBestPriceListSourceByType(result, "mayorista") ?? null;
-  const referenceSource = bestWholesale ?? result.bestSource;
+  const commercial = analyzePriceListCommercial(result, undefined, now);
+  const currentPrice = commercial.excelSalePrice;
+  const bestWholesale = commercial.bestWholesale;
+  const referenceSource = bestWholesale ?? commercial.bestRetail;
   const referencePrice = referenceSource
     ? getPriceListComparablePrice(referenceSource)
     : null;
   const gapRatio = calculatePriceListGapRatio(currentPrice, referencePrice);
   const hasWholesaleReference = Boolean(bestWholesale);
-  const referenceChannelLabel =
+  const referenceChannelLabel: PriceListDecisionAnalysis["referenceChannelLabel"] =
     referenceSource?.storeType === "mayorista"
       ? "mayorista"
       : referenceSource?.storeType === "minorista"
         ? "minorista"
         : "mercado";
+  const shared = {
+    currentPrice,
+    referencePrice,
+    referenceSource,
+    referenceChannelLabel,
+    gapRatio,
+    hasWholesaleReference,
+    commercial,
+  };
 
-  if (!currentPrice && referencePrice) {
+  if (!currentPrice && (result.sourcePrices.length > 0 || commercial.supplierCost)) {
     return {
       kind: "missing_own_price",
       tone: "warning",
       label: "Falta precio Excel",
       action: "Cargar precio en Excel",
       helper:
-        "Hay referencia de mercado, pero falta el precio comercial del Excel para decidir.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
+        "Hay costo proveedor o referencia de mercado, pero falta el precio de venta del Excel para decidir.",
+      ...shared,
       gapRatio: null,
-      hasWholesaleReference,
+    };
+  }
+
+  if (
+    currentPrice &&
+    commercial.supplierCostStatus === "outdated"
+  ) {
+    return {
+      ...shared, kind: "outdated_reference", tone: "neutral",
+      label: "Costo Tokin sin vigencia", action: "Actualizar costo proveedor",
+      helper: commercial.supplierCostReason,
+    };
+  }
+
+  if (
+    currentPrice &&
+    commercial.supplierCostComparable &&
+    commercial.grossMarginRatio !== null &&
+    commercial.grossMarginRatio < 0
+  ) {
+    return {
+      kind: "below_supplier_cost",
+      tone: "danger",
+      label: "Venta neta debajo del costo",
+      action: "Corregir precio o costo",
+      helper:
+        "La venta Excel neta de IVA es menor que el costo ajustado con las condiciones confirmadas. No usar una baja de mercado.",
+      ...shared,
     };
   }
 
   if (!referenceSource || !referencePrice) {
+    if (result.sourcePrices.some(isReliableSourcePrice) || commercial.supplierCostStatus === "outdated") {
+      return {
+        ...shared,
+        kind: "outdated_reference",
+        tone: "neutral",
+        label: "Referencias sin vigencia",
+        action: "Actualizar referencias",
+        helper: "Los precios tienen mas de 36 horas o no tienen fecha verificable. Se conservan como detalle, sin sugerir cambios de precio.",
+      };
+    }
+    if (result.sourcePrices.length > 0) {
+      return {
+        kind: "weak_match",
+        tone: "neutral",
+        label: "Match a revisar",
+        action: "Revisar equivalencia",
+        helper:
+          "No hay coincidencias con precio y confianza suficientes; validar las referencias antes de decidir.",
+        ...shared,
+      };
+    }
+
+    if (
+      commercial.grossMarginRatio !== null &&
+      commercial.grossMarginRatio < commercial.targetGrossMarginRatio
+    ) {
+      return {
+        kind: "below_target_margin",
+        tone: "warning",
+        label: "Margen debajo del objetivo",
+        action: "Revisar margen / costo",
+        helper:
+          "El margen ajustado estimado no alcanza el objetivo. Falta una referencia mayorista para decidir el precio.",
+        ...shared,
+        referencePrice: null,
+        referenceSource: null,
+        gapRatio: null,
+      };
+    }
+
     return {
       kind: "no_reference",
       tone: "neutral",
       label: "Sin referencia comparable",
       action: "Buscar referencia mayorista",
       helper: "No hay precio mayorista ni minorista comparable para este articulo.",
-      currentPrice,
+      ...shared,
       referencePrice: null,
       referenceSource: null,
-      referenceChannelLabel,
       gapRatio: null,
-      hasWholesaleReference,
-    };
-  }
-
-  if (referenceSource.confidenceScore > 0 && referenceSource.confidenceScore < 70) {
-    return {
-      kind: "weak_match",
-      tone: "neutral",
-      label: "Match a revisar",
-      action: "Revisar equivalencia",
-      helper:
-        "La coincidencia es debil; no conviene ajustar precio sin validar el producto.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
-      gapRatio,
-      hasWholesaleReference,
     };
   }
 
@@ -184,12 +232,15 @@ export function analyzePriceListDecision(
       action: "Validar con mayoristas",
       helper:
         "Hay mercado minorista, pero no mayorista. No usar como baja automatica.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
-      gapRatio,
-      hasWholesaleReference,
+      ...shared,
+    };
+  }
+
+  if (!commercial.economicsConfirmed) {
+    return {
+      ...shared, kind: "cost_unverified", tone: "neutral",
+      label: "Costo final sin confirmar", action: "Completar condiciones de costo",
+      helper: commercial.economicsReason + " La diferencia con el mayorista es de precios publicados, no de rentabilidad.",
     };
   }
 
@@ -200,12 +251,23 @@ export function analyzePriceListDecision(
       label: "Sin referencia suficiente",
       action: "Revisar manualmente",
       helper: "No se pudo calcular diferencia contra el mayorista.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
-      gapRatio,
-      hasWholesaleReference,
+      ...shared,
+    };
+  }
+
+  if (
+    gapRatio > 0.05 &&
+    commercial.minimumPriceForTargetMargin !== null &&
+    referencePrice < commercial.minimumPriceForTargetMargin
+  ) {
+    return {
+      kind: "cost_pressure",
+      tone: "danger",
+      label: "Costo limita la competencia",
+      action: "Negociar costo / revisar match",
+      helper:
+        "Igualar al mejor mayorista dejaría el precio debajo del piso de margen objetivo. No sugerir una baja automática.",
+      ...shared,
     };
   }
 
@@ -216,12 +278,7 @@ export function analyzePriceListDecision(
       label: "Excel caro vs mayorista",
       action: "Revisar baja o promo",
       helper: "El precio del Excel supera por mas de 10% al mejor mayorista.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
-      gapRatio,
-      hasWholesaleReference,
+      ...shared,
     };
   }
 
@@ -232,12 +289,22 @@ export function analyzePriceListDecision(
       label: "Excel arriba del mayorista",
       action: "Monitorear / ajustar",
       helper: "El precio del Excel esta entre 5% y 10% arriba del mayorista.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
-      gapRatio,
-      hasWholesaleReference,
+      ...shared,
+    };
+  }
+
+  if (
+    commercial.grossMarginRatio !== null &&
+    commercial.grossMarginRatio < commercial.targetGrossMarginRatio
+  ) {
+    return {
+      kind: "below_target_margin",
+      tone: "warning",
+      label: "Margen debajo del objetivo",
+      action: "Revisar margen / costo",
+      helper:
+        "El precio es competitivo, pero el margen ajustado estimado no alcanza el objetivo configurado.",
+      ...shared,
     };
   }
 
@@ -248,12 +315,7 @@ export function analyzePriceListDecision(
       label: "Oportunidad de margen",
       action: "Evaluar suba selectiva",
       helper: "El precio del Excel esta bastante por debajo del mayorista comparable.",
-      currentPrice,
-      referencePrice,
-      referenceSource,
-      referenceChannelLabel,
-      gapRatio,
-      hasWholesaleReference,
+      ...shared,
     };
   }
 
@@ -263,12 +325,7 @@ export function analyzePriceListDecision(
     label: "Competitivo",
     action: "Mantener",
     helper: "El precio del Excel esta dentro de un rango competitivo vs mayoristas.",
-    currentPrice,
-    referencePrice,
-    referenceSource,
-    referenceChannelLabel,
-    gapRatio,
-    hasWholesaleReference,
+    ...shared,
   };
 }
 
@@ -279,7 +336,7 @@ export function getPriceListSuggestedAction(result: PriceListItemResult) {
 export function summarizePriceListDecisions(
   results: PriceListItemResult[],
 ): PriceListDecisionSummary {
-  const decisions = results.map(analyzePriceListDecision);
+  const decisions = results.map((result) => analyzePriceListDecision(result));
 
   return {
     aboveWholesale: decisions.filter(
@@ -326,10 +383,6 @@ export function getPriceListExcelPrice(result: PriceListItemResult) {
 
 export function getPriceListTokinPrice(result: PriceListItemResult) {
   return normalizeOptionalNumber(result.ownPrice?.tokinPrice);
-}
-
-function getStoreTypeRank(sourcePrice: PriceListSourcePrice) {
-  return sourcePrice.storeType === "mayorista" ? 0 : 1;
 }
 
 function normalizeOptionalNumber(value: number | null | undefined) {

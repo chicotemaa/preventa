@@ -41,6 +41,12 @@ export function PriceListHistory() {
       setIsEnabled(payload.enabled);
       setRuns(payload.runs);
 
+      const requestedRun = new URLSearchParams(window.location.search).get("run");
+      if (requestedRun && /^[a-zA-Z0-9-]+$/.test(requestedRun) && !selectedRunId) {
+        setSelectedRunId(requestedRun);
+        await loadDetail(requestedRun);
+        return;
+      }
       if (payload.runs.length === 0) {
         setSelectedRunId(null);
         setDetail(null);
@@ -89,6 +95,8 @@ export function PriceListHistory() {
 
       setSelectedRunId(runId);
       setDetail(payload.detail);
+      const loadedRun = payload.detail.run;
+      setRuns(current => current.some(run => run.id === loadedRun.id) ? current : [loadedRun, ...current]);
     } catch (caughtError) {
       setDetail(null);
       setError(

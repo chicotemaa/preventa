@@ -1,3 +1,4 @@
+import { requireAppAccess } from "@/lib/app-access";
 import { NextResponse } from "next/server";
 import {
   getProductMatchOverrides,
@@ -5,11 +6,15 @@ import {
   type SaveMatchOverrideInput,
 } from "@/lib/match-overrides";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   return NextResponse.json(await getProductMatchOverrides());
 }
 
 export async function POST(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   try {
     const payload = (await request.json()) as Partial<SaveMatchOverrideInput>;
 

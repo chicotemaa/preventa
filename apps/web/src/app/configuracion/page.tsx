@@ -566,7 +566,7 @@ function SessionStatus({
   envPreview: string[];
 }) {
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
         <h2 className="flex items-center gap-2 text-lg font-bold text-[#17202a]">
           <Database className="h-5 w-5 text-[#153d7b]" />
@@ -631,7 +631,7 @@ function SessionStatus({
         ) : null}
       </div>
 
-      <aside className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
+      <aside className="min-w-0 rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
         <h2 className="text-lg font-bold text-[#17202a]">
           Producción
         </h2>

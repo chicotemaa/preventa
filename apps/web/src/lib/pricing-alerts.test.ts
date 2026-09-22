@@ -139,6 +139,7 @@ function createProduct(
   price: number,
 ): ProductSearchResult {
   return {
+    observedAt: new Date().toISOString(),
     sourceId,
     storeName,
     storeType,
@@ -172,6 +173,10 @@ function createSource(
 
 function createCatalog(sources: SourceSearchStatus[]): CatalogMetadata {
   return {
+    priceObservations: {
+      totalProducts: 2, datedProducts: 2,
+      oldestObservedAt: new Date().toISOString(), newestObservedAt: new Date().toISOString(),
+    },
     status: "ready",
     region: {
       id: "argentina",
@@ -186,3 +191,17 @@ function createCatalog(sources: SourceSearchStatus[]): CatalogMetadata {
     pendingSources: [],
   };
 }
+
+test("cron reciente con precios viejos alerta vigencia, no oportunidad de margen", () => {
+  const response = createCategoryResponse(80, 100);
+  for (const group of response.groups) {
+    for (const product of [...group.tokinProducts, ...group.competitorProducts]) {
+      product.observedAt = "2020-01-01T00:00:00Z";
+    }
+  }
+  const catalog = createCatalog(response.sources);
+  catalog.priceObservations!.oldestObservedAt = "2020-01-01T00:00:00Z";
+  const alerts = buildPricingAlertCandidates({ catalog, categoryResponses: [response] });
+  assert.ok(alerts.some((alert) => alert.type === "catalog_stale"));
+  assert.equal(alerts.some((alert) => ["margin_opportunity", "price_above_wholesale", "missing_own_price"].includes(alert.type)), false);
+});

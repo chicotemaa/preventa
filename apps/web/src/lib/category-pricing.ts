@@ -3,6 +3,7 @@ import type {
   ProductSearchResult,
   SourceSearchStatus,
 } from "@/types/search";
+import { getPriceFreshness, isPriceFresh } from "./price-freshness";
 import {
   compareSourcePriority,
   getSourceChannel,
@@ -98,6 +99,7 @@ export type CompetitorPriceCell = {
 };
 
 export type SourceHealthItem = {
+  priceObservations?: SourceSearchStatus["priceObservations"];
   sourceId: string;
   displayName: string;
   channel: SourceChannel;
@@ -122,6 +124,7 @@ export type SourceHealthSummary = {
 };
 
 export type CategoryDecisionRow = {
+  outdatedProductsCount: number;
   id: string;
   clusterName: string;
   brand: string;
@@ -195,18 +198,20 @@ export function buildCategoryPricingDashboard({
   group,
   sources,
   searchedAt,
+  now = Date.now(),
 }: {
   group: CategorySearchGroup;
   sources: SourceSearchStatus[];
   searchedAt: string;
+  now?: number;
 }): CategoryPricingDashboard {
   const products = consolidateProductVariants([
     ...group.tokinProducts,
     ...group.competitorProducts,
-  ]);
+  ], now);
   const sourceHealth = buildSourceHealthSummary(sources);
   const criticalMissing = sourceHealth.criticalMissing;
-  const rows = buildDecisionRows(products, group.categoryName, criticalMissing);
+  const rows = buildDecisionRows(products, group.categoryName, criticalMissing, now);
   const gapValues = rows
     .map((row) => row.gapVsAguiarPercent)
     .filter((value): value is number => typeof value === "number");
@@ -248,7 +253,7 @@ export function buildCategoryPricingDashboard({
     opportunityRowsCount: rows.filter(
       (row) => row.recommendation.kind === "margin_opportunity",
     ).length,
-    withoutOwnEquivalentRowsCount: rows.filter((row) => !row.aguiarPrice).length,
+    withoutOwnEquivalentRowsCount: rows.filter((row) => !row.products.some((product) => getSourceChannel(product) === "own")).length,
     recommendation: buildCategoryRecommendation(rows, sourceHealth),
   };
 }
@@ -327,13 +332,18 @@ export function getComparablePrice(product: ProductSearchResult) {
   return normalizeNumber(product.comparisonPrice) ?? product.price;
 }
 
-export function consolidateProductVariants(products: ProductSearchResult[]) {
+export function consolidateProductVariants(products: ProductSearchResult[], now = Date.now()) {
   const groups = new Map<string, ProductSearchResult[]>();
-  const displayAnchors = buildKnownTokinDisplayAnchors(products);
+  const productsByFreshness = new Map<string, ProductSearchResult[]>();
 
   for (const product of products) {
+    const freshness = getPriceFreshness(product.observedAt, now).status;
+    const bucket = productsByFreshness.get(freshness) ?? [];
+    bucket.push(product);
+    productsByFreshness.set(freshness, bucket);
     const key = [
       product.sourceId,
+      freshness,
       product.normalizedName || normalizeDecisionText(product.rawName),
       extractPresentation(product).key,
       product.productUrl ?? product.imageUrl ?? "",
@@ -341,10 +351,16 @@ export function consolidateProductVariants(products: ProductSearchResult[]) {
     groups.set(key, [...(groups.get(key) ?? []), product]);
   }
 
+  // Old prices must not infer the unit/package conversion of current prices.
+  const displayAnchors = new Map(
+    [...productsByFreshness].map(([freshness, bucket]) => [freshness, buildKnownTokinDisplayAnchors(bucket)]),
+  );
+
   return Array.from(groups.values()).map((group) =>
     consolidateProductGroup(
       group,
-      displayAnchors.get(getKnownTokinDisplayFormatKey(group[0]!) ?? ""),
+      displayAnchors.get(getPriceFreshness(group[0]!.observedAt, now).status)
+        ?.get(getKnownTokinDisplayFormatKey(group[0]!) ?? ""),
     ),
   );
 }
@@ -353,6 +369,7 @@ function buildDecisionRows(
   products: ProductSearchResult[],
   categoryName: string,
   criticalMissing: SourceHealthItem[],
+  now: number,
 ) {
   const clusters = new Map<string, ProductSearchResult[]>();
 
@@ -363,7 +380,7 @@ function buildDecisionRows(
 
   return Array.from(clusters.entries())
     .map(([id, clusterProducts]) =>
-      buildDecisionRow(id, categoryName, clusterProducts, criticalMissing),
+      buildDecisionRow(id, categoryName, clusterProducts, criticalMissing, now),
     )
     .sort((first, second) => compareRows(first, second, "gap_desc"));
 }
@@ -373,15 +390,17 @@ function buildDecisionRow(
   categoryName: string,
   products: ProductSearchResult[],
   criticalMissing: SourceHealthItem[],
+  now: number,
 ): CategoryDecisionRow {
-  const sortedProducts = consolidateProductVariants(products).sort(compareProductsForCluster);
+  const sortedProducts = consolidateProductVariants(products, now).sort(compareProductsForCluster);
+  const freshProducts = sortedProducts.filter((product) => isPriceFresh(product.observedAt, now));
   const aguiarPrice = findBestProductCell(
-    sortedProducts.filter((product) => getSourceChannel(product) === "own"),
+    freshProducts.filter((product) => getSourceChannel(product) === "own"),
   );
-  const wholesalePrices = sortedProducts.filter(
+  const wholesalePrices = freshProducts.filter(
     (product) => getSourceChannel(product) === "mayorista",
   );
-  const retailPrices = sortedProducts.filter(
+  const retailPrices = freshProducts.filter(
     (product) => getSourceChannel(product) === "minorista",
   );
   const bestWholesale = findBestProductCell(wholesalePrices);
@@ -405,6 +424,7 @@ function buildDecisionRow(
       ? calculateGapPercent(aguiarPrice.price, bestMarket.price)
       : null;
   const rowBase = {
+    outdatedProductsCount: sortedProducts.length - freshProducts.length,
     id,
     clusterName: buildClusterName(sortedProducts),
     brand: buildBrandLabel(sortedProducts),
@@ -507,6 +527,7 @@ function buildSourceHealthItem(
 
   return {
     sourceId: source?.sourceId ?? config?.sourceId ?? displayName,
+    priceObservations: source?.priceObservations,
     displayName,
     channel,
     priority: config?.priority ?? 999,
@@ -636,6 +657,11 @@ function buildAlerts(
 ): PricingAlert[] {
   const alerts: PricingAlert[] = [];
 
+  if (row.outdatedProductsCount > 0) {
+    alerts.push({ severity: "warning", label: "Precios sin vigencia",
+      message: `${row.outdatedProductsCount} referencias antiguas o sin fecha excluidas del calculo.` });
+  }
+
   if (row.matchQuality === "match_weak") {
     alerts.push({
       severity: "warning",
@@ -685,6 +711,14 @@ function buildRowRecommendation(
     row.matchQuality === "match_weak" || row.matchQuality === "not_comparable";
   const hasOnlyRetail = Boolean(row.bestRetail && !row.bestWholesale);
   const hasCriticalCoverageGap = criticalMissing.length > 0;
+
+  if (row.outdatedProductsCount > 0 && (!row.aguiarPrice || !row.bestWholesale)) {
+    return {
+      kind: "insufficient_reference", label: "Actualizar referencias",
+      reason: "Faltan precios vigentes de Tokin o mayoristas. Los datos anteriores siguen en el detalle.",
+      tone: "neutral", targetPrice: null,
+    };
+  }
 
   if (!row.aguiarPrice && row.bestOverall) {
     return {
@@ -800,6 +834,14 @@ function buildCategoryRecommendation(
   const criticalRows = rows.filter((row) =>
     row.alerts.some((alert) => alert.severity === "critical"),
   );
+
+  if (rowsWithGap.length === 0) {
+    return {
+      kind: "insufficient_reference", label: "Sin referencias vigentes comparables",
+      reason: "No hay precios de proveedor y mercado con equivalencia y fecha suficientes para evaluar la categoria.",
+      tone: "neutral", targetPrice: null,
+    };
+  }
 
   if (sourceHealth.criticalMissing.length >= 3) {
     return {

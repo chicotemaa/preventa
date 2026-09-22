@@ -1,3 +1,5 @@
+import { requireAppAccess } from "@/lib/app-access";
+import { workerFetch } from "@/lib/worker-request";
 import { NextResponse } from "next/server";
 import type { SearchRequest, SearchResponse } from "@/types/search";
 
@@ -8,6 +10,8 @@ const DEFAULT_WORKER_URL =
     : "http://127.0.0.1:4000";
 
 export async function POST(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   let body: Partial<SearchRequest>;
 
   try {
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
   try {
     const searchPath =
       process.env.ENABLE_LIVE_SEARCH === "true" ? "/search" : "/catalog/search";
-    const response = await fetch(`${workerUrl.replace(/\/$/, "")}${searchPath}`, {
+    const response = await workerFetch(`${workerUrl.replace(/\/$/, "")}${searchPath}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

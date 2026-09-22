@@ -1,10 +1,11 @@
 import {
   analyzePriceListDecision,
-  getBestPriceListSourceByType,
   getPriceListComparablePrice,
+  sortPriceListResultPrices,
   type PriceListDecisionAnalysis,
   type PriceListDecisionTone,
 } from "@/lib/price-list-decision";
+import { analyzePricingImpact, type PricingImpact } from "./pricing-impact";
 import type {
   PriceListItemResult,
   PriceListRunItem,
@@ -21,6 +22,7 @@ export type HistoryDecisionFilter =
   | "without_wholesale";
 
 export type HistoryItemAnalysis = PriceListDecisionAnalysis & {
+  impact: PricingImpact;
   item: PriceListRunItem;
   excelPrice: number | null;
   tokinPrice: number | null;
@@ -43,7 +45,7 @@ export type HistoryDecisionSummary = {
 };
 
 export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis {
-  const result = buildResult(item);
+  const result = buildHistoryItemResult(item);
   const baseAnalysis = analyzePriceListDecision(result);
   const ownPriceWasStored =
     item.ownPriceSnapshotStatus !== "not_stored_legacy";
@@ -54,13 +56,14 @@ export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis 
           label: "Precio Excel no guardado",
           action: "Generar una nueva carga",
           helper:
-            "Esta carga anterior no guardo el precio Excel ni la referencia Arcor de Tokin.",
+            "Esta carga anterior no guardo el precio Excel ni el costo proveedor Tokin.",
           tone: "neutral" as const,
         }
       : baseAnalysis;
 
   return {
     ...analysis,
+    impact: analyzePricingImpact(result, analysis),
     item,
     excelPrice: item.ownPrice?.excelPrice ?? null,
     tokinPrice: item.ownPrice?.tokinPrice ?? null,
@@ -73,9 +76,8 @@ export function analyzeHistoryItem(item: PriceListRunItem): HistoryItemAnalysis 
       item.ownPrice?.tokinPrice ?? null,
     ),
     ownPriceWasStored,
-    bestWholesale:
-      getBestPriceListSourceByType(result, "mayorista") ?? null,
-    bestRetail: getBestPriceListSourceByType(result, "minorista") ?? null,
+    bestWholesale: analysis.commercial.bestWholesale,
+    bestRetail: analysis.commercial.bestRetail,
   };
 }
 
@@ -159,17 +161,10 @@ export function getHistoryComparablePrice(price: PriceListSourcePrice | null) {
   return price ? getPriceListComparablePrice(price) : null;
 }
 
-function buildResult(item: PriceListRunItem): PriceListItemResult {
-  const bestSource = [...item.sourcePrices].sort((first, second) => {
-    if (first.storeType !== second.storeType) {
-      return first.storeType === "mayorista" ? -1 : 1;
-    }
-
-    return getPriceListComparablePrice(first) - getPriceListComparablePrice(second);
-  })[0] ?? null;
-
-  return {
+export function buildHistoryItemResult(item: PriceListRunItem): PriceListItemResult {
+  return sortPriceListResultPrices({
     input: {
+      businessActivity: item.businessActivity,
       rowNumber: item.rowNumber,
       business: item.business ?? undefined,
       rubro: item.rubro ?? undefined,
@@ -185,13 +180,15 @@ function buildResult(item: PriceListRunItem): PriceListItemResult {
         (item.ownPrice ? item.ownPrice.excelPrice : item.currentPrice) ?? undefined,
     },
     ownPrice: item.ownPrice ?? undefined,
+    costConditions: item.costConditions,
+    diagnostics: item.matchDiagnostics ?? undefined,
     queryUsed: null,
     status: item.matchStatus,
-    bestPrice: bestSource ? getPriceListComparablePrice(bestSource) : null,
-    bestSource,
+    bestPrice: null,
+    bestSource: null,
     sourcePrices: item.sourcePrices,
     matchedCount: item.matchedCount,
-  };
+  });
 }
 
 function isAttentionAnalysis(analysis: HistoryItemAnalysis) {

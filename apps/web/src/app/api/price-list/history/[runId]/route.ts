@@ -1,3 +1,4 @@
+import { requireAppAccess } from "@/lib/app-access";
 import { NextResponse } from "next/server";
 import {
   archivePriceListRun,
@@ -8,9 +9,11 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ runId: string }> },
 ) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   const { runId } = await context.params;
 
   if (!UUID_PATTERN.test(runId)) {
@@ -30,6 +33,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ runId: string }> },
 ) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   const { runId } = await context.params;
 
   if (!UUID_PATTERN.test(runId)) {

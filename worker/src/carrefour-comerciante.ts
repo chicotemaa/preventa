@@ -1,4 +1,5 @@
 import type { BrowserContext, Page } from "playwright";
+import { mergeLatestObservedProducts, stampObservedProducts } from "./price-observations.js";
 import { findAllowedBrand } from "./brands.js";
 import { launchBrowser } from "./browser.js";
 import {
@@ -117,6 +118,7 @@ export type CarrefourComercianteBrowserImportProduct = {
 };
 
 export type CarrefourComercianteBrowserImportRequest = {
+  capturedAt?: string;
   mode?: "replace" | "append";
   query: string;
   page?: number;
@@ -548,7 +550,7 @@ export async function syncCarrefourComercianteCatalog(
           );
 
           if (result) {
-            products.push(result);
+            products.push({ ...result, observedAt: new Date().toISOString() });
           }
         }
 
@@ -607,7 +609,9 @@ export function buildCarrefourComercianteBrowserImportSnapshot(
     request.mode === "append" ? existingSnapshot?.products ?? [] : [];
   const mergedProducts = dedupeCarrefourComercianteProducts([
     ...existingProducts,
-    ...importedProducts,
+    ...(request.capturedAt
+      ? stampObservedProducts(importedProducts, request.capturedAt)
+      : importedProducts),
   ]);
   const existingQueries =
     request.mode === "append" ? existingSnapshot?.queries ?? [] : [];
@@ -1439,7 +1443,7 @@ function clampPositiveInteger(
 function dedupeCarrefourComercianteProducts(products: ProductSearchResult[]) {
   const byKey = new Map<string, ProductSearchResult>();
 
-  for (const product of products) {
+  for (const product of mergeLatestObservedProducts(products)) {
     const key = [
       product.sourceId,
       product.sku ?? "",

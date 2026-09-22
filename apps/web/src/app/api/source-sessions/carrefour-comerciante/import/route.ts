@@ -1,3 +1,5 @@
+import { requireAppAccess } from "@/lib/app-access";
+import { workerFetch } from "@/lib/worker-request";
 import { NextResponse } from "next/server";
 
 const DEFAULT_WORKER_URL =
@@ -32,6 +34,8 @@ type ImportBody = {
 };
 
 export async function POST(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   let body: ImportBody;
 
   try {
@@ -71,7 +75,7 @@ export async function POST(request: Request) {
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
 
   try {
-    const response = await fetch(
+    const response = await workerFetch(
       `${workerUrl.replace(/\/$/, "")}/sources/carrefour-comerciante/catalog/import`,
       {
         method: "POST",

@@ -1,19 +1,18 @@
 "use client";
 
+import { formatPriceObservation, getPriceFreshness } from "@/lib/price-freshness";
+
 import {
-  AlertTriangle,
   CircleCheck,
   Download,
   FileSpreadsheet,
   Loader2,
-  Search,
   Save,
-  TrendingDown,
-  TrendingUp,
   Upload,
 } from "lucide-react";
-import { type ChangeEvent, type ReactNode, useMemo, useState } from "react";
+import { type ChangeEvent, useMemo, useState } from "react";
 import { CatalogFreshnessBanner } from "@/components/catalog/CatalogFreshnessBanner";
+import { ImportDecisionTable } from "@/components/price-list/ImportDecisionTable";
 import {
   evaluatePriceListInBatches,
   savePriceListForHistory,
@@ -21,9 +20,6 @@ import {
 } from "@/lib/price-list-batches";
 import {
   analyzePriceListDecision,
-  calculatePriceListGapRatio,
-  getBestPriceListSourceByType,
-  getOwnPriceSourceLabel,
   getPriceListComparablePrice,
   getPriceListExcelPrice,
   getPriceListOwnPrice,
@@ -33,6 +29,9 @@ import {
   type PriceListDecisionTone,
 } from "@/lib/price-list-decision";
 import { summarizePriceListOwnPrices } from "@/lib/price-list-own-price-summary";
+import { parseSpreadsheetAmount } from "@/lib/spreadsheet-values";
+import { readBusinessActivityColumns } from "@/lib/business-activity";
+import { analyzePricingImpact } from "@/lib/pricing-impact";
 import type {
   PendingSourceStatus,
   PriceListInputItem,
@@ -47,11 +46,6 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   currency: "ARS",
   maximumFractionDigits: 2,
 });
-const percentFormatter = new Intl.NumberFormat("es-AR", {
-  style: "percent",
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-});
 const COMPARISON_SLOTS = 8;
 const COMPARISON_FIELD_LABELS = [
   "Fuente",
@@ -61,18 +55,11 @@ const COMPARISON_FIELD_LABELS = [
   "Detalle precio",
   "Producto",
   "Link",
+  "Consulta precio",
+  "Vigencia",
 ] as const;
 type WorkbookCellValue = string | number;
 type WorkbookRow = WorkbookCellValue[];
-type ImportDecisionFilter =
-  | "all"
-  | "attention"
-  | "above_wholesale"
-  | "competitive"
-  | "opportunity"
-  | "missing_own"
-  | "without_wholesale";
-
 export default function ImportacionPage() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [itemsCount, setItemsCount] = useState(0);
@@ -90,11 +77,16 @@ export default function ImportacionPage() {
     }
 
     const ownPrices = summarizePriceListOwnPrices(response.results);
+    const marketReferenceCount = response.results.filter((result) => {
+      const commercial = analyzePriceListDecision(result).commercial;
+      return Boolean(
+        commercial.bestWholesalePrice || commercial.bestRetailPrice,
+      );
+    }).length;
 
     return {
       total: response.itemsCount,
-      withMarketPrice: response.matchedCount,
-      withoutMarketPrice: response.unmatchedCount,
+      withMarketPrice: marketReferenceCount,
       sourcesWithData: new Set(
         response.results.flatMap((result) =>
           result.sourcePrices.map((sourcePrice) => sourcePrice.sourceId),
@@ -115,7 +107,7 @@ export default function ImportacionPage() {
     try {
       const persistence = await savePriceListForHistory(response);
       setResponse((current) =>
-        current ? { ...current, persistence } : current,
+        current === response ? { ...current, persistence } : current,
       );
     } catch (caughtError) {
       setError(
@@ -203,9 +195,9 @@ export default function ImportacionPage() {
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#667789]">
                 El archivo debe incluir Rubro, Descripción, Código y EAN. Si
-                trae Precio Aguiar, ese valor se usa para la comparación.
-                Tokin queda visible como referencia Arcor, pero nunca reemplaza
-                al precio comercial del Excel.
+                trae Precio Aguiar, ese valor se usa como precio de venta.
+                Tokin queda visible como referencia proveedor Arcor y nunca
+                reemplaza al precio del Excel.
               </p>
             </div>
 
@@ -254,7 +246,7 @@ export default function ImportacionPage() {
               </span>
               <span className="mt-1 block text-sm text-[#667789]">
                 Se guarda al terminar solo si existe al menos un precio en el
-                Excel. La referencia Arcor de Tokin se conserva por separado.
+                Excel. El referencia proveedor Tokin se conserva por separado.
               </span>
             </span>
           </label>
@@ -297,7 +289,7 @@ export default function ImportacionPage() {
           <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
             <Metric label="Artículos" value={summary.total} />
             <Metric label="Con precio Excel" value={summary.excelPriceCount} />
-            <Metric label="Referencia Arcor" value={summary.tokinPriceCount} />
+            <Metric label="Referencia Tokin" value={summary.tokinPriceCount} />
             <Metric
               label="Falta precio Excel"
               value={summary.missingOwnPriceCount}
@@ -308,7 +300,13 @@ export default function ImportacionPage() {
           </section>
         ) : null}
 
-        {response ? <ImportResults response={response} /> : null}
+        {response ? <ImportDecisionTable response={response} onCostConditionsChange={(rowNumber, costConditions) => {
+          setResponse((current) => current ? {
+            ...current,
+            persistence: undefined,
+            results: current.results.map((row) => row.input.rowNumber === rowNumber ? { ...row, costConditions } : row),
+          } : current);
+        }} /> : null}
       </section>
     </main>
   );
@@ -338,7 +336,7 @@ function HistorySavePanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm font-bold text-[#17202a]">
-            Precio comercial para evolución
+            Precios base para evolución
           </div>
           <p className="mt-1 text-sm leading-5 text-[#667789]">
             {cannotSave
@@ -373,8 +371,8 @@ function HistorySavePanel({
 
       {saved ? (
         <div className="mt-3 rounded-md border border-[#bfe5cf] bg-[#f4fbf7] px-3 py-2 text-sm text-[#16613c]">
-          Carga guardada: Excel quedó como precio comercial y Tokin como
-          referencia Arcor. Ya está disponible en Historial y Evolución.
+          Carga guardada: Excel quedó como precio de venta y Tokin como costo
+          proveedor. Ya está disponible en Historial y Evolución.
         </div>
       ) : null}
     </section>
@@ -412,332 +410,6 @@ function metricToneClassName(tone: PriceListDecisionTone) {
   return classes[tone];
 }
 
-function decisionChipClassName(tone: PriceListDecisionTone) {
-  const classes: Record<PriceListDecisionTone, string> = {
-    danger: "bg-[#fff1ef] text-[#8f2d20]",
-    warning: "bg-[#fff8e8] text-[#8a5a0a]",
-    success: "bg-[#e4f6ed] text-[#16613c]",
-    info: "bg-[#eef4ff] text-[#153d7b]",
-    neutral: "bg-[#f1f5f9] text-[#526170]",
-  };
-
-  return classes[tone];
-}
-
-function decisionCardClassName(tone: PriceListDecisionTone) {
-  const classes: Record<PriceListDecisionTone, string> = {
-    danger: "border-[#f1b3ad] bg-[#fff1ef]",
-    warning: "border-[#f0d2a2] bg-[#fff8e8]",
-    success: "border-[#bfe5cf] bg-[#f4fbf7]",
-    info: "border-[#bed4f4] bg-[#f5f8ff]",
-    neutral: "border-[#d9dee7] bg-[#f8fafc]",
-  };
-
-  return classes[tone];
-}
-
-function formatDecisionGap(
-  gapRatio: number | null,
-  referenceChannelLabel: "mayorista" | "minorista" | "mercado",
-) {
-  if (gapRatio === null) {
-    return `sin diferencia vs ${referenceChannelLabel}`;
-  }
-
-  const prefix = gapRatio > 0 ? "+" : "";
-  return `Excel ${prefix}${percentFormatter.format(gapRatio)} vs ${referenceChannelLabel}`;
-}
-
-function formatOwnPriceDifference(gapRatio: number | null | undefined) {
-  if (gapRatio === null || gapRatio === undefined) {
-    return "-";
-  }
-
-  if (Math.abs(gapRatio) < 0.001) {
-    return "0,0%";
-  }
-
-  const prefix = gapRatio > 0 ? "+" : "";
-  return `${prefix}${percentFormatter.format(gapRatio)}`;
-}
-
-function ImportResults({ response }: { response: PriceListResponse }) {
-  const [filter, setFilter] = useState<ImportDecisionFilter>("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const analyzedResults = useMemo(
-    () =>
-      response.results.map((result) => {
-        const sortedResult = sortPriceListResultPrices(result);
-
-        return {
-          result: sortedResult,
-          decision: analyzePriceListDecision(sortedResult),
-        };
-      }),
-    [response.results],
-  );
-  const counts = useMemo(
-    () => ({
-      total: analyzedResults.length,
-      attention: analyzedResults.filter(({ decision }) =>
-        isImportDecisionAttention(decision.kind),
-      ).length,
-      aboveWholesale: analyzedResults.filter(({ decision }) =>
-        decision.kind.startsWith("above_wholesale"),
-      ).length,
-      competitive: analyzedResults.filter(
-        ({ decision }) => decision.kind === "competitive",
-      ).length,
-      opportunities: analyzedResults.filter(
-        ({ decision }) => decision.kind === "margin_opportunity",
-      ).length,
-      missingOwn: analyzedResults.filter(
-        ({ decision }) => decision.kind === "missing_own_price",
-      ).length,
-      withoutWholesale: analyzedResults.filter(
-        ({ decision }) => !decision.hasWholesaleReference,
-      ).length,
-    }),
-    [analyzedResults],
-  );
-  const visibleResults = useMemo(() => {
-    const normalizedSearch = normalizeText(searchTerm);
-
-    return analyzedResults
-      .filter(({ decision }) => matchesImportFilter(decision, filter))
-      .filter(({ result }) => {
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        return [
-          result.input.description,
-          result.input.code,
-          result.input.ean13Di,
-          result.input.ean13Bu,
-          result.input.rubro,
-          result.input.subrubro,
-          result.input.segment,
-        ]
-          .filter(Boolean)
-          .some((value) => normalizeText(String(value)).includes(normalizedSearch));
-      })
-      .sort(compareImportDecisionRows);
-  }, [analyzedResults, filter, searchTerm]);
-
-  return (
-    <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-bold text-[#17202a]">
-          Resultado de importación
-        </h2>
-        <p className="text-sm text-[#667789]">
-          El precio comercial siempre sale del Excel. Tokin muestra la referencia
-          Arcor y el mercado prioriza mayoristas antes que minoristas.
-        </p>
-      </div>
-
-      <section aria-label="Semáforo de la importación" className="mt-4">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-bold text-[#17202a]">Cosas para ver</h3>
-          <button
-            type="button"
-            onClick={() => setFilter("all")}
-            className="text-xs font-semibold text-[#153d7b] hover:underline"
-          >
-            Ver todos ({counts.total})
-          </button>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-          <ImportSignalButton
-            label="Revisar"
-            value={counts.attention}
-            tone="danger"
-            active={filter === "attention"}
-            onClick={() => setFilter("attention")}
-            icon={<AlertTriangle className="h-4 w-4" />}
-          />
-          <ImportSignalButton
-            label="Mayorista más barato"
-            value={counts.aboveWholesale}
-            tone="warning"
-            active={filter === "above_wholesale"}
-            onClick={() => setFilter("above_wholesale")}
-            icon={<TrendingUp className="h-4 w-4" />}
-          />
-          <ImportSignalButton
-            label="Competitivos"
-            value={counts.competitive}
-            tone="success"
-            active={filter === "competitive"}
-            onClick={() => setFilter("competitive")}
-            icon={<CircleCheck className="h-4 w-4" />}
-          />
-          <ImportSignalButton
-            label="Excel más competitivo"
-            value={counts.opportunities}
-            tone="info"
-            active={filter === "opportunity"}
-            onClick={() => setFilter("opportunity")}
-            icon={<TrendingDown className="h-4 w-4" />}
-          />
-          <ImportSignalButton
-            label="Falta Excel"
-            value={counts.missingOwn}
-            tone="neutral"
-            active={filter === "missing_own"}
-            onClick={() => setFilter("missing_own")}
-            icon={<AlertTriangle className="h-4 w-4" />}
-          />
-          <ImportSignalButton
-            label="Sin mayorista"
-            value={counts.withoutWholesale}
-            tone="neutral"
-            active={filter === "without_wholesale"}
-            onClick={() => setFilter("without_wholesale")}
-            icon={<AlertTriangle className="h-4 w-4" />}
-          />
-        </div>
-      </section>
-
-      <div className="mt-4 grid gap-2 border-y border-[#e5e9ef] bg-[#f8fafc] py-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-center">
-        <label className="relative">
-          <span className="sr-only">Buscar dentro de la importación</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a96a3]" />
-          <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Buscar artículo, código, EAN o rubro"
-            className="h-10 w-full rounded-md border border-[#cfd8e3] bg-white pl-9 pr-3 text-sm text-[#17202a] outline-none focus:border-[#153d7b]"
-          />
-        </label>
-        <div className="text-sm font-semibold text-[#526170]">
-          {visibleResults.length} artículos visibles
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 xl:grid-cols-2">
-        {visibleResults.map(({ result }) => (
-          <ImportResultCard
-            key={`${result.input.rowNumber}-${result.input.code ?? ""}`}
-            result={result}
-          />
-        ))}
-      </div>
-
-      {visibleResults.length === 0 ? (
-        <div className="mt-4 rounded-md border border-[#d9dee7] bg-[#f8fafc] px-4 py-8 text-center text-sm text-[#667789]">
-          No hay artículos para los filtros seleccionados.
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function ImportSignalButton({
-  label,
-  value,
-  tone,
-  active,
-  onClick,
-  icon,
-}: {
-  label: string;
-  value: number;
-  tone: PriceListDecisionTone;
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex min-h-16 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition ${metricToneClassName(
-        tone,
-      )} ${active ? "ring-2 ring-[#153d7b] ring-offset-1" : "hover:border-[#153d7b]"}`}
-    >
-      <span>
-        <span className="block text-[11px] font-bold uppercase text-[#667789]">
-          {label}
-        </span>
-        <span className="mt-1 block text-xl font-extrabold text-[#17202a]">
-          {value}
-        </span>
-      </span>
-      {icon}
-    </button>
-  );
-}
-
-function matchesImportFilter(
-  decision: ReturnType<typeof analyzePriceListDecision>,
-  filter: ImportDecisionFilter,
-) {
-  if (filter === "all") {
-    return true;
-  }
-
-  if (filter === "attention") {
-    return isImportDecisionAttention(decision.kind);
-  }
-
-  if (filter === "above_wholesale") {
-    return decision.kind.startsWith("above_wholesale");
-  }
-
-  if (filter === "competitive") {
-    return decision.kind === "competitive";
-  }
-
-  if (filter === "opportunity") {
-    return decision.kind === "margin_opportunity";
-  }
-
-  if (filter === "missing_own") {
-    return decision.kind === "missing_own_price";
-  }
-
-  return !decision.hasWholesaleReference;
-}
-
-function isImportDecisionAttention(
-  kind: ReturnType<typeof analyzePriceListDecision>["kind"],
-) {
-  return kind !== "competitive" && kind !== "margin_opportunity";
-}
-
-function compareImportDecisionRows(
-  first: {
-    result: PriceListItemResult;
-    decision: ReturnType<typeof analyzePriceListDecision>;
-  },
-  second: {
-    result: PriceListItemResult;
-    decision: ReturnType<typeof analyzePriceListDecision>;
-  },
-) {
-  const rank = {
-    above_wholesale_critical: 0,
-    above_wholesale_warning: 1,
-    weak_match: 2,
-    missing_own_price: 3,
-    no_reference: 4,
-    retail_only: 5,
-    competitive: 6,
-    margin_opportunity: 7,
-  } as const;
-  const rankDifference =
-    rank[first.decision.kind] - rank[second.decision.kind];
-
-  if (rankDifference !== 0) {
-    return rankDifference;
-  }
-
-  return first.result.input.rowNumber - second.result.input.rowNumber;
-}
-
 function formatBatchProgress(progress: PriceListBatchProgress | null) {
   if (!progress) {
     return "Preparando evaluacion por lotes...";
@@ -746,178 +418,12 @@ function formatBatchProgress(progress: PriceListBatchProgress | null) {
   return `Evaluando lote ${progress.completedBatches}/${progress.totalBatches} · ${progress.processedItems}/${progress.totalItems} articulos`;
 }
 
-function ImportResultCard({ result }: { result: PriceListItemResult }) {
-  const comparisons = result.sourcePrices.slice(0, 5);
-  const decision = analyzePriceListDecision(result);
-  const excelPrice = getPriceListExcelPrice(result);
-  const tokinPrice = getPriceListTokinPrice(result);
-
-  return (
-    <article className="rounded-md border border-[#d9dee7] bg-white p-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="line-clamp-2 text-sm font-bold leading-5 text-[#17202a]">
-            {result.input.description || "Artículo sin descripción"}
-          </h3>
-          <div className="mt-1 text-xs text-[#667789]">
-            {result.input.rubro || "-"} · {result.input.code || "-"} ·{" "}
-            {result.input.ean13Di || result.input.ean13Bu || "sin EAN"}
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <span
-            className={`rounded px-2 py-1 text-xs font-semibold ${
-              result.status === "matched"
-                ? "bg-[#e4f6ed] text-[#16613c]"
-                : "bg-[#fff1ef] text-[#8f2d20]"
-            }`}
-          >
-            {result.status === "matched" ? "Con referencias" : "Sin datos"}
-          </span>
-          <span
-            className={`rounded px-2 py-1 text-xs font-semibold ${decisionChipClassName(
-              decision.tone,
-            )}`}
-          >
-            {decision.label}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-md border border-[#d9dee7] bg-[#f8fafc] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Precio comercial · Excel
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-[#17202a]">
-            {formatCurrency(excelPrice)}
-          </div>
-          <div className="mt-1 text-xs text-[#667789]">
-            Valor recibido en la planilla
-          </div>
-        </div>
-        <div className="rounded-md border border-[#cddcf2] bg-[#f5f8ff] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Referencia Arcor · Tokin
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-[#153d7b]">
-            {formatCurrency(tokinPrice)}
-          </div>
-          <div className="mt-1 text-xs text-[#667789]">
-            No reemplaza al precio del Excel
-          </div>
-        </div>
-        <div className="rounded-md border border-[#eadbd3] bg-[#fff8f2] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Suba sobre referencia Arcor
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-[#7a4a16]">
-            {formatOwnPriceDifference(result.ownPrice?.excelVsTokinGapRatio)}
-          </div>
-          <div className="mt-1 text-xs text-[#667789]">
-            Precio Excel respecto de Tokin
-          </div>
-        </div>
-        <div className="rounded-md border border-[#dbe7df] bg-[#f4fbf7] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Mejor referencia de mercado
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-[#173d2f]">
-            {formatCurrency(result.bestPrice)}
-          </div>
-          <div className="mt-1 text-xs text-[#667789]">
-            {result.bestSource?.storeName ?? "sin fuente"}{" "}
-            {result.bestSource ? `· ${formatStoreType(result.bestSource.storeType)}` : ""}
-          </div>
-        </div>
-        <div className={`rounded-md border px-3 py-2 ${decisionCardClassName(decision.tone)}`}>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#526170]">
-            Lectura comercial
-          </div>
-          <div className="mt-1 text-sm font-extrabold text-[#17202a]">
-            {decision.action}
-          </div>
-          <div className="mt-1 text-xs font-semibold text-[#526170]">
-            {formatDecisionGap(decision.gapRatio, decision.referenceChannelLabel)}
-          </div>
-          <div className="mt-1 text-xs leading-4 text-[#667789]">
-            {decision.helper}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {comparisons.length === 0 ? (
-          <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-3 text-sm text-[#667789] sm:col-span-2">
-            No hay comparaciones para este artículo.
-          </div>
-        ) : (
-          comparisons.map((sourcePrice) => (
-            <SourcePriceCard
-              key={`${sourcePrice.sourceId}-${sourcePrice.productName}`}
-              sourcePrice={sourcePrice}
-            />
-          ))
-        )}
-      </div>
-    </article>
-  );
-}
-
-function SourcePriceCard({
-  sourcePrice,
-}: {
-  sourcePrice: PriceListSourcePrice;
-}) {
-  return (
-    <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text-[#17202a]">
-          {sourcePrice.storeName}
-        </div>
-        <span
-          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-            sourcePrice.storeType === "mayorista"
-              ? "bg-[#e4f6ed] text-[#16613c]"
-              : "bg-[#eef4ff] text-[#153d7b]"
-          }`}
-        >
-          {formatStoreType(sourcePrice.storeType)}
-        </span>
-      </div>
-      <div className="mt-1 text-base font-bold text-[#173d2f]">
-        {formatCurrency(getPriceListComparablePrice(sourcePrice))}
-      </div>
-      <div className="mt-1 line-clamp-2 text-xs text-[#667789]">
-        {sourcePrice.productName}
-      </div>
-      {sourcePrice.priceCondition ||
-      sourcePrice.packageQuantity ||
-      sourcePrice.alternatePrices?.length ? (
-        <div className="mt-2 text-xs leading-4 text-[#667789]">
-          {sourcePrice.priceCondition ? <div>{sourcePrice.priceCondition}</div> : null}
-          {sourcePrice.packageQuantity && sourcePrice.packageQuantity > 1 ? (
-            <div>
-              Bulto: {sourcePrice.packageLabel ?? `pack x ${sourcePrice.packageQuantity}`} ·{" "}
-              {formatCurrency(sourcePrice.price)}
-            </div>
-          ) : null}
-          {sourcePrice.alternatePrices?.map((alternatePrice) => (
-            <div key={`${alternatePrice.label}-${alternatePrice.price}`}>
-              {alternatePrice.label}: {formatCurrency(alternatePrice.price)}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), {
     type: "array",
-    raw: false,
+    // Preserve CSV dates/identifiers; automatic date coercion can shift the day by timezone.
+    raw: true,
   });
   const sheetName = workbook.SheetNames[0];
 
@@ -928,7 +434,6 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
     header: 1,
     defval: "",
-    raw: false,
   }) as Array<Array<string | number | null>>;
   const headerIndex = rows.findIndex((row) => {
     const headers = row.map((cell) => normalizeColumnName(cell));
@@ -1009,7 +514,8 @@ async function parsePriceListFile(file: File): Promise<PriceListInputItem[]> {
       uxb: readCell(row, uxbIndex),
       ean13Di: cleanSpreadsheetIdentifier(readCell(row, eanDiIndex)),
       ean13Bu: cleanSpreadsheetIdentifier(readCell(row, eanBuIndex)),
-      currentPrice: parseSpreadsheetAmount(readCell(row, currentPriceIndex)),
+      currentPrice: parseSpreadsheetAmount(row[currentPriceIndex]),
+      businessActivity: readBusinessActivityColumns(headers, row),
     }))
     .filter(
       (item) =>
@@ -1032,39 +538,52 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     "Articulo",
     "Descripcion ARTICULOS",
     "UxB",
-    "Precio comercial Excel",
-    "Referencia Arcor Tokin",
-    "Precio usado para comparar",
-    "Origen precio comercial",
-    "Suba Excel vs referencia Arcor %",
+    "Precio de venta Excel",
+    "Referencia proveedor Tokin",
+    "Venta bulto Excel",
+    "Referencia bulto Tokin",
+    "Recargo sobre costo ajustado %",
+    "Margen ajustado estimado %",
+    "Resultado ajustado estimado $",
+    "Piso precio margen objetivo",
+    "Estado costo Tokin",
     "Ean 13 Unidad",
     "Ean 13 Dispaly",
     "Estado",
     "Accion sugerida",
+    "Mejor mayorista",
+    "Fuente mayorista",
+    "Promedio mayorista",
+    "Diferencia Excel vs mejor mayorista %",
+    "Diferencia Excel vs mejor mayorista $",
+    "Diferencia Excel vs promedio mayorista %",
+    "Mejor minorista",
+    "Fuente minorista",
     "Referencia prioritaria",
     "Fuente referencia",
     "Canal referencia",
-    "Mejor mayorista",
-    "Fuente mayorista",
-    "Mejor minorista",
-    "Fuente minorista",
-    "Brecha Excel vs referencia de mercado %",
     "Producto encontrado",
     "Link producto",
     "Confianza",
     ...buildComparisonHeaders(),
+    "Consulta precio Tokin", "Vigencia Tokin", "Consulta mejor mayorista",
+    "Costo ajustado unitario", "Venta neta unitaria", "Dif. publicada Excel vs Tokin %",
+    "Condiciones confirmadas", "IVA Tokin incluido", "IVA compra %", "IVA compra recuperable %",
+    "IVA Excel incluido", "IVA venta %", "Descuento adicional %", "Bonificacion adicional %",
+    "Flete por unidad", "Financiacion %", "Otros costos por unidad", "Margen objetivo %", "Alcance del margen",
+    "Unidades vendidas", "Dias del periodo", "Ventas hasta", "Stock unidades", "Fecha stock",
+    "Volumen equivalente 30 dias", "Venta Excel 30 dias $", "Contribucion estimada 30 dias $",
+    "Exposicion de precio 30 dias $", "Mediana mayorista regular con stock $", "Fuentes para impacto",
+    "Cobertura stock dias", "Stock a costo ajustado $", "Alcance del impacto",
   ];
   const rows = sortedResults.map((sortedResult) => {
-    const currentPrice = getPriceListOwnPrice(sortedResult);
     const excelPrice = getPriceListExcelPrice(sortedResult);
     const tokinPrice = getPriceListTokinPrice(sortedResult);
     const decision = analyzePriceListDecision(sortedResult);
-    const bestMayorista = getBestPriceListSourceByType(sortedResult, "mayorista");
-    const bestMinorista = getBestPriceListSourceByType(sortedResult, "minorista");
-    const gap = calculatePriceListGapRatio(
-      currentPrice,
-      decision.referencePrice,
-    );
+    const commercial = decision.commercial;
+    const impact = analyzePricingImpact(sortedResult, decision);
+    const bestMayorista = commercial.bestWholesale;
+    const bestMinorista = commercial.bestRetail;
     const comparisons = sortedResult.sourcePrices
       .slice(0, COMPARISON_SLOTS)
       .flatMap(formatSourceXlsxComparisonCells);
@@ -1091,25 +610,53 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
       parseNumberOrText(sortedResult.input.uxb),
       excelPrice ?? "",
       tokinPrice ?? "",
-      currentPrice ?? "",
-      getOwnPriceSourceLabel(sortedResult),
-      sortedResult.ownPrice?.excelVsTokinGapRatio ?? "",
+      commercial.excelPackagePrice ?? "",
+      commercial.supplierPackageCost ?? "",
+      commercial.markupRatio ?? "",
+      commercial.grossMarginRatio ?? "",
+      commercial.grossProfitAmount ?? "",
+      commercial.minimumPriceForTargetMargin ?? "",
+      formatSupplierCostStatus(commercial.supplierCostStatus),
       sortedResult.input.ean13Di ?? "",
       sortedResult.input.ean13Bu ?? "",
       sortedResult.status === "matched" ? "Con referencias" : "Sin datos",
       getPriceListSuggestedAction(sortedResult),
-      sortedResult.bestPrice ?? "",
-      sortedResult.bestSource?.storeName ?? "",
-      sortedResult.bestSource ? formatStoreType(sortedResult.bestSource.storeType) : "",
-      bestMayorista ? getPriceListComparablePrice(bestMayorista) : "",
+      commercial.bestWholesalePrice ?? "",
       bestMayorista?.storeName ?? "",
-      bestMinorista ? getPriceListComparablePrice(bestMinorista) : "",
+      commercial.averageWholesalePrice ?? "",
+      commercial.gapVsBestWholesaleRatio ?? "",
+      commercial.differenceVsBestWholesale ?? "",
+      commercial.gapVsAverageWholesaleRatio ?? "",
+      commercial.bestRetailPrice ?? "",
       bestMinorista?.storeName ?? "",
-      gap ?? "",
+      decision.referencePrice ?? "",
+      decision.referenceSource?.storeName ?? "",
+      decision.referenceSource
+        ? formatStoreType(decision.referenceSource.storeType)
+        : "",
       sortedResult.bestSource?.productName ?? "",
       sortedResult.bestSource?.productUrl ?? "",
       sortedResult.bestSource?.confidenceScore ?? "",
       ...comparisonCells,
+      formatPriceObservation(sortedResult.ownPrice?.tokinObservedAt),
+      getPriceFreshness(sortedResult.ownPrice?.tokinObservedAt).label,
+      formatPriceObservation(bestMayorista?.observedAt),
+      commercial.effectiveUnitCost ?? "", commercial.costBreakdown?.netSalePrice ?? "", commercial.listPriceMarkupRatio ?? "",
+      sortedResult.costConditions?.confirmedAt ?? "",
+      sortedResult.costConditions ? (sortedResult.costConditions.purchaseTaxBasis === "included" ? "Si" : "No") : "Sin confirmar",
+      ...(["purchaseVatPercent", "recoverableVatPercent"] as const).map((key) => sortedResult.costConditions ? sortedResult.costConditions[key] / 100 : ""),
+      sortedResult.costConditions ? (sortedResult.costConditions.saleTaxBasis === "included" ? "Si" : "No") : "Sin confirmar",
+      ...(["saleVatPercent", "discountPercent", "bonusPercent"] as const).map((key) => sortedResult.costConditions ? sortedResult.costConditions[key] / 100 : ""),
+      sortedResult.costConditions?.freightPerUnit ?? "",
+      sortedResult.costConditions ? sortedResult.costConditions.financingPercent / 100 : "",
+      sortedResult.costConditions?.otherCostsPerUnit ?? "",
+      sortedResult.costConditions ? sortedResult.costConditions.targetMarginPercent / 100 : "",
+      commercial.economicsReason,
+      sortedResult.input.businessActivity?.unitsSold ?? "", sortedResult.input.businessActivity?.periodDays ?? "",
+      sortedResult.input.businessActivity?.salesThrough ?? "", sortedResult.input.businessActivity?.stockUnits ?? "",
+      sortedResult.input.businessActivity?.stockAsOf ?? "", impact.monthlyUnits ?? "", impact.monthlySales ?? "",
+      impact.monthlyContribution ?? "", impact.priceExposure ?? "", impact.referencePrice ?? "", impact.referenceCount,
+      impact.stockCoverDays ?? "", impact.stockValue ?? "", impact.reason,
     ];
   });
 
@@ -1122,7 +669,11 @@ async function downloadPriceListXlsx(response: PriceListResponse) {
     }),
   };
 
-  applyHumanOutputFormats(worksheet as Record<string, unknown>, rows.length);
+  applyHumanOutputFormats(
+    worksheet as Record<string, unknown>,
+    rows.length,
+    headers,
+  );
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Comparacion precios");
@@ -1171,7 +722,7 @@ function downloadAguiarCsv(response: PriceListResponse) {
     "EAN 13 BU",
     "Descripcion",
     "Rubro",
-    "Precio comercial Excel",
+    "Precio de venta Excel",
   ];
   const rows = response.results.map((result) => [
     result.input.code ?? "",
@@ -1213,6 +764,8 @@ function formatSourceXlsxComparisonCells(
     buildPriceDetail(sourcePrice),
     sourcePrice.productName,
     sourcePrice.productUrl ?? "",
+    formatPriceObservation(sourcePrice.observedAt),
+    getPriceFreshness(sourcePrice.observedAt).label,
   ];
 }
 
@@ -1249,10 +802,24 @@ function formatStoreType(storeType: PriceListSourcePrice["storeType"]) {
   return storeType === "mayorista" ? "Mayorista" : "Minorista";
 }
 
+function formatSupplierCostStatus(
+  status: ReturnType<typeof analyzePriceListDecision>["commercial"]["supplierCostStatus"],
+) {
+  const labels = {
+    comparable: "Comparable por unidad",
+    normalized: "Normalizado a unidad",
+    missing: "Sin costo comparable",
+    rejected: "Presentacion no comparable",
+    outdated: "Actualizar costo / fecha sin verificar",
+  } as const;
+
+  return labels[status];
+}
+
 function buildHumanOutputColumnWidths(columnsCount: number) {
   const widths = [
-    16, 18, 22, 22, 30, 10, 34, 10, 14, 14, 14, 16, 18, 16, 16, 14, 20, 16,
-    22, 14, 16, 22, 16, 22, 18, 34, 28, 11,
+    16, 18, 22, 22, 30, 10, 34, 10, 16, 16, 16, 16, 18, 18, 22, 16, 16, 14,
+    26, 16, 22, 16, 20, 18, 18, 20, 16, 22, 16, 22, 14, 34, 28, 11,
   ];
 
   return Array.from({ length: columnsCount }, (_, index) => ({
@@ -1263,15 +830,35 @@ function buildHumanOutputColumnWidths(columnsCount: number) {
 function applyHumanOutputFormats(
   worksheet: Record<string, unknown>,
   rowsCount: number,
+  headers: string[],
 ) {
-  const comparisonStartColumn = 29;
-  const comparisonCurrencyColumns = Array.from(
-    { length: COMPARISON_SLOTS },
-    (_, index) => comparisonStartColumn + index * COMPARISON_FIELD_LABELS.length,
-  ).flatMap((startColumn) => [startColumn + 2, startColumn + 3]);
-  const currencyColumns = [9, 10, 11, 18, 21, 23, ...comparisonCurrencyColumns];
-  const percentColumns = [13, 25];
-  const integerColumns = [8, 28];
+  const currencyHeaders = new Set([
+    "Precio de venta Excel",
+    "Referencia proveedor Tokin",
+    "Venta bulto Excel",
+    "Referencia bulto Tokin",
+    "Resultado ajustado estimado $",
+    "Costo ajustado unitario", "Venta neta unitaria", "Flete por unidad", "Otros costos por unidad",
+    "Piso precio margen objetivo",
+    "Mejor mayorista",
+    "Promedio mayorista",
+    "Diferencia Excel vs mejor mayorista $",
+    "Mejor minorista",
+    "Referencia prioritaria",
+  ]);
+  const currencyColumns = headers.flatMap((header, index) =>
+    currencyHeaders.has(header) ||
+    header.endsWith("Precio unitario/equiv") ||
+    header.endsWith("Precio bulto/lista")
+      ? [index + 1]
+      : [],
+  );
+  const percentColumns = headers.flatMap((header, index) =>
+    header.endsWith("%") ? [index + 1] : [],
+  );
+  const integerColumns = headers.flatMap((header, index) =>
+    header === "UxB" || header === "Confianza" ? [index + 1] : [],
+  );
 
   for (let rowIndex = 2; rowIndex <= rowsCount + 1; rowIndex += 1) {
     for (const columnIndex of currencyColumns) {
@@ -1438,8 +1025,8 @@ function shouldSendToNoMatch(result: PriceListItemResult) {
     return true;
   }
 
-  const bestConfidence = result.bestSource?.confidenceScore ?? 0;
-  return bestConfidence > 0 && bestConfidence < 70;
+  const commercial = analyzePriceListDecision(result).commercial;
+  return !commercial.bestWholesale && !commercial.bestRetail;
 }
 
 function getNoMatchReason(result: PriceListItemResult) {
@@ -1451,9 +1038,13 @@ function getNoMatchReason(result: PriceListItemResult) {
     return "Falta precio comercial en el Excel";
   }
 
-  const bestConfidence = result.bestSource?.confidenceScore ?? 0;
-  if (bestConfidence > 0 && bestConfidence < 70) {
-    return "Match débil: revisar equivalencia antes de decidir";
+  if (result.sourcePrices.every((source) => getPriceFreshness(source.observedAt).status !== "fresh")) {
+    return "Precios antiguos o sin fecha verificable: actualizar referencias antes de decidir";
+  }
+
+  const commercial = analyzePriceListDecision(result).commercial;
+  if (!commercial.bestWholesale && !commercial.bestRetail) {
+    return "Match débil o sin confianza validada: revisar equivalencia antes de decidir";
   }
 
   return "Revisar manualmente";
@@ -1521,15 +1112,6 @@ function normalizeColumnName(value: string | number | null) {
     .trim();
 }
 
-function normalizeText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function findColumn(headers: string[], candidates: string[]) {
   return headers.findIndex((header) =>
     candidates.some(
@@ -1549,38 +1131,6 @@ function readCell(row: Array<string | number | null>, columnIndex: number) {
 function cleanSpreadsheetIdentifier(value: string) {
   const cleaned = value.replace(/\D/g, "");
   return cleaned === "0" ? "" : cleaned;
-}
-
-function parseSpreadsheetAmount(value: string) {
-  const cleaned = value
-    .replace(/\s/g, "")
-    .replace(/[^\d.,-]/g, "")
-    .replace(/(?!^)-/g, "");
-
-  if (!cleaned || cleaned === "-" || cleaned === "," || cleaned === ".") {
-    return undefined;
-  }
-
-  const lastComma = cleaned.lastIndexOf(",");
-  const lastDot = cleaned.lastIndexOf(".");
-  const decimalSeparator =
-    lastComma > lastDot && cleaned.length - lastComma <= 3
-      ? ","
-      : lastDot > lastComma && cleaned.length - lastDot <= 3
-        ? "."
-        : null;
-  let normalized = cleaned;
-
-  if (decimalSeparator === ",") {
-    normalized = cleaned.replace(/\./g, "").replace(",", ".");
-  } else if (decimalSeparator === ".") {
-    normalized = cleaned.replace(/,/g, "");
-  } else {
-    normalized = cleaned.replace(/[.,]/g, "");
-  }
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function normalizeOptionalNumber(value: number | null | undefined) {

@@ -1,5 +1,8 @@
+import { requireAppAccess } from "@/lib/app-access";
+import { workerFetch } from "@/lib/worker-request";
 import { NextResponse } from "next/server";
 import { savePriceListRun } from "@/lib/price-list-persistence";
+import { parseBusinessActivity } from "@/lib/business-activity";
 import type {
   PriceListRequest,
   PriceListResponse,
@@ -15,6 +18,8 @@ const WORKER_REQUEST_TIMEOUT_MS = 55_000;
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   let body: Partial<PriceListRequest>;
 
   try {
@@ -23,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body JSON invalido." }, { status: 400 });
   }
 
-  const items = Array.isArray(body.items) ? body.items : [];
+  const items = Array.isArray(body?.items) ? body.items : [];
 
   if (items.length === 0) {
     return NextResponse.json(
@@ -40,11 +45,19 @@ export async function POST(request: Request) {
   }
 
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
+  if (items.some(item => !item || typeof item !== "object" || !Number.isInteger(item.rowNumber) || item.rowNumber < 1) ||
+    new Set(items.map(item => item.rowNumber)).size !== items.length) {
+    return NextResponse.json({ error: "Cada articulo debe tener un numero de fila unico y valido." }, { status: 400 });
+  }
+  if (items.some(item => item.businessActivity != null && !parseBusinessActivity(item.businessActivity))) {
+    return NextResponse.json({ error: "Datos de ventas/stock invalidos." }, { status: 400 });
+  }
+  const activityByRow = new Map(items.map(item => [item.rowNumber, parseBusinessActivity(item.businessActivity)]));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), WORKER_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(
+    const response = await workerFetch(
       `${workerUrl.replace(/\/$/, "")}/catalog/price-list`,
       {
         method: "POST",
@@ -70,6 +83,8 @@ export async function POST(request: Request) {
     }
 
     const data = (await response.json()) as PriceListResponse;
+    data.results = data.results.map(row => ({ ...row, input: { ...row.input,
+      businessActivity: activityByRow.get(row.input.rowNumber) ?? undefined } }));
     const persistence =
       body.persist === true
         ? await savePriceListRun(data)

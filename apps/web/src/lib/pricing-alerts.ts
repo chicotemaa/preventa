@@ -3,6 +3,8 @@ import {
   buildSourceHealthSummary,
   type CategoryDecisionRow,
 } from "@/lib/category-pricing";
+import { getCatalogFreshness } from "./catalog-freshness";
+import { getSourceChannel } from "./source-priority";
 import type {
   CatalogMetadata,
   CategorySearchResponse,
@@ -66,7 +68,6 @@ export type PricingAlertsResponse = {
 
 const MAX_ALERTS_PER_CATEGORY = 20;
 const MAX_TOTAL_ALERTS = 160;
-const STALE_CATALOG_MS = 24 * 60 * 60 * 1000;
 
 export function buildPricingAlertCandidates({
   catalog,
@@ -79,7 +80,7 @@ export function buildPricingAlertCandidates({
 }) {
   const candidates = [
     ...buildCatalogAlerts(catalog, categoryResponses, now),
-    ...categoryResponses.flatMap(buildCategoryAlerts),
+    ...categoryResponses.flatMap((response) => buildCategoryAlerts(response, now.getTime())),
   ];
   const unique = new Map<string, PricingAlertCandidate>();
 
@@ -147,15 +148,14 @@ function buildCatalogAlerts(
     : Number.NaN;
   const ageMs = now.getTime() - lastSyncedAt;
 
-  if (!Number.isFinite(lastSyncedAt) || ageMs > STALE_CATALOG_MS) {
+  const freshness = catalog ? getCatalogFreshness(catalog, now.getTime()) : null;
+  if (!freshness || freshness.tone !== "success") {
     alerts.push({
       fingerprint: buildFingerprint("catalog_stale", "catalog"),
       type: "catalog_stale",
       severity: "critical",
       title: "Catálogo competitivo desactualizado",
-      message: Number.isFinite(lastSyncedAt)
-        ? `La última actualización válida tiene ${Math.floor(ageMs / 3_600_000)} horas.`
-        : "No hay una actualización válida registrada para el catálogo.",
+      message: freshness?.detail ?? "No hay precios con fecha verificable en el catalogo.",
       sourceId: null,
       productKey: null,
       productName: null,
@@ -170,7 +170,7 @@ function buildCatalogAlerts(
   return alerts;
 }
 
-function buildCategoryAlerts(response: CategorySearchResponse) {
+function buildCategoryAlerts(response: CategorySearchResponse, now: number) {
   const alerts: PricingAlertCandidate[] = [];
 
   for (const group of response.groups) {
@@ -178,6 +178,7 @@ function buildCategoryAlerts(response: CategorySearchResponse) {
       group,
       sources: response.sources,
       searchedAt: response.searchedAt,
+      now,
     });
     const categoryAlerts = dashboard.rows.flatMap((row) =>
       buildRowAlerts(row, dashboard.sourceHealth.criticalMissing.length > 0),
@@ -186,6 +187,7 @@ function buildCategoryAlerts(response: CategorySearchResponse) {
       .filter(
         (row) =>
           !row.aguiarPrice &&
+          !row.products.some((product) => getSourceChannel(product) === "own") &&
           Boolean(row.bestWholesale) &&
           row.sourcesWithPrice >= 2,
       )

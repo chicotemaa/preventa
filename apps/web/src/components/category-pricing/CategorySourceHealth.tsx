@@ -1,6 +1,7 @@
 "use client";
 
 import type { SourceChannel } from "@/lib/source-priority";
+import { formatPriceObservation } from "@/lib/price-freshness";
 import type { SourceHealthSummary, SourceHealthItem } from "@/lib/category-pricing";
 
 export function CategorySourceHealth({ summary }: { summary: SourceHealthSummary }) {
@@ -109,6 +110,19 @@ function SourceHealthCard({ item }: { item: SourceHealthItem }) {
         {item.resultsCount} productos guardados
         {item.durationMs > 0 ? ` · último intento ${formatDuration(item.durationMs)}` : ""}
       </div>
+      {item.resultsCount > 0 ? (
+        <div className="mt-1 text-xs leading-5 text-[#526170]">
+          {item.priceObservations ? (
+            <>
+              <div>Precio mas antiguo: {formatPriceObservation(item.priceObservations.oldestObservedAt)}</div>
+              <div>Precio mas reciente: {formatPriceObservation(item.priceObservations.newestObservedAt)}</div>
+              {item.priceObservations.totalProducts > item.priceObservations.datedProducts ? (
+                <div className="text-amber-800">{item.priceObservations.totalProducts - item.priceObservations.datedProducts} precios sin fecha verificable</div>
+              ) : null}
+            </>
+          ) : "Vigencia de precios sin verificar"}
+        </div>
+      ) : null}
       {item.status !== "ok" || item.message ? (
         <p className="mt-1 line-clamp-2 text-xs leading-4 text-[#73510b]">{item.message}</p>
       ) : null}

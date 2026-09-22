@@ -3,6 +3,7 @@ import type { PriceListOwnPrice } from "./types.js";
 export function buildPriceListOwnPrice(
   excelPriceValue: number | null | undefined,
   tokinPriceValue: number | null | undefined,
+  tokinObservedAt?: string | null,
 ): PriceListOwnPrice {
   const excelPrice = normalizePrice(excelPriceValue);
   const tokinPrice = normalizePrice(tokinPriceValue);
@@ -19,6 +20,7 @@ export function buildPriceListOwnPrice(
   return {
     excelPrice,
     tokinPrice,
+    ...(tokinPrice && tokinObservedAt ? { tokinObservedAt } : {}),
     selectedPrice,
     selectedSource,
     selectionReason,

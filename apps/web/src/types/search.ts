@@ -3,6 +3,7 @@ export type SearchRequest = {
 };
 
 export type ProductSearchResult = {
+  observedAt?: string | null;
   sourceId: string;
   storeName: string;
   storeType: "mayorista" | "minorista";
@@ -36,6 +37,7 @@ export type AlternatePrice = {
 };
 
 export type SourceSearchStatus = {
+  priceObservations?: PriceObservationSummary;
   sourceId: string;
   storeName: string;
   storeType: "mayorista" | "minorista";
@@ -219,6 +221,7 @@ export type CarrefourComercianteCatalogSyncResponse = {
 };
 
 export type PriceListInputItem = {
+  businessActivity?: import("@/lib/business-activity").BusinessActivity;
   rowNumber: number;
   business?: string;
   rubro?: string;
@@ -240,6 +243,8 @@ export type PriceListRequest = {
 };
 
 export type PriceListSourcePrice = {
+  availability?: "in_stock" | "out_of_stock" | "unknown";
+  observedAt?: string | null;
   sourceId: string;
   storeName: string;
   storeType: "mayorista" | "minorista";
@@ -328,6 +333,7 @@ export type PriceListMatchDiagnostics = {
 };
 
 export type PriceListOwnPrice = {
+  tokinObservedAt?: string | null;
   excelPrice: number | null;
   tokinPrice: number | null;
   selectedPrice: number | null;
@@ -342,6 +348,7 @@ export type PriceListOwnPrice = {
 };
 
 export type PriceListItemResult = {
+  costConditions?: import("@/lib/cost-structure").CostConditions | null;
   input: PriceListInputItem;
   ownPrice?: PriceListOwnPrice;
   queryUsed: string | null;
@@ -408,6 +415,8 @@ export type PriceListRunSource = {
 };
 
 export type PriceListRunItem = {
+  businessActivity?: import("@/lib/business-activity").BusinessActivity;
+  costConditions?: import("@/lib/cost-structure").CostConditions | null;
   id: string;
   rowNumber: number;
   business: string | null;
@@ -492,6 +501,8 @@ export type PriceListReviewResponse = {
 };
 
 export type PriceEvolutionPoint = {
+  costComparable?: boolean;
+  costConditions?: import("@/lib/cost-structure").CostConditions | null;
   runId: string;
   searchedAt: string;
   createdAt: string;
@@ -529,6 +540,7 @@ export type PriceEvolutionResponse = {
 };
 
 export type CatalogMetadata = {
+  priceObservations?: PriceObservationSummary;
   status: "empty" | "syncing" | "ready" | "failed";
   region: CatalogRegion;
   brands: string[];
@@ -542,6 +554,13 @@ export type CatalogMetadata = {
   sources: SourceSearchStatus[];
   pendingSources: PendingSourceStatus[];
   errorMessage?: string;
+};
+
+export type PriceObservationSummary = {
+  totalProducts: number;
+  datedProducts: number;
+  oldestObservedAt: string | null;
+  newestObservedAt: string | null;
 };
 
 export type CatalogSyncProgress = {

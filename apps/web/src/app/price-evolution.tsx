@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { compareSourcePriority } from "@/lib/source-priority";
+import { getEvolutionCostBreakdown } from "@/lib/evolution-costs";
 import {
   getComparableEvolutionWholesaleSource,
   getEvolutionSourceIssue,
@@ -104,7 +105,7 @@ export function PriceEvolution() {
           </h1>
           <p className="mt-1 text-sm text-[#667789]">
             Excel es el precio comercial. Tokin se conserva por separado como
-            referencia Arcor y el mercado mayorista muestra la posición
+            referencia proveedor Tokin y el mercado mayorista muestra la posición
             competitiva.
           </p>
         </div>
@@ -322,25 +323,29 @@ function ProductEvolutionDetail({
               <div className="font-semibold">Historial anterior incompleto</div>
               <p className="mt-1 leading-5">
                 {stats.legacyPointsCount === product.points.length
-                  ? "Estas cargas no guardaron el precio Excel ni la referencia Arcor de Tokin."
-                  : `${stats.legacyPointsCount} cargas no guardaron el precio Excel ni la referencia Arcor de Tokin.`} La referencia minorista queda visible solo para auditoría y no se usa como mayorista.
+                  ? "Estas cargas no guardaron el precio Excel ni el referencia proveedor Tokin."
+                  : `${stats.legacyPointsCount} cargas no guardaron el precio Excel ni el referencia proveedor Tokin.`} La referencia minorista queda visible solo para auditoría y no se usa como mayorista.
               </p>
             </div>
           </div>
         ) : null}
 
-        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4 2xl:grid-cols-7">
           <EvolutionMetric
             label="Excel última carga"
             value={formatCurrency(stats.lastExcel)}
           />
           <EvolutionMetric
-            label="Referencia Arcor · Tokin"
+            label="Referencia proveedor · Tokin"
             value={formatCurrency(stats.lastTokin)}
           />
           <EvolutionMetric
-            label="Suba Excel vs Arcor"
+            label="Recargo sobre costo ajustado"
             value={formatSignedPercent(stats.excelVsTokinPercent)}
+          />
+          <EvolutionMetric
+            label="Margen ajustado estimado"
+            value={formatSignedPercent(stats.grossMarginPercent)}
           />
           <EvolutionMetric
             label="Mayorista en carga"
@@ -438,7 +443,7 @@ function PriceEvolutionChart({
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="h-2 w-5 rounded bg-[#df2e38]" />
-            Referencia Arcor · Tokin
+            Referencia proveedor · Tokin
           </span>
           {legacyOwnSeries.length > 0 ? (
             <span className="inline-flex items-center gap-1">
@@ -616,16 +621,20 @@ function EvolutionTimelineTable({
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <MobileValue
-                label="Precio comercial Excel"
+                label="Precio de venta Excel"
                 value={formatCurrency(getPointExcelPrice(point))}
               />
               <MobileValue
-                label="Referencia Arcor · Tokin"
+                label="Referencia proveedor · Tokin"
                 value={formatCurrency(getPointTokinPrice(point))}
               />
               <MobileValue
-                label="Suba Excel vs Arcor"
+                label="Recargo sobre costo ajustado"
                 value={formatSignedPercent(getPointExcelVsTokinGapPercent(point))}
+              />
+              <MobileValue
+                label="Margen ajustado estimado"
+                value={formatSignedPercent(getPointGrossMarginPercent(point))}
               />
               <MobileValue
                 label="Mejor mayorista"
@@ -647,13 +656,14 @@ function EvolutionTimelineTable({
         ))}
       </div>
       <div className="hidden max-h-[360px] overflow-auto lg:block">
-        <table className="w-full min-w-[860px] border-collapse text-left text-xs">
+        <table className="w-full min-w-[980px] border-collapse text-left text-xs">
           <thead className="sticky top-0 bg-[#edf1f5] text-[#526170]">
             <tr>
               <th className="px-3 py-2">Fecha</th>
-              <th className="px-3 py-2">Precio comercial Excel</th>
-              <th className="px-3 py-2">Referencia Arcor</th>
-              <th className="px-3 py-2">Suba vs Arcor</th>
+              <th className="px-3 py-2">Precio de venta Excel</th>
+              <th className="px-3 py-2">Referencia proveedor Tokin</th>
+              <th className="px-3 py-2">Recargo sobre costo ajustado</th>
+              <th className="px-3 py-2">Margen ajustado est.</th>
               <th className="px-3 py-2">Mejor mayorista</th>
               <th className="px-3 py-2">Diferencia vs mayorista</th>
             </tr>
@@ -672,6 +682,9 @@ function EvolutionTimelineTable({
                 </td>
                 <td className="px-3 py-2 font-semibold text-[#7a4a16]">
                   {formatSignedPercent(getPointExcelVsTokinGapPercent(point))}
+                </td>
+                <td className="px-3 py-2 font-semibold text-[#17202a]">
+                  {formatSignedPercent(getPointGrossMarginPercent(point))}
                 </td>
                 <td className="px-3 py-2 text-[#173d2f]">
                   <div className="font-semibold">
@@ -950,10 +963,8 @@ function buildEvolutionStats(product: PriceEvolutionProduct) {
     lastExcel: excelBounds.last,
     lastTokin: tokinBounds.last,
     lastWholesale: wholesaleBounds.last,
-    excelVsTokinPercent: calculateReferenceGapPercent(
-      excelBounds.last,
-      tokinBounds.last,
-    ),
+    excelVsTokinPercent: product.points.length ? getPointExcelVsTokinGapPercent(product.points[product.points.length - 1]) : null,
+    grossMarginPercent: product.points.length ? getPointGrossMarginPercent(product.points[product.points.length - 1]) : null,
     excelVariationPercent: calculateVariationPercent(
       excelBounds.first,
       excelBounds.last,
@@ -1011,10 +1022,13 @@ function getPointSelectedOwnPrice(point: PriceEvolutionPoint) {
 }
 
 function getPointExcelVsTokinGapPercent(point: PriceEvolutionPoint) {
-  return calculateReferenceGapPercent(
-    getPointExcelPrice(point),
-    getPointTokinPrice(point),
-  );
+  const ratio = getEvolutionCostBreakdown(point)?.markupRatio;
+  return ratio == null ? null : ratio * 100;
+}
+
+function getPointGrossMarginPercent(point: PriceEvolutionPoint) {
+  const ratio = getEvolutionCostBreakdown(point)?.marginRatio;
+  return ratio == null ? null : ratio * 100;
 }
 
 function getPointDecisionLabel(point: PriceEvolutionPoint) {
@@ -1069,17 +1083,6 @@ function calculateVariationPercent(first: number | null, last: number | null) {
   }
 
   return ((last - first) / first) * 100;
-}
-
-function calculateReferenceGapPercent(
-  value: number | null,
-  reference: number | null,
-) {
-  if (!value || !reference) {
-    return null;
-  }
-
-  return ((value - reference) / reference) * 100;
 }
 
 function getLatestPoint(product: PriceEvolutionProduct) {

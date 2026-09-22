@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { confirmedCostConditions } from "./test-fixtures/cost-conditions";
 import type {
   PriceListRunDetail,
   PriceListRunItem,
@@ -126,6 +127,7 @@ function createItem(
 ): PriceListRunItem {
   return {
     id: "item-1",
+    costConditions: confirmedCostConditions,
     rowNumber: 2,
     business: "Alimentos",
     rubro: "Golosinas",
@@ -140,7 +142,8 @@ function createItem(
     currentPrice: ownPrice,
     ownPrice: {
       excelPrice: ownPrice,
-      tokinPrice: null,
+      tokinPrice: 500,
+      tokinObservedAt: new Date().toISOString(),
       selectedPrice: ownPrice,
       selectedSource: ownPrice ? "excel" : null,
       excelVsTokinGapRatio: null,
@@ -168,6 +171,7 @@ function createSource(
   confidenceScore = 90,
 ): PriceListSourcePrice {
   return {
+    observedAt: new Date().toISOString(),
     sourceId: "maxiconsumo-chaco-auth",
     storeName: "Maxiconsumo Chaco",
     storeType: "mayorista",

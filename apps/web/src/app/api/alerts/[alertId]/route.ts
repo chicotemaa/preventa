@@ -1,3 +1,4 @@
+import { requireAppAccess } from "@/lib/app-access";
 import { NextResponse } from "next/server";
 import { updatePricingAlertStatus } from "@/lib/pricing-alert-store";
 import type { PricingAlertStatus } from "@/lib/pricing-alerts";
@@ -9,6 +10,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ alertId: string }> },
 ) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   const { alertId } = await context.params;
   const body = (await request.json().catch(() => null)) as {
     status?: PricingAlertStatus;

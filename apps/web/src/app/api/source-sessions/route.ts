@@ -1,3 +1,5 @@
+import { requireAppAccess } from "@/lib/app-access";
+import { workerFetch } from "@/lib/worker-request";
 import { NextResponse } from "next/server";
 import type { SourceSessionsResponse } from "@/types/search";
 
@@ -6,11 +8,13 @@ const DEFAULT_WORKER_URL =
     ? "https://preventa-worker.vercel.app"
     : "http://127.0.0.1:4000";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
 
   try {
-    const response = await fetch(
+    const response = await workerFetch(
       `${workerUrl.replace(/\/$/, "")}/sources/sessions`,
       {
         cache: "no-store",

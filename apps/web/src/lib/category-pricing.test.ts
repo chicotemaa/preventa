@@ -206,6 +206,19 @@ function createGroup(products: ProductSearchResult[]): CategorySearchGroup {
   };
 }
 
+test("conserva detalle antiguo sin declarar competitividad ni diferencias vigentes", () => {
+  const products = [
+    createProduct("aguiar-arcor-resistencia", "Tokin", "mayorista", 120),
+    createProduct("maxiconsumo-chaco-auth", "Maxiconsumo", "mayorista", 100),
+  ].map((product) => ({ ...product, observedAt: "2020-01-01T00:00:00Z" }));
+  const dashboard = buildCategoryPricingDashboard({ group: createGroup(products), sources: createSourceStatuses(), searchedAt: new Date().toISOString() });
+  assert.equal(dashboard.rows[0]?.gapVsAguiarPercent, null);
+  assert.equal(dashboard.rows[0]?.products.length, 2);
+  assert.equal(dashboard.rows[0]?.recommendation.label, "Actualizar referencias");
+  assert.equal(dashboard.rows[0]?.alerts.some((alert) => alert.severity === "critical"), false);
+  assert.equal(dashboard.recommendation.kind, "insufficient_reference");
+});
+
 function createProduct(
   sourceId: string,
   storeName: string,
@@ -213,6 +226,7 @@ function createProduct(
   price: number,
 ): ProductSearchResult {
   return {
+    observedAt: new Date().toISOString(),
     sourceId,
     storeName,
     storeType,

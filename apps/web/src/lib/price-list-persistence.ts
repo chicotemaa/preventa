@@ -6,6 +6,9 @@ import {
   analyzePriceListDecision,
   getPriceListOwnPrice,
 } from "./price-list-decision";
+import { DEFAULT_TARGET_GROSS_MARGIN_RATIO } from "./price-list-commercial";
+import { parseCostConditions } from "./cost-structure";
+import { parseBusinessActivity } from "./business-activity";
 import { summarizePriceListOwnPrices } from "./price-list-own-price-summary";
 import {
   PRICE_LIST_STORAGE_VERSION,
@@ -46,6 +49,13 @@ export async function savePriceListRun(
   }
 
   const ownPriceSummary = summarizePriceListOwnPrices(response.results);
+  if (response.results.some(row => row.input.businessActivity != null && !parseBusinessActivity(row.input.businessActivity))) {
+    return { enabled: true, requested: true, saved: false, errorMessage: "Datos de ventas/stock invalidos. No se guardo la carga." };
+  }
+
+  if (response.results.some((row) => row.costConditions != null && !parseCostConditions(row.costConditions))) {
+    return { enabled: true, requested: true, saved: false, errorMessage: "Condiciones de costo invalidas. Revisar los importes y porcentajes antes de guardar." };
+  }
 
   if (!ownPriceSummary.canPersist && !options.allowWithoutOwnPrice) {
     return {
@@ -53,7 +63,7 @@ export async function savePriceListRun(
       requested: true,
       saved: false,
       errorMessage:
-        "No se guardo la carga: ningun articulo tiene precio comercial en el Excel. Tokin se conserva como referencia Arcor, pero no reemplaza al Excel.",
+        "No se guardo la carga: ningun articulo tiene precio de venta en el Excel. Tokin se conserva como costo proveedor, pero no reemplaza al Excel.",
     };
   }
 
@@ -78,7 +88,8 @@ export async function savePriceListRun(
       brands: response.catalog.brands,
       productsCount: response.catalog.productsCount,
       storageVersion: PRICE_LIST_STORAGE_VERSION,
-      ownPricePolicy: "excel_commercial_tokin_reference",
+      ownPricePolicy: "excel_sale_tokin_supplier_cost",
+      targetGrossMarginRatio: DEFAULT_TARGET_GROSS_MARGIN_RATIO,
       ownPriceCount: ownPriceSummary.ownPriceCount,
       excelPriceCount: ownPriceSummary.excelPriceCount,
       tokinPriceCount: ownPriceSummary.tokinPriceCount,
@@ -182,9 +193,10 @@ async function insertRowsInChunks(table: string, rows: unknown[]) {
   }
 }
 
-function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
+export function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
   const decision = analyzePriceListDecision(result);
   const referenceSource = decision.referenceSource;
+  const commercial = decision.commercial;
 
   return {
     run_id: runId,
@@ -195,7 +207,7 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
     ean13_di: result.input.ean13Di ?? null,
     ean13_bu: result.input.ean13Bu ?? null,
     current_price: getPriceListOwnPrice(result),
-    current_cost: null,
+    current_cost: commercial.effectiveUnitCost,
     query_used: result.queryUsed ?? null,
     match_status: result.status,
     best_price: decision.referencePrice,
@@ -206,7 +218,10 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
     best_product_name: referenceSource?.productName ?? null,
     best_product_url: referenceSource?.productUrl ?? null,
     best_confidence_score: referenceSource?.confidenceScore ?? null,
-    margin_percent: null,
+    margin_percent:
+      commercial.grossMarginRatio === null
+        ? null
+        : commercial.grossMarginRatio * 100,
     gap_percent:
       decision.gapRatio === null ? null : decision.gapRatio * 100,
     suggested_price: calculateSuggestedPrice(decision),
@@ -217,6 +232,7 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
       sourcePrices: result.sourcePrices,
       ownPrice: result.ownPrice,
       diagnostics: result.diagnostics,
+      costConditions: result.costConditions,
       input: result.input,
     }),
   };
@@ -225,19 +241,9 @@ function buildPriceListItemPayload(runId: string, result: PriceListItemResult) {
 function calculateSuggestedPrice(
   decision: ReturnType<typeof analyzePriceListDecision>,
 ) {
-  if (
-    decision.referenceSource?.storeType !== "mayorista" ||
-    decision.referenceSource.confidenceScore < 70 ||
-    ![
-      "above_wholesale_critical",
-      "above_wholesale_warning",
-    ].includes(decision.kind) ||
-    !decision.referencePrice
-  ) {
-    return null;
-  }
-
-  return Math.round(decision.referencePrice * 0.99 * 100) / 100;
+  return decision.commercial.supplierCostComparable
+    ? decision.commercial.minimumPriceForTargetMargin
+    : null;
 }
 
 function getWeekStart(date: Date) {

@@ -7,6 +7,7 @@ export type SearchRequest = {
 };
 
 export type ProductSearchResult = {
+  observedAt?: string | null;
   sourceId: string;
   storeName: string;
   storeType: StoreType;
@@ -40,6 +41,7 @@ export type AlternatePrice = {
 };
 
 export type SourceSearchStatus = {
+  priceObservations?: PriceObservationSummary;
   sourceId: string;
   storeName: string;
   storeType: StoreType;
@@ -135,6 +137,8 @@ export type PriceListInputItem = {
 };
 
 export type PriceListSourcePrice = {
+  availability?: "in_stock" | "out_of_stock" | "unknown";
+  observedAt?: string | null;
   sourceId: string;
   storeName: string;
   storeType: StoreType;
@@ -223,6 +227,7 @@ export type PriceListMatchDiagnostics = {
 };
 
 export type PriceListOwnPrice = {
+  tokinObservedAt?: string | null;
   excelPrice: number | null;
   tokinPrice: number | null;
   selectedPrice: number | null;
@@ -260,6 +265,7 @@ export type PriceListResponse = {
 };
 
 export type CatalogMetadata = {
+  priceObservations?: PriceObservationSummary;
   status: "empty" | "syncing" | "ready" | "failed";
   region: CatalogRegion;
   brands: string[];
@@ -277,6 +283,13 @@ export type CatalogMetadata = {
 
 export type CatalogSnapshot = CatalogMetadata & {
   products: ProductSearchResult[];
+};
+
+export type PriceObservationSummary = {
+  totalProducts: number;
+  datedProducts: number;
+  oldestObservedAt: string | null;
+  newestObservedAt: string | null;
 };
 
 export type CatalogSyncProgress = {

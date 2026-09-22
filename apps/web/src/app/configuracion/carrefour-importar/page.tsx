@@ -75,6 +75,7 @@ const extractorScript = String.raw`(() => {
     new URLSearchParams(location.search).get("q") ||
     "carrefour-comerciante";
   const payload = {
+    capturedAt: new Date().toISOString(),
     mode: "append",
     query,
     sourceUrl: location.href,

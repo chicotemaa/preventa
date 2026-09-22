@@ -1,5 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  isPriceObservationCurrent,
+  mergeLatestObservedProducts,
+  summarizePriceObservations,
+} from "./price-observations.js";
 import { fileURLToPath } from "node:url";
 import {
   targetBrands,
@@ -163,12 +168,15 @@ export async function loadCatalogFromDisk() {
 }
 
 export function getCatalogSnapshot() {
-  return currentCatalog;
+  return {
+    ...currentCatalog,
+    priceObservations: summarizePriceObservations(currentCatalog.products),
+  };
 }
 
 export function getCatalogMetadata(): CatalogMetadata {
   const { products: _products, ...metadata } = currentCatalog;
-  return metadata;
+  return { ...metadata, priceObservations: summarizePriceObservations(_products) };
 }
 
 export async function syncCatalog() {
@@ -553,6 +561,7 @@ export async function searchCatalog(query: string) {
     sources,
     catalog: {
       ...getCatalogMetadataWithStoredFreshness(storedStatuses),
+      priceObservations: summarizePriceObservations(products),
       sources,
     },
   };
@@ -736,6 +745,9 @@ export async function searchCategory(
     sources,
     catalog: {
       ...getCatalogMetadataWithStoredFreshness(storedStatuses),
+      priceObservations: summarizePriceObservations(groups.flatMap((group) => [
+        ...group.tokinProducts, ...group.competitorProducts,
+      ])),
       sources,
     },
   };
@@ -1713,6 +1725,7 @@ function summarizeCategorySourceStatuses(sources: SourceSearchStatus[]) {
       durationMs: current.durationMs + source.durationMs,
       snapshotSyncedAt:
         current.snapshotSyncedAt ?? source.snapshotSyncedAt ?? null,
+      priceObservations: source.priceObservations ?? current.priceObservations,
       usingStoredSnapshot:
         current.usingStoredSnapshot === true ||
         source.usingStoredSnapshot === true,
@@ -2006,6 +2019,7 @@ function matchPriceListItem(
     const ownPrice = buildPriceListOwnPrice(
       excelPrice,
       aguiarSourcePrice ? getComparisonPrice(aguiarSourcePrice) : null,
+      aguiarSourcePrice?.observedAt,
     );
     const input = {
       ...item,
@@ -2052,6 +2066,7 @@ function matchPriceListItem(
     const ownPrice = buildPriceListOwnPrice(
       excelPrice,
       getComparisonPrice(aguiarOnlyFallback.sourcePrice),
+      aguiarOnlyFallback.sourcePrice.observedAt,
     );
     const input = {
       ...item,
@@ -2267,6 +2282,7 @@ function applyAguiarSourcePrice(
   const ownPrice = buildPriceListOwnPrice(
     result.ownPrice?.excelPrice ?? normalizeOptionalPrice(result.input.currentPrice),
     getComparisonPrice(aguiarValidation.sourcePrice),
+    aguiarValidation.sourcePrice.observedAt,
   );
   const input = {
     ...result.input,
@@ -3217,20 +3233,28 @@ function flavorAliasMatches(normalizedValue: string, alias: string) {
 
 function summarizeSourcePrices(products: ProductSearchResult[]) {
   const bestBySource = new Map<string, PriceListSourcePrice>();
+  const now = Date.now();
 
   for (const product of products) {
     const current = bestBySource.get(product.sourceId);
+    const currentFresh = current
+      ? isPriceObservationCurrent(current.observedAt, now)
+      : false;
+    const productFresh = isPriceObservationCurrent(product.observedAt, now);
 
     if (
       current &&
-      (current.confidenceScore > product.confidenceScore ||
-        (current.confidenceScore === product.confidenceScore &&
-          getComparisonPrice(current) <= getComparisonPrice(product)))
+      ((currentFresh && !productFresh) ||
+        (currentFresh === productFresh &&
+          (current.confidenceScore > product.confidenceScore ||
+            (current.confidenceScore === product.confidenceScore &&
+              getComparisonPrice(current) <= getComparisonPrice(product)))))
     ) {
       continue;
     }
 
     bestBySource.set(product.sourceId, {
+      availability: product.availability ?? "unknown",
       sourceId: product.sourceId,
       storeName: product.storeName,
       storeType: product.storeType,
@@ -3238,6 +3262,7 @@ function summarizeSourcePrices(products: ProductSearchResult[]) {
       dataOrigin: product.dataOrigin,
       sourceScope: product.sourceScope,
       price: product.price,
+      observedAt: product.observedAt,
       comparisonPrice: getComparisonPrice(product),
       priceCondition: product.priceCondition ?? null,
       alternatePrices: product.alternatePrices ?? [],
@@ -3504,7 +3529,7 @@ function dedupeCatalogProducts(products: ProductSearchResult[]) {
   const seen = new Set<string>();
   const deduped: ProductSearchResult[] = [];
 
-  for (const product of products) {
+  for (const product of mergeLatestObservedProducts(products)) {
     if (!isActiveCatalogProduct(product)) {
       continue;
     }
@@ -3557,6 +3582,7 @@ function summarizeSourceStatuses(statuses: SourceSearchStatus[]) {
       status: mergedStatus,
       resultsCount: existing.resultsCount + status.resultsCount,
       durationMs: existing.durationMs + status.durationMs,
+      priceObservations: status.priceObservations ?? existing.priceObservations,
       errorMessage:
         mergedStatus === "success"
           ? undefined

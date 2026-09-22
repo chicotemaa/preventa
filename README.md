@@ -34,6 +34,7 @@ Crear `apps/web/.env.local`:
 WORKER_URL=http://127.0.0.1:4000
 CATEGORY_SEARCH_MODE=catalog
 ENABLE_LIVE_SEARCH=false
+NEXT_PUBLIC_TARGET_GROSS_MARGIN_PERCENT=20
 CRON_SECRET=
 WORKER_CRON_SECRET=
 SUPABASE_URL=
@@ -101,6 +102,7 @@ Notas:
 - `ENABLE_LIVE_SEARCH=false` desactiva el endpoint de scraping online.
 - `AUTO_SYNC_ON_STARTUP=false` evita que el worker actualice listas al arrancar; la actualizacion queda a cargo del cron.
 - `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false` evita consultas directas a Tokin al evaluar listas importadas.
+- `NEXT_PUBLIC_TARGET_GROSS_MARGIN_PERCENT=20` propone el margen objetivo inicial del editor de costos. Cada articulo guarda su propio objetivo confirmado; no habilita calculos sin condiciones de compra y venta.
 - `CATALOG_SYNC_SEED_MAX_TERMS=160` limita cuantas semillas de `worker/data/catalog-search-seeds.txt` usa el cron diario.
 - `CRON_SECRET` en Vercel y `CATALOG_SYNC_SECRET` en el worker deben tener el mismo valor, salvo que uses `WORKER_CRON_SECRET`.
 - El cron diario no ejecuta `/catalog/sync` completo: consulta cuatro fuentes por dia (Aguiar/Tokin, Maxiconsumo Chaco y dos rotativas), procesa dos terminos por fuente y consolida en Supabase los snapshots acumulados. Asi conserva avances dentro del limite de Vercel aunque una fuente falle o tarde demasiado.
@@ -461,6 +463,50 @@ AI_MATCHING_TIMEOUT_MS=6000
 
 ## Datos y persistencia
 
+### Evaluacion consistente e impacto comercial
+
+- Categorias y Busqueda general enlazan los productos con la ultima importacion manual guardada usando EAN de unidad o codigo exacto de Tokin. No enlazan por parecido del nombre, no convierten EAN de bulto a unidad y excluyen identidades ambiguas.
+- La mesa comparte los calculos de Importacion, Historial y Revisiones: Excel es venta, Tokin referencia del proveedor. Usa la ultima evaluacion guardada de la lista manual activa (incluida su actualizacion diaria vinculada por `sourceRunId`). No mezcla precios de capturas distintas ni renueva artificialmente su vigencia. El cron conserva las condiciones y actividad solamente cuando coinciden fila, codigo/EAN y UxB; mantiene sus fechas originales. Una carga diaria de otra lista no puede reemplazar la activa.
+- El catalogo completo y sus imagenes quedan en el detalle secundario. Sin carga Excel o sin identidad exacta no se declara competitividad de Aguiar. Una falla al leer Supabase es visible y permite reintentar.
+- No requiere migracion SQL. Se conservan datos opcionales de actividad en el JSON de cada articulo. Las listas de mas de 1000 filas se leen por paginas.
+
+Columnas opcionales del Excel (cantidades en la misma unidad de venta, nunca en bultos):
+
+| Columna | Dato |
+| --- | --- |
+| Unidades vendidas | Cantidad real del periodo, admite cero |
+| Dias del periodo | Entero entre 1 y 366 |
+| Ventas hasta | Fecha de cierre del periodo |
+| Stock unidades | Stock propio disponible, admite cero |
+| Fecha stock | Fecha de ese inventario |
+
+Fechas: celdas de fecha de Excel, `AAAA-MM-DD` o `DD/MM/AAAA`. No se adivinan cantidades ausentes. Ventas con mas de 45 dias o stock con mas de 7 dias no generan estimaciones vigentes.
+
+- Volumen equivalente 30 dias = unidades vendidas / dias del periodo * 30. Es un escenario constante, no un pronostico.
+- Exposicion de precio = diferencia absoluta entre venta Excel y mediana mayorista * volumen equivalente. Se deduplican fuentes; se excluyen precios viejos, matches debiles, stock desconocido/sin stock y promociones/condiciones detectadas. Una sola fuente se indica como cobertura limitada; el minimo no se llama precio de mercado.
+- Se muestran ademas venta a precio Excel, contribucion estimada con costos confirmados, stock valorizado y dias de cobertura. No son perdida de ventas, rentabilidad neta ni beneficio garantizado. Los impuestos/condiciones de terceros requieren validacion comercial.
+- Importacion ordena por exposicion o severidad. Revisiones prioriza exposicion calculable; datos faltantes siguen visibles. XLSX incluye actividad, formulas derivadas y alcance. No hay integracion automatica con ERP: el cliente debe aportar ventas/stock reales en el Excel.
+
+### Condiciones de costo
+
+- Excel es precio de venta; Tokin es referencia del proveedor, no costo final ni precio propio. La diferencia publicada Excel/Tokin se conserva separada del recargo sobre costo ajustado.
+- En Importacion, abrir **Condiciones de costo** en el articulo. Confirmar si compra y venta incluyen IVA y sus tasas, porcentaje del IVA compra recuperable, descuentos adicionales, bonificacion monetaria adicional, flete por unidad, financiacion, otros costos por unidad y margen objetivo. Los valores vacios no se interpretan como cero. No se presume una alicuota ni un regimen fiscal.
+- Descuento y bonificacion son porcentajes sucesivos sobre mercaderia neta: `neto * (1 - descuento) * (1 - bonificacion)`. No volver a informar descuentos ya incluidos en Tokin. Bonificaciones en unidades requieren prorrateo previo; no son el porcentaje monetario de este formulario.
+- Costo ajustado = mercaderia descontada + IVA no recuperable + financiacion + flete + otros costos. Financiacion se aplica a mercaderia descontada mas IVA no recuperable; flete y otros costos se informan por unidad netos de IVA recuperable, incluyendo cargos no recuperables.
+- Recargo = `(venta neta - costo ajustado) / costo ajustado`. Margen estimado = `(venta neta - costo ajustado) / venta neta`. El piso se calcula como `costo ajustado / (1 - margen objetivo)` y se convierte a la misma base IVA del Excel. Es margen sobre los costos informados, **no rentabilidad neta**; no calcula automaticamente gastos fijos, comisiones, impuestos ni costos omitidos.
+- Sin condiciones completas, o con Tokin desactualizado/no comparable, no se calcula margen ni piso. El mercado publicado queda visible, pero no habilita consejo firme de baja o aumento. La base impositiva y condiciones de los competidores tambien deben verificarse antes de ejecutar una decision.
+- Aplicar modifica la carga en pantalla. **Guardar en historial** persiste condiciones por articulo en `source_prices` JSON version 5; modificar una carga guardada requiere guardar una nueva version. XLSX incluye condiciones y desglose. No requiere migracion SQL.
+- Historial/Revisiones usan el mismo motor. Evolucion calcula cada margen con venta, Tokin y condiciones de la misma captura, validando la fecha de Tokin en esa captura. Las cargas anteriores sin condiciones no reconstruyen un margen ficticio. Las condiciones no se copian automaticamente a otro articulo ni a nuevas importaciones. El cron conserva las de su Excel de origen solo para el mismo articulo y presentacion, sin renovar su fecha de confirmacion.
+
+### Vigencia de precios
+
+- Cada precio consultado por el worker lleva `observedAt`; la referencia Tokin de una importacion conserva `ownPrice.tokinObservedAt`. Estas fechas se mantienen en snapshots e historial JSON, sin migracion SQL adicional.
+- El extractor manual de Carrefour incluye `capturedAt`. Importar un lote viejo conserva esa fecha; los lotes anteriores sin fecha se guardan como datos sin vigencia verificada. La importacion de snapshots admite `observedAt` por producto y no lo deduce de `syncedAt`.
+- `lastSyncedAt` indica la consolidacion del catalogo, no la renovacion de todos sus precios. Una sincronizacion parcial conserva la fecha de los articulos no consultados y reemplaza la version anterior del mismo SKU/presentacion aunque el precio suba.
+- Para decisiones actuales, solo se usan referencias de hasta 36 horas. Entre 36 y 72 horas se pide actualizar; despues se marcan desactualizadas. Los datos sin fecha (incluidos catalogos legacy y CSV externos sin trazabilidad) se conservan para revision, sin acreditar vigencia.
+- La fecha se muestra en los detalles de categoria, busqueda e importacion y en el XLSX. Un costo Tokin sin vigencia no habilita margen ni precio objetivo. Las alertas monetarias excluyen referencias vencidas; la cobertura puede seguir mostrando datos guardados.
+- El cron sigue siendo incremental: consulta fuentes y terminos por bloques. No garantiza renovar todo el surtido cada dia. Tras publicar worker y web, los precios anteriores quedaran sin fecha hasta ser consultados realmente; no se les asigna la fecha del deploy o del cron.
+
 - En produccion, el catalogo consolidado del worker se guarda en Supabase, tabla `catalog_snapshots`, cuando existen `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SOURCE_SESSION_STORE_BACKEND=supabase`.
 - `worker/data/catalog.json` queda como fallback local/desarrollo; no se debe editar a mano porque se regenera desde las fuentes.
 - Las corridas historicas/evolucion usan Supabase solo si `SUPABASE_PERSIST_PRICE_LISTS=true` y las claves estan configuradas.
@@ -472,3 +518,15 @@ AI_MATCHING_TIMEOUT_MS=6000
 - Antes de usar el modo offline persistido en produccion, aplicar las migraciones `supabase/migrations/20260701213000_source_sessions.sql` y `supabase/migrations/20260707123000_catalog_snapshots.sql`.
 - Para confirmar o rechazar equivalencias desde **Revisiones** y reutilizarlas en importaciones futuras, aplicar tambien `supabase/migrations/20260720193000_product_match_overrides.sql`.
 - Los CSV reales de listas externas pueden cargarse en `worker/data/imports/*.csv`; los `.example.csv` no se cargan.
+
+### Preparacion de una demo privada
+
+Ver `docs/preparacion-demo.md` para el recorrido, las verificaciones y los pendientes reales.
+
+- `npm run demo:access` genera credenciales locales en `.demo/access.json` (ignorado por Git, permisos 0600); no cambia `.env` ni Vercel.
+- `npm run demo:check -- --remote` audita configuracion, catalogo local y conectividad configurada. Solo hace lecturas; salida 1 significa que quedan pendientes.
+- Tras `npm run build`, `npm run demo:preview -- --local-worker` abre web privada en `http://127.0.0.1:3010` y worker en 4041, usando el snapshot historico local, sin Supabase ni sincronizacion. No demuestra persistencia real.
+- Produccion requiere `APP_ACCESS_USERNAME` y `APP_ACCESS_PASSWORD` (24 caracteres minimo) en el servidor web, y `WORKER_API_SECRET` (32 minimo) compartido entre web y worker. Falta de configuracion cierra el acceso, no lo deja publico. `WORKER_URL` debe ser explicito y HTTPS fuera de localhost.
+- Cron conserva `CRON_SECRET` / `WORKER_CRON_SECRET` / `CATALOG_SYNC_SECRET`, separado de la clave API. El acceso privado de demo es compartido y no reemplaza usuarios individuales, roles, MFA ni auditoria por usuario.
+- El worker tambien cierra el acceso si NODE_ENV esta ausente. Desarrollo sin claves requiere `NODE_ENV=development`; no usarlo en despliegues publicos.
+- No publicar solo una mitad del cambio: configurar web y worker y revisar el despliegue coordinado. No usar variables `NEXT_PUBLIC_*` para secretos. Rotar claves previamente expuestas antes de compartir un acceso externo.

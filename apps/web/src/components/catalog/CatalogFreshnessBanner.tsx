@@ -8,6 +8,7 @@ import type { CatalogMetadata } from "@/types/search";
 const dateFormatter = new Intl.DateTimeFormat("es-AR", {
   dateStyle: "short",
   timeStyle: "short",
+  timeZone: "America/Argentina/Cordoba",
 });
 
 export function CatalogFreshnessBanner({
@@ -42,10 +43,10 @@ export function CatalogFreshnessBanner({
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1 text-xs font-semibold opacity-85">
+      <div className="flex min-w-0 items-center gap-1 text-xs font-semibold opacity-85">
         <Clock3 aria-hidden="true" className="h-3.5 w-3.5" />
         {syncedAt && !Number.isNaN(syncedAt.getTime())
-          ? `Último dato válido: ${dateFormatter.format(syncedAt)}`
+          ? `Última consolidación: ${dateFormatter.format(syncedAt)}`
           : "Sin fecha válida"}
       </div>
     </div>

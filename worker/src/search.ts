@@ -1,4 +1,5 @@
 import type { Browser } from "playwright";
+import { stampObservedProducts } from "./price-observations.js";
 import {
   extractProductsFromCucherSupabase,
   extractProductsFromLaAnonimaHtml,
@@ -146,6 +147,16 @@ function getBrowserSourcePriority(source: ScrapingSource) {
 }
 
 export async function searchSource(
+  source: ScrapingSource,
+  query: string,
+  browser?: Browser,
+  options: SearchSourceOptions = {},
+): Promise<SearchSourceResult> {
+  const result = await searchSourceLive(source, query, browser, options);
+  return { ...result, results: stampObservedProducts(result.results) };
+}
+
+async function searchSourceLive(
   source: ScrapingSource,
   query: string,
   browser?: Browser,

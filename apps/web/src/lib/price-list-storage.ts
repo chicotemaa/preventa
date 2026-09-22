@@ -5,15 +5,19 @@ import type {
   PriceListSourcePrice,
 } from "@/types/search";
 
-export const PRICE_LIST_STORAGE_VERSION = 4;
-const SUPPORTED_STORAGE_VERSIONS = new Set([2, 3, PRICE_LIST_STORAGE_VERSION]);
+import { parseCostConditions, type CostConditions } from "./cost-structure";
+import { parseBusinessActivity } from "./business-activity";
+
+export const PRICE_LIST_STORAGE_VERSION = 5;
+const SUPPORTED_STORAGE_VERSIONS = new Set([2, 3, 4, PRICE_LIST_STORAGE_VERSION]);
 
 export type StoredPriceListDimensions = Pick<
   PriceListInputItem,
-  "business" | "segment" | "subrubro" | "line" | "uxb"
+  "business" | "segment" | "subrubro" | "line" | "uxb" | "businessActivity"
 >;
 
 export type StoredPriceListDetail = {
+  costConditions: CostConditions | null;
   sourcePrices: PriceListSourcePrice[];
   ownPrice: PriceListOwnPrice | null;
   diagnostics: PriceListMatchDiagnostics | null;
@@ -26,18 +30,22 @@ export function serializeStoredPriceListDetail({
   ownPrice,
   diagnostics,
   input,
+  costConditions,
 }: {
   sourcePrices: PriceListSourcePrice[];
   ownPrice?: PriceListOwnPrice;
   diagnostics?: PriceListMatchDiagnostics;
   input: PriceListInputItem;
+  costConditions?: CostConditions | null;
 }) {
   return {
     version: PRICE_LIST_STORAGE_VERSION,
+    costConditions: parseCostConditions(costConditions),
     sourcePrices: sourcePrices.map(serializeSourcePrice),
     ownPrice: ownPrice ? serializeOwnPrice(ownPrice) : null,
     diagnostics: diagnostics ?? null,
     dimensions: {
+      businessActivity: parseBusinessActivity(input.businessActivity),
       business: input.business ?? null,
       segment: input.segment ?? null,
       subrubro: input.subrubro ?? null,
@@ -65,6 +73,7 @@ function serializeOwnPrice(ownPrice: PriceListOwnPrice) {
 export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetail {
   if (Array.isArray(value)) {
     return {
+      costConditions: null,
       sourcePrices: parseSourcePrices(value),
       ownPrice: null,
       diagnostics: null,
@@ -83,10 +92,12 @@ export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetai
     ownPrice?: unknown;
     diagnostics?: unknown;
     dimensions?: unknown;
+    costConditions?: unknown;
   };
 
   return {
     sourcePrices: parseSourcePrices(payload.sourcePrices),
+    costConditions: parseCostConditions(payload.costConditions),
     ownPrice: parseOwnPrice(payload.ownPrice),
     diagnostics: parseDiagnostics(payload.diagnostics),
     dimensions: parseDimensions(payload.dimensions),
@@ -98,6 +109,7 @@ export function parseStoredPriceListDetail(value: unknown): StoredPriceListDetai
 
 function emptyStoredDetail(): StoredPriceListDetail {
   return {
+    costConditions: null,
     sourcePrices: [],
     ownPrice: null,
     diagnostics: null,
@@ -132,6 +144,7 @@ function parseDimensions(value: unknown): StoredPriceListDimensions {
 
   return {
     business: parseOptionalString(dimensions.business),
+    businessActivity: parseBusinessActivity(dimensions.businessActivity) ?? undefined,
     segment: parseOptionalString(dimensions.segment),
     subrubro: parseOptionalString(dimensions.subrubro),
     line: parseOptionalString(dimensions.line),
@@ -166,6 +179,7 @@ function parseOwnPrice(value: unknown): PriceListOwnPrice | null {
     excelPrice,
     tokinPrice,
     selectedPrice,
+    tokinObservedAt: parseOptionalString(ownPrice.tokinObservedAt),
     selectedSource,
     selectionReason,
     excelVsTokinGapRatio:
@@ -223,12 +237,14 @@ function parseSourcePrices(value: unknown): PriceListSourcePrice[] {
     return [
       {
         sourceId: sourcePrice.sourceId,
+        availability: sourcePrice.availability === "in_stock" || sourcePrice.availability === "out_of_stock" ? sourcePrice.availability : "unknown",
         storeName: sourcePrice.storeName,
         storeType: sourcePrice.storeType === "minorista" ? "minorista" : "mayorista",
         sourceUrl: sourcePrice.sourceUrl ?? null,
         dataOrigin: sourcePrice.dataOrigin,
         sourceScope: sourcePrice.sourceScope,
         price: sourcePrice.price,
+        observedAt: parseOptionalString(sourcePrice.observedAt),
         comparisonPrice:
           typeof sourcePrice.comparisonPrice === "number" &&
           Number.isFinite(sourcePrice.comparisonPrice)
@@ -301,6 +317,8 @@ function parseAlternatePrices(value: unknown) {
 
 function serializeSourcePrice(sourcePrice: PriceListSourcePrice) {
   return {
+    availability: sourcePrice.availability ?? "unknown",
+    observedAt: sourcePrice.observedAt ?? null,
     sourceId: sourcePrice.sourceId,
     storeName: sourcePrice.storeName,
     storeType: sourcePrice.storeType,

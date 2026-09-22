@@ -1,3 +1,5 @@
+import { requireAppAccess } from "@/lib/app-access";
+import { workerFetch } from "@/lib/worker-request";
 import { NextResponse } from "next/server";
 import type {
   CarrefourComercianteSessionSaveRequest,
@@ -13,6 +15,8 @@ const DEFAULT_WORKER_URL =
     : "http://127.0.0.1:4000";
 
 export async function POST(request: Request) {
+  const accessDenied = await requireAppAccess(request);
+  if (accessDenied) return accessDenied;
   let body: Partial<CarrefourComercianteSessionSaveRequest>;
 
   try {
@@ -53,7 +57,7 @@ export async function POST(request: Request) {
   const workerUrl = process.env.WORKER_URL ?? DEFAULT_WORKER_URL;
 
   try {
-    const response = await fetch(
+    const response = await workerFetch(
       `${workerUrl.replace(/\/$/, "")}/sources/carrefour-comerciante/session/save`,
       {
         method: "POST",

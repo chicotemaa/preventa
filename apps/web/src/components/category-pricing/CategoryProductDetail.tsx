@@ -1,5 +1,7 @@
 "use client";
 
+import { PriceFreshnessLabel } from "@/components/catalog/PriceFreshnessLabel";
+
 import { X } from "lucide-react";
 import { useEffect } from "react";
 import type { CategoryDecisionRow } from "@/lib/category-pricing";
@@ -184,6 +186,7 @@ function ProductCard({ product }: { product: ProductSearchResult }) {
       </div>
 
       <AlternatePrices product={product} />
+      <PriceFreshnessLabel observedAt={product.observedAt} />
 
       {product.productUrl ? (
         <a

@@ -2,6 +2,7 @@ import {
   analyzeHistoryItem,
   type HistoryItemAnalysis,
 } from "./price-list-history-analysis";
+import { comparePricingImpact } from "./pricing-impact";
 import {
   buildInputFingerprint,
   buildProductFingerprint,
@@ -344,6 +345,8 @@ function getRejectReason(reason: PriceListRejectedCandidate["reason"]) {
 }
 
 function compareReviewItems(first: PricingReviewItem, second: PricingReviewItem) {
+  const impact = comparePricingImpact(first.analysis.impact, second.analysis.impact);
+  if (impact !== 0) return impact;
   const severity = (item: PricingReviewItem) => {
     if (item.analysis.kind === "above_wholesale_critical") return 0;
     if (item.analysis.kind === "missing_own_price") return 1;

@@ -3,15 +3,14 @@ import type {
   PriceListRunDetailResponse,
 } from "@/types/search";
 import { getProductMatchOverrides } from "./match-overrides";
+import { getActiveEvaluationIds } from "./commercial-reference-data";
+import { isSupabaseConfigured } from "./supabase-admin";
 import {
-  getPriceListHistory,
   getPriceListRunDetail,
 } from "./price-list-history";
 
 export async function getPriceListReviewData(): Promise<PriceListReviewResponse> {
-  const history = await getPriceListHistory();
-
-  if (!history.enabled) {
+  if (!isSupabaseConfigured()) {
     return {
       enabled: false,
       currentDetail: null,
@@ -20,19 +19,19 @@ export async function getPriceListReviewData(): Promise<PriceListReviewResponse>
     };
   }
 
-  if (history.errorMessage) {
+  let comparableRuns: Array<{ id: string }>;
+  try {
+    comparableRuns = await getActiveEvaluationIds();
+  } catch {
     return {
       enabled: true,
       currentDetail: null,
       previousDetail: null,
       overrides: [],
-      errorMessage: history.errorMessage,
+      errorMessage: "No se pudo cargar la ultima evaluacion Excel.",
     };
   }
 
-  const comparableRuns = history.runs.filter(
-    (run) => typeof run.ownPriceCount === "number" && run.ownPriceCount > 0,
-  );
   const currentRun = comparableRuns[0] ?? null;
   const previousRun = comparableRuns[1] ?? null;
   const [currentResponse, previousResponse, overridesResponse] = await Promise.all([

@@ -1,4 +1,5 @@
 import type { CatalogMetadata } from "@/types/search";
+import { formatPriceObservation, getPriceFreshness } from "./price-freshness";
 
 const FRESH_LIMIT_MS = 36 * 60 * 60 * 1000;
 const STALE_LIMIT_MS = 72 * 60 * 60 * 1000;
@@ -32,14 +33,19 @@ export function getCatalogFreshness(
     };
   }
 
-  const ageHours = calculateAgeHours(catalog.lastSyncedAt, now);
+  const observations = catalog.priceObservations;
+  const oldestPrice = getPriceFreshness(observations?.oldestObservedAt, now);
+  const ageHours = oldestPrice.ageHours;
+  const undated = observations
+    ? Math.max(0, observations.totalProducts - observations.datedProducts)
+    : catalog.productsCount;
 
   if (ageHours === null) {
     return {
       tone: "danger",
-      label: "Catálogo sin sincronizar",
+      label: "Vigencia de precios sin verificar",
       detail:
-        "Todavía no existe una actualización diaria válida para comparar precios.",
+        "No hay fechas de consulta verificables por precio. Ejecutar el cron no acredita la vigencia de los datos conservados.",
       ageHours,
       storedSnapshotSources,
     };
@@ -58,17 +64,25 @@ export function getCatalogFreshness(
 
   const ageMs = ageHours * 60 * 60 * 1000;
 
+  if (undated > 0) {
+    return {
+      tone: "warning", label: "Catálogo con fechas incompletas",
+      detail: `${undated} precios sin fecha verificable. Precio fechado mas antiguo: ${formatPriceObservation(observations?.oldestObservedAt)}. No se usan referencias sin vigencia para decidir.`,
+      ageHours, storedSnapshotSources,
+    };
+  }
+
   if (ageMs <= FRESH_LIMIT_MS) {
     return {
       tone: storedSnapshotSources > 0 ? "warning" : "success",
       label:
         storedSnapshotSources > 0
-          ? "Catálogo actualizado con datos conservados"
-          : "Catálogo actualizado",
+          ? "Precios vigentes con datos conservados"
+          : "Precios con fecha vigente",
       detail:
         storedSnapshotSources > 0
           ? `${storedSnapshotSources} fuentes conservaron su último dato válido porque no entregaron una actualización nueva.`
-          : "La consulta usa el catálogo offline generado por la sincronización diaria.",
+          : "Todos los precios fechados fueron consultados en las ultimas 36 horas.",
       ageHours,
       storedSnapshotSources,
     };
@@ -79,7 +93,7 @@ export function getCatalogFreshness(
       tone: "warning",
       label: "Catálogo pendiente de actualización",
       detail:
-        "La última actualización tiene más de 36 horas. Se puede consultar, pero conviene revisar el cron.",
+        "Hay precios consultados hace mas de 36 horas. Una consolidacion reciente no renueva las fechas de los productos conservados.",
       ageHours,
       storedSnapshotSources,
     };
@@ -89,7 +103,7 @@ export function getCatalogFreshness(
     tone: "danger",
     label: "Catálogo desactualizado",
     detail:
-      "La última actualización tiene más de 72 horas. No conviene cerrar decisiones de precio sin sincronizar.",
+      "Hay precios de mas de 72 horas. Siguen disponibles en el detalle, pero no justifican recomendaciones de precio.",
     ageHours,
     storedSnapshotSources,
   };

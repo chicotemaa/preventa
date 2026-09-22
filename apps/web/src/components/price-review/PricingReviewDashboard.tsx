@@ -16,6 +16,7 @@ import {
   type PricingReviewItem,
 } from "@/lib/price-list-review";
 import { getHistoryComparablePrice } from "@/lib/price-list-history-analysis";
+import { PricingImpactDetail } from "@/components/price-list/PricingImpactDetail";
 import type {
   PriceListReviewResponse,
   ProductMatchOverride,
@@ -164,7 +165,7 @@ export function PricingReviewDashboard() {
         <header className="flex flex-col justify-between gap-3 border-b border-[#eadbd3] px-4 py-4 sm:px-5 lg:flex-row lg:items-start">
           <div>
             <p className="text-xs font-semibold uppercase text-[#df2e38]">
-              Última carga comparable
+              Ultima evaluacion del Excel · prioridad por exposicion economica
             </p>
             <h1 className="mt-1 text-xl font-extrabold text-[#171717] sm:text-2xl">
               Cosas para revisar
@@ -243,11 +244,13 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
   return (
     <>
       <div className="hidden overflow-x-auto border-t border-[#e5e9ef] md:block">
-        <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1260px] border-collapse text-left text-sm">
           <thead className="sticky top-[68px] z-10 bg-[#f8fafc] text-xs uppercase text-[#667789]">
             <tr>
               <th className="px-4 py-3">Artículo</th>
-              <th className="px-3 py-3">Precio comercial Excel</th>
+              <th className="px-3 py-3">Precio de venta Excel</th>
+              <th className="px-3 py-3">Referencia proveedor Tokin</th>
+              <th className="px-3 py-3">Margen ajustado est.</th>
               <th className="px-3 py-3">Mejor mayorista</th>
               <th className="px-3 py-3">Dif. vs mayorista</th>
               <th className="px-3 py-3">Variación semanal</th>
@@ -262,6 +265,13 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
                   <p className="mt-1 text-xs text-[#667789]">{item.analysis.item.code ?? item.analysis.item.ean13Di ?? "Sin código"}</p>
                 </td>
                 <td className="px-3 py-3 font-semibold text-[#17202a]">{formatPrice(item.analysis.selectedOwnPrice)}</td>
+                <td className="px-3 py-3 font-semibold text-[#153d7b]">
+                  {formatPrice(item.analysis.commercial.supplierCost)}
+                  <p className="mt-1 text-xs text-[#526170]">Costo ajustado: {formatPrice(item.analysis.commercial.effectiveUnitCost)}</p>
+                </td>
+                <td className="px-3 py-3">
+                  {formatPercent(item.analysis.commercial.grossMarginRatio)}
+                </td>
                 <td className="px-3 py-3">
                   <p className="font-semibold text-[#17202a]">{formatPrice(getHistoryComparablePrice(item.analysis.bestWholesale))}</p>
                   <p className="mt-1 text-xs text-[#667789]">{item.analysis.bestWholesale?.storeName ?? "Sin referencia"}</p>
@@ -271,6 +281,7 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
                 <td className="px-4 py-3">
                   <span className={decisionClassName(item.analysis.tone)}>{item.analysis.action}</span>
                   <p className="mt-1 max-w-[280px] text-xs leading-5 text-[#667789]">{item.analysis.helper}</p>
+                  <PricingImpactDetail impact={item.analysis.impact} />
                 </td>
               </tr>
             ))}
@@ -285,6 +296,9 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
             <p className="mt-1 text-xs text-[#667789]">{item.analysis.item.code ?? item.analysis.item.ean13Di ?? "Sin código"}</p>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <PriceMetric label="Excel" value={formatPrice(item.analysis.selectedOwnPrice)} />
+              <PriceMetric label="Referencia Tokin" value={formatPrice(item.analysis.commercial.supplierCost)} />
+              <PriceMetric label="Costo ajustado" value={formatPrice(item.analysis.commercial.effectiveUnitCost)} />
+              <PriceMetric label="Margen ajustado est." value={formatPercent(item.analysis.commercial.grossMarginRatio)} />
               <PriceMetric label="Mayorista" value={formatPrice(getHistoryComparablePrice(item.analysis.bestWholesale))} />
               <PriceMetric label="Diferencia" value={formatPercent(item.analysis.gapRatio)} />
               <PriceMetric label="Semana anterior" value={formatWeeklyVariation(item)} />
@@ -292,6 +306,7 @@ function DecisionRows({ items }: { items: PricingReviewItem[] }) {
             <div className="mt-3 border-t border-[#e5e9ef] pt-3">
               <span className={decisionClassName(item.analysis.tone)}>{item.analysis.action}</span>
               <p className="mt-2 text-xs leading-5 text-[#667789]">{item.analysis.helper}</p>
+              <PricingImpactDetail impact={item.analysis.impact} />
             </div>
           </article>
         ))}

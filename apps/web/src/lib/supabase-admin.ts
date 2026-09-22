@@ -4,6 +4,7 @@ type InsertOptions = {
 };
 
 type SelectOptions = {
+  offset?: number;
   select?: string;
   filters?: Record<string, string | number | boolean>;
   order?: string;
@@ -135,6 +136,8 @@ export async function selectSupabaseRows<T>(
   if (options.order) {
     params.set("order", options.order);
   }
+
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
 
   if (options.limit) {
     params.set("limit", String(options.limit));
