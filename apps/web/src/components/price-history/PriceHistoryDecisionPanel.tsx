@@ -722,6 +722,7 @@ function compareHistoryAnalyses(
     weak_match: 5,
     outdated_reference: 5,
     cost_unverified: 5,
+    conditional_reference: 5,
     missing_own_price: 6,
     no_reference: 7,
     retail_only: 8,

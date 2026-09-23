@@ -1,0 +1,12 @@
+# Private local access, sessions and verification artifacts must never be uploaded.
+.demo
+**/.demo/**
+.env
+.env.*
+**/.env
+**/.env.*
+worker/data/source-sessions.json
+worker/data/source-snapshots.json
+output
+tmp
+.git

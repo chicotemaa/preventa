@@ -125,7 +125,7 @@ function buildCatalogAlerts(
       fingerprint: buildFingerprint("source_unavailable", source.sourceId),
       type: "source_unavailable",
       severity: source.primaryReference || source.channel === "own" ? "critical" : "warning",
-      title: `${source.displayName}: ${source.statusLabel}`,
+      title: `${source.channel === "own" ? "Tokin / Arcor (proveedor)" : source.displayName}: ${source.statusLabel}`,
       message: source.message,
       sourceId: source.sourceId,
       productKey: null,
@@ -230,14 +230,14 @@ function buildRowAlerts(row: CategoryDecisionRow, hasCriticalCoverageGap: boolea
       ),
       type: "price_above_wholesale",
       severity: hasCriticalCoverageGap ? "warning" : "critical",
-      title: `${row.clusterName}: Aguiar está arriba del mayorista`,
+      title: `${row.clusterName}: referencia Tokin arriba del mayorista`,
       message: hasCriticalCoverageGap
-        ? `${formatPercent(wholesaleGap)} por encima de ${row.bestWholesale.sourceName}. Validar cobertura antes de ajustar.`
-        : `${formatPercent(wholesaleGap)} por encima de ${row.bestWholesale.sourceName}. Revisar precio o promoción.`,
+        ? `Tokin esta ${formatPercent(wholesaleGap)} por encima de ${row.bestWholesale.sourceName}. Validar cobertura, condiciones y precio de venta Excel antes de decidir.`
+        : `Tokin esta ${formatPercent(wholesaleGap)} por encima de ${row.bestWholesale.sourceName}. Revisar costo proveedor y comparar con la venta Excel; no es una orden de baja.`,
       gapPercent: wholesaleGap,
       metadata: {
         ...buildRowAlertBase(row).metadata,
-        action: row.recommendation.label,
+        action: "Revisar costo proveedor y venta Excel",
         limitedByCoverage: hasCriticalCoverageGap,
       },
     });
@@ -259,12 +259,12 @@ function buildRowAlerts(row: CategoryDecisionRow, hasCriticalCoverageGap: boolea
       ),
       type: "margin_opportunity",
       severity: "info",
-      title: `${row.clusterName}: oportunidad de margen`,
-      message: `Aguiar está ${formatPercent(Math.abs(wholesaleGap))} debajo de ${row.bestWholesale.sourceName}. Revisar margen sin perder competitividad.`,
+      title: `${row.clusterName}: referencia Tokin debajo del mayorista`,
+      message: `Tokin esta ${formatPercent(Math.abs(wholesaleGap))} debajo de ${row.bestWholesale.sourceName}. La diferencia proveedor/mercado no es margen: faltan venta Excel y condiciones de costo para esa conclusion.`,
       gapPercent: wholesaleGap,
       metadata: {
         ...buildRowAlertBase(row).metadata,
-        action: row.recommendation.label,
+        action: "Comparar venta Excel y confirmar costo ajustado",
       },
     });
   }
@@ -307,8 +307,8 @@ function buildMissingOwnAlert(row: CategoryDecisionRow): PricingAlertCandidate {
     fingerprint: buildFingerprint("missing_own_price", row.categoryName, row.id),
     type: "missing_own_price",
     severity: "warning",
-    title: `${row.clusterName}: sin equivalente Aguiar`,
-    message: `Hay precios en ${row.sourcesWithPrice} fuentes, incluido ${row.bestWholesale?.sourceName ?? "un mayorista"}, pero no un equivalente propio confirmado.`,
+    title: `${row.clusterName}: sin equivalente Tokin`,
+    message: `Hay precios en ${row.sourcesWithPrice} fuentes, incluido ${row.bestWholesale?.sourceName ?? "un mayorista"}, pero no un equivalente del proveedor Tokin confirmado. Esto no determina si falta precio en el Excel.`,
     metadata: {
       ...base.metadata,
       action: "Revisar catálogo o equivalencia",
@@ -326,6 +326,8 @@ function buildRowAlertBase(row: CategoryDecisionRow) {
     referencePrice: row.bestWholesale?.price ?? row.bestOverall?.price ?? null,
     gapPercent: row.gapVsAguiarPercent,
     metadata: {
+      referenceKind: "supplier_catalog",
+      ownPriceSource: "tokin",
       brand: row.brand,
       presentation: row.presentationLabel,
       matchQuality: row.matchQuality,
@@ -334,6 +336,16 @@ function buildRowAlertBase(row: CategoryDecisionRow) {
       winner: row.winningSourceName,
       hasPromo: row.hasPromo,
     },
+  };
+}
+
+export function normalizeHistoricalAlert(alert: PersistedPricingAlert): PersistedPricingAlert {
+  if (!["price_above_wholesale", "margin_opportunity", "missing_own_price"].includes(alert.type) ||
+      alert.metadata.referenceKind === "supplier_catalog") return alert;
+  return {
+    ...alert, severity: "warning", ownPrice: null, gapPercent: null,
+    title: `${alert.productName ?? "Producto"}: referencia historica por verificar`,
+    message: "Esta alerta anterior no registro si la base era Excel o proveedor. No usarla para cambiar precios. Revisar la evaluacion Excel y esperar un nuevo analisis del catalogo.",
   };
 }
 

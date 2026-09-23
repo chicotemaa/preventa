@@ -36,6 +36,11 @@ export function CatalogFreshnessBanner({
         />
         <div className="min-w-0">
           <div className="text-sm font-bold">{freshness.label}</div>
+          {catalog.priceObservations?.currentProducts != null ? (
+            <div className="mt-0.5 text-xs font-semibold">
+              {catalog.priceObservations.currentProducts.toLocaleString("es-AR")} de {catalog.priceObservations.totalProducts.toLocaleString("es-AR")} precios consultados en las últimas 36 horas
+            </div>
+          ) : null}
           {!compact ? (
             <div className="mt-0.5 text-xs leading-5 opacity-85">
               {freshness.detail}

@@ -1,9 +1,11 @@
 type InsertOptions = {
+  signal?: AbortSignal;
   returning?: "minimal" | "representation";
   select?: string;
 };
 
 type SelectOptions = {
+  signal?: AbortSignal;
   offset?: number;
   select?: string;
   filters?: Record<string, string | number | boolean>;
@@ -16,10 +18,12 @@ type DeleteOptions = {
 };
 
 type UpdateOptions = {
+  signal?: AbortSignal;
   filters?: Record<string, string | number | boolean>;
 };
 
 type UpsertOptions = {
+  signal?: AbortSignal;
   onConflict: string;
   returning?: "minimal" | "representation";
   select?: string;
@@ -51,6 +55,7 @@ export async function insertSupabaseRows<T>(
 
   const response = await fetch(`${normalizedUrl}/rest/v1/${table}${search}`, {
     method: "POST",
+    signal: options.signal ?? AbortSignal.timeout(15_000),
     headers,
     body: JSON.stringify(rows),
     cache: "no-store",
@@ -93,6 +98,7 @@ export async function upsertSupabaseRows<T>(
     `${normalizedUrl}/rest/v1/${table}?${params.toString()}`,
     {
       method: "POST",
+      signal: options.signal ?? AbortSignal.timeout(15_000),
       headers: buildSupabaseHeaders(serverKey, {
         prefer: `resolution=merge-duplicates,return=${options.returning ?? "minimal"}`,
       }),
@@ -151,6 +157,7 @@ export async function selectSupabaseRows<T>(
     `${normalizedUrl}/rest/v1/${table}?${params.toString()}`,
     {
       method: "GET",
+      signal: options.signal ?? AbortSignal.timeout(15_000),
       headers: buildSupabaseHeaders(serverKey),
       cache: "no-store",
     },
@@ -193,6 +200,7 @@ export async function deleteSupabaseRows(
     `${normalizedUrl}/rest/v1/${table}${query ? `?${query}` : ""}`,
     {
       method: "DELETE",
+      signal: AbortSignal.timeout(15_000),
       headers: buildSupabaseHeaders(serverKey, { prefer: "return=minimal" }),
       cache: "no-store",
     },
@@ -233,6 +241,7 @@ export async function updateSupabaseRows(
     `${normalizedUrl}/rest/v1/${table}?${params.toString()}`,
     {
       method: "PATCH",
+      signal: options.signal ?? AbortSignal.timeout(15_000),
       headers: buildSupabaseHeaders(serverKey, { prefer: "return=minimal" }),
       body: JSON.stringify(values),
       cache: "no-store",

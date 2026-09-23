@@ -47,6 +47,7 @@ export async function evaluatePriceListInBatches({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ items: batch, persist: false }),
+      signal: AbortSignal.timeout(90_000),
     });
     const payload = await readJsonResponse(response);
 
@@ -69,6 +70,13 @@ export async function evaluatePriceListInBatches({
           getRawResponseText(payload),
         ),
       );
+    }
+
+    const expected = new Set(batch.map(item => item.rowNumber));
+    const received = payload.results.map(item => item?.input?.rowNumber);
+    if (payload.itemsCount !== batch.length || received.length !== batch.length ||
+        new Set(received).size !== received.length || received.some(row => !expected.has(row))) {
+      throw new Error(`El lote ${index + 1}/${batches.length} devolvio filas incompletas o duplicadas. No se guardo la carga; reintentar la importacion.`);
     }
 
     responses.push(payload as PriceListResponse);
@@ -146,33 +154,41 @@ function mergePriceListResponses(
 }
 
 export async function savePriceListForHistory(response: PriceListResponse) {
-  const saveResponse = await fetch("/api/price-list/save", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ response }),
-  });
-  const payload = await readJsonResponse(saveResponse);
+  try {
+    const saveResponse = await fetch("/api/price-list/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ response }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    const payload = await readJsonResponse(saveResponse);
 
-  if (!saveResponse.ok) {
+    if (!saveResponse.ok) {
+      return {
+        enabled: true,
+        requested: true,
+        saved: false,
+        errorMessage:
+          getPayloadError(payload) ?? "No se pudo guardar la lista para evolución.",
+      };
+    }
+
+    return (
+      getPayloadPersistence(payload) ?? {
+        enabled: true,
+        requested: true,
+        saved: false,
+        errorMessage: "El guardado no devolvio estado.",
+      }
+    );
+  } catch {
     return {
-      enabled: true,
-      requested: true,
-      saved: false,
-      errorMessage:
-        getPayloadError(payload) ?? "No se pudo guardar la lista para evolución.",
+      enabled: true, requested: true, saved: false,
+      errorMessage: "No se pudo confirmar el guardado. La evaluacion sigue disponible para descargar. Revisar Historial antes de reintentar para evitar duplicados.",
     };
   }
-
-  return (
-    getPayloadPersistence(payload) ?? {
-      enabled: true,
-      requested: true,
-      saved: false,
-      errorMessage: "El guardado no devolvio estado.",
-    }
-  );
 }
 
 async function readJsonResponse(response: Response) {

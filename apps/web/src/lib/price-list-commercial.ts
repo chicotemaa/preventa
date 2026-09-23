@@ -4,6 +4,7 @@ import type {
 } from "@/types/search";
 import { compareSourcePriority } from "@/lib/source-priority";
 import { isPriceFresh } from "./price-freshness";
+import { parseUnitsPerPackage } from "./price-comparison-safety";
 import { calculateCostStructure, parseCostConditions, type CostBreakdown } from "./cost-structure";
 
 export const DEFAULT_TARGET_GROSS_MARGIN_RATIO =
@@ -175,6 +176,7 @@ export function isReliableSourcePrice(sourcePrice: PriceListSourcePrice) {
   const price = getCommercialComparablePrice(sourcePrice);
   return (
     Number.isFinite(price) &&
+    sourcePrice.currency === "ARS" &&
     sourcePrice.availability !== "out_of_stock" &&
     price > 0 &&
     Number.isFinite(sourcePrice.confidenceScore) &&
@@ -275,18 +277,6 @@ function calculateRatioGap(
   reference: number | null,
 ) {
   return value && reference ? (value - reference) / reference : null;
-}
-
-function parseUnitsPerPackage(value: string | null | undefined) {
-  const match = String(value ?? "").match(/\d{1,4}/);
-  const quantity = match?.[0] ? Number(match[0]) : null;
-
-  return quantity &&
-    Number.isInteger(quantity) &&
-    quantity > 1 &&
-    quantity <= 1_000
-    ? quantity
-    : null;
 }
 
 function average(values: number[]) {

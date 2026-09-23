@@ -3,6 +3,7 @@ import {
   type HistoryItemAnalysis,
 } from "./price-list-history-analysis";
 import { comparePricingImpact } from "./pricing-impact";
+import { getWholesalePosition } from "./price-position";
 import {
   buildInputFingerprint,
   buildProductFingerprint,
@@ -128,11 +129,7 @@ function summarizeReviewItems(items: PricingReviewItem[]): PricingReviewSummary 
   return {
     total: items.length,
     attention: items.filter(isAttentionItem).length,
-    aboveWholesale: items.filter((item) =>
-      ["above_wholesale_critical", "above_wholesale_warning"].includes(
-        item.analysis.kind,
-      ),
-    ).length,
+    aboveWholesale: items.filter(item => getWholesalePosition(item.analysis) === "above").length,
     competitive: items.filter((item) => item.analysis.kind === "competitive")
       .length,
     opportunities: items.filter(
@@ -153,9 +150,7 @@ function matchesFilter(item: PricingReviewItem, filter: PricingReviewFilter) {
   if (filter === "all") return true;
   if (filter === "attention") return isAttentionItem(item);
   if (filter === "above_wholesale") {
-    return ["above_wholesale_critical", "above_wholesale_warning"].includes(
-      item.analysis.kind,
-    );
+    return getWholesalePosition(item.analysis) === "above";
   }
   if (filter === "competitive") return item.analysis.kind === "competitive";
   if (filter === "opportunity") {

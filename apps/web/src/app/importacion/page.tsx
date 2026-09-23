@@ -124,7 +124,7 @@ export default function ImportacionPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
 
-    if (!file) {
+    if (!file || isLoading || isSavingForEvolution) {
       return;
     }
 
@@ -202,12 +202,13 @@ export default function ImportacionPage() {
             </div>
 
             <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:shrink-0">
-              <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#df2e38] px-4 text-sm font-semibold text-white transition hover:bg-[#bd1f2a]">
+              <label className={`inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#df2e38] px-4 text-sm font-semibold text-white transition ${isLoading || isSavingForEvolution ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#bd1f2a]"}`}>
                 <Upload className="h-4 w-4" />
                 Importar
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv"
+                  disabled={isLoading || isSavingForEvolution}
                   className="hidden"
                   onChange={handleFileChange}
                 />
@@ -237,6 +238,7 @@ export default function ImportacionPage() {
             <input
               type="checkbox"
               checked={persistForEvolution}
+              disabled={isLoading || isSavingForEvolution}
               onChange={(event) => setPersistForEvolution(event.target.checked)}
               className="mt-1 h-4 w-4 accent-[#df2e38]"
             />
@@ -246,7 +248,7 @@ export default function ImportacionPage() {
               </span>
               <span className="mt-1 block text-sm text-[#667789]">
                 Se guarda al terminar solo si existe al menos un precio en el
-                Excel. El referencia proveedor Tokin se conserva por separado.
+                Excel. La referencia proveedor Tokin se conserva por separado.
               </span>
             </span>
           </label>
@@ -258,14 +260,14 @@ export default function ImportacionPage() {
           ) : null}
 
           {isLoading ? (
-            <div className="mt-4 flex items-center gap-2 rounded-md border border-[#eadbd3] bg-[#fffdfa] px-4 py-3 text-sm text-[#6f625d]">
+            <div role="status" aria-live="polite" className="mt-4 flex items-center gap-2 rounded-md border border-[#eadbd3] bg-[#fffdfa] px-4 py-3 text-sm text-[#6f625d]">
               <Loader2 className="h-4 w-4 animate-spin" />
               {formatBatchProgress(batchProgress)}
             </div>
           ) : null}
 
           {error ? (
-            <div className="mt-4 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
+            <div role="alert" className="mt-4 rounded-md border border-[#e4a79f] bg-[#fff1ef] px-4 py-3 text-sm text-[#8f2d20]">
               {error}
             </div>
           ) : null}
@@ -300,7 +302,7 @@ export default function ImportacionPage() {
           </section>
         ) : null}
 
-        {response ? <ImportDecisionTable response={response} onCostConditionsChange={(rowNumber, costConditions) => {
+        {response ? <ImportDecisionTable response={response} onCostConditionsChange={isSavingForEvolution ? undefined : (rowNumber, costConditions) => {
           setResponse((current) => current ? {
             ...current,
             persistence: undefined,

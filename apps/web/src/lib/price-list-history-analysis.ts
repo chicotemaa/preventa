@@ -6,6 +6,7 @@ import {
   type PriceListDecisionTone,
 } from "@/lib/price-list-decision";
 import { analyzePricingImpact, type PricingImpact } from "./pricing-impact";
+import { getWholesalePosition } from "./price-position";
 import type {
   PriceListItemResult,
   PriceListRunItem,
@@ -87,11 +88,7 @@ export function summarizeHistoryItems(
   return {
     total: analyses.length,
     attention: analyses.filter(isAttentionAnalysis).length,
-    aboveWholesale: analyses.filter((analysis) =>
-      ["above_wholesale_critical", "above_wholesale_warning"].includes(
-        analysis.kind,
-      ),
-    ).length,
+    aboveWholesale: analyses.filter(analysis => getWholesalePosition(analysis) === "above").length,
     competitive: analyses.filter((analysis) => analysis.kind === "competitive")
       .length,
     opportunities: analyses.filter(
@@ -119,11 +116,7 @@ export function filterHistoryAnalyses(
   }
 
   if (filter === "above_wholesale") {
-    return analyses.filter((analysis) =>
-      ["above_wholesale_critical", "above_wholesale_warning"].includes(
-        analysis.kind,
-      ),
-    );
+    return analyses.filter(analysis => getWholesalePosition(analysis) === "above");
   }
 
   if (filter === "competitive") {

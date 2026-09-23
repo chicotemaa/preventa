@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BookOpen } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Categorías" },
@@ -59,6 +60,10 @@ export function AppHeader() {
               </Link>
             );
           })}
+          <Link href="/guia" aria-label="Manual y presentación" title="Manual y presentación"
+            className={`rounded-md p-2 ${pathname === "/guia" || pathname === "/ejemplo" ? "bg-[#171717] text-white" : "text-[#6f625d] hover:bg-[#f1f4f7]"}`}>
+            <BookOpen className="h-5 w-5" />
+          </Link>
         </nav>
       </div>
     </header>

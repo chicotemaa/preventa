@@ -13,6 +13,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { normalizeHistoricalAlert } from "@/lib/pricing-alerts";
 import type {
   PersistedPricingAlert,
   PricingAlertsResponse,
@@ -76,10 +77,11 @@ export function PricingAlertsDashboard() {
     void loadAlerts();
   }, [loadAlerts]);
 
-  const summary = useMemo(() => buildSummary(data?.alerts ?? []), [data]);
+  const safeAlerts = useMemo(() => (data?.alerts ?? []).map(normalizeHistoricalAlert), [data]);
+  const summary = useMemo(() => buildSummary(safeAlerts), [safeAlerts]);
   const visibleAlerts = useMemo(
-    () => filterAlerts(data?.alerts ?? [], filter, searchTerm),
-    [data, filter, searchTerm],
+    () => filterAlerts(safeAlerts, filter, searchTerm),
+    [safeAlerts, filter, searchTerm],
   );
 
   async function updateStatus(alertId: string, status: PricingAlertStatus) {
@@ -160,7 +162,7 @@ export function PricingAlertsDashboard() {
               Alertas para decidir
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-[#667789]">
-              Señales del último catálogo. Una alerta no aplica cambios de precio automáticamente.
+              Señales del catálogo: proveedor Tokin frente al mercado. La venta Aguiar proviene del Excel y se evalúa en Importación o Revisiones. Ninguna alerta cambia precios.
             </p>
           </div>
           <button
@@ -179,7 +181,7 @@ export function PricingAlertsDashboard() {
           <SummaryButton label="Críticas" value={summary.critical} active={filter === "critical"} tone="danger" onClick={() => setFilter("critical")} />
           <SummaryButton label="Precios" value={summary.pricing} active={filter === "pricing"} tone="warning" onClick={() => setFilter("pricing")} />
           <SummaryButton label="Fuentes" value={summary.sources} active={filter === "sources"} tone="neutral" onClick={() => setFilter("sources")} />
-          <SummaryButton label="Oportunidades" value={summary.opportunities} active={filter === "opportunities"} tone="info" onClick={() => setFilter("opportunities")} />
+          <SummaryButton label="Proveedor debajo" value={summary.opportunities} active={filter === "opportunities"} tone="info" onClick={() => setFilter("opportunities")} />
           <SummaryButton label="Resueltas" value={summary.resolved} active={filter === "resolved"} tone="success" onClick={() => setFilter("resolved")} />
         </div>
 
@@ -233,7 +235,7 @@ function AlertRows({
             <tr>
               <th className="px-4 py-3">Alerta</th>
               <th className="px-3 py-3">Categoría / fuente</th>
-              <th className="px-3 py-3">Precio Aguiar</th>
+              <th className="px-3 py-3">Referencia Tokin</th>
               <th className="px-3 py-3">Referencia</th>
               <th className="px-3 py-3">Diferencia</th>
               <th className="px-3 py-3">Última detección</th>
@@ -277,7 +279,7 @@ function AlertRows({
             </div>
             <p className="mt-2 text-xs leading-5 text-[#667789]">{alert.message}</p>
             <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-              <Metric label="Aguiar" value={formatPrice(alert.ownPrice)} />
+              <Metric label="Referencia Tokin" value={formatPrice(alert.ownPrice)} />
               <Metric label="Referencia" value={formatPrice(alert.referencePrice)} />
               <Metric label="Diferencia" value={formatGap(alert.gapPercent)} />
               <Metric label="Detectada" value={formatDate(alert.lastSeenAt)} />
@@ -365,6 +367,10 @@ function EmptyState({ text, compact = false }: { text: string; compact?: boolean
   return <div className={`flex flex-col items-center justify-center px-4 text-center text-sm text-[#667789] ${compact ? "min-h-36 border-t border-[#e5e9ef]" : "min-h-56 rounded-md border border-dashed border-[#ccd5e2] bg-white"}`}><Store className="mb-2 h-6 w-6 text-[#8a96a3]" />{text}</div>;
 }
 
+function isSupplierBelowMarket(alert: PersistedPricingAlert) {
+  return alert.type === "margin_opportunity" && alert.metadata.referenceKind === "supplier_catalog";
+}
+
 function buildSummary(alerts: PersistedPricingAlert[]) {
   const active = alerts.filter((alert) => alert.status !== "resolved");
   return {
@@ -373,7 +379,7 @@ function buildSummary(alerts: PersistedPricingAlert[]) {
     critical: active.filter((alert) => alert.severity === "critical").length,
     pricing: active.filter((alert) => alert.type === "price_above_wholesale" || alert.type === "retail_below_wholesale").length,
     sources: active.filter((alert) => alert.type === "source_unavailable" || alert.type === "catalog_stale").length,
-    opportunities: active.filter((alert) => alert.type === "margin_opportunity").length,
+    opportunities: active.filter(isSupplierBelowMarket).length,
     resolved: alerts.filter((alert) => alert.status === "resolved").length,
   };
 }
@@ -387,7 +393,7 @@ function filterAlerts(alerts: PersistedPricingAlert[], filter: AlertViewFilter, 
       if (filter === "critical") return alert.status !== "resolved" && alert.severity === "critical";
       if (filter === "pricing") return alert.status !== "resolved" && ["price_above_wholesale", "retail_below_wholesale"].includes(alert.type);
       if (filter === "sources") return alert.status !== "resolved" && ["source_unavailable", "catalog_stale"].includes(alert.type);
-      if (filter === "opportunities") return alert.status !== "resolved" && alert.type === "margin_opportunity";
+      if (filter === "opportunities") return alert.status !== "resolved" && isSupplierBelowMarket(alert);
       return alert.status === "resolved";
     })
     .filter((alert) => !normalizedSearch || normalizeText([alert.title, alert.message, alert.category, getAlertSourceLabel(alert)].join(" ")).includes(normalizedSearch))
@@ -406,7 +412,7 @@ function getAlertSourceLabel(alert: PersistedPricingAlert) {
 function formatAlertType(type: PersistedPricingAlert["type"]) {
   if (type === "source_unavailable") return "Cobertura de fuentes";
   if (type === "catalog_stale") return "Vigencia del catálogo";
-  if (type === "missing_own_price") return "Sin precio Excel";
+  if (type === "missing_own_price") return "Equivalencia de proveedor";
   return "Comparación de precios";
 }
 
@@ -416,7 +422,7 @@ function formatPrice(value: number | null) {
 
 function formatGap(value: number | null) {
   if (value === null) return "-";
-  return value > 0 ? `Aguiar +${percentFormatter.format(value)}%` : `Aguiar ${percentFormatter.format(value)}%`;
+  return value > 0 ? `Tokin +${percentFormatter.format(value)}%` : `Tokin ${percentFormatter.format(value)}%`;
 }
 
 function formatDate(value: string) {

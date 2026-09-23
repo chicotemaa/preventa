@@ -2,12 +2,16 @@
 
 Este manual explica como usar Aguiar Gestion de Precios desde el punto de vista del area de ventas y como mantenerlo desde el punto de vista tecnico.
 
+Revision: 22/09/2026. Material visual y ejemplo disponibles en `/guia` y `/ejemplo`.
+Los PDF no contienen claves. El acceso privado se entrega por separado.
+Alcance: piloto asistido con revision humana, no fijacion automatica de precios.
+
 ## Objetivo
 
 La aplicacion ayuda a preparar y revisar listas de precios semanales. El usuario puede:
 
 - Buscar categorias completas, por ejemplo alfajores, chocolates o jugos en polvo.
-- Ver primero productos de Aguiar/Tokin y luego productos de competencia.
+- Usar Excel como venta propia, Tokin/Arcor como proveedor y mayoristas como competencia prioritaria.
 - Revisar precio unitario y precio por bulto cuando la fuente lo informa.
 - Importar una lista de Excel, comparar contra fuentes externas y exportar el resultado.
 - Guardar corridas para analizar evolucion.
@@ -24,10 +28,9 @@ Categorias
   Buscar familia
   Familias sugeridas
   Detalle de familia
-    Tokin / Aguiar
-      Cards de productos con foto, marca, unidad y bulto
-    Competencia
-      Cards de productos comparables por fuente
+    Evaluacion comercial vinculada al Excel guardado
+    Detalle secundario del catalogo: proveedor Tokin y competencia
+      Productos con foto, marca, unidad y bulto
 
 Importacion
   Cargar Excel
@@ -58,9 +61,9 @@ Uso recomendado:
 
 1. Escribir o elegir una familia, por ejemplo `alfajores`, `jugo en polvo`, `galletitas`, `mermeladas` o `chocolates`.
 2. Abrir la familia detectada.
-3. Revisar primero el bloque `Tokin / Aguiar`.
-4. Comparar contra el bloque `Competencia`.
-5. Entrar al link del producto cuando se necesite validar la fuente.
+3. Revisar la evaluacion vinculada al Excel activo. Sin Excel no hay posicion de venta propia.
+4. Abrir `Ver detalle de productos del catalogo` para auditar proveedor y competencia.
+5. Revisar presentacion, fecha y fuente antes de decidir. El catalogo no reemplaza al Excel.
 
 Que muestra cada card:
 
@@ -138,23 +141,22 @@ Regla de referencia propia:
 
 1. Si el Excel trae precio, ese es el precio usado para decidir.
 2. Tokin/Arcor se conserva y muestra por separado como control.
-3. Si el Excel no trae precio y Tokin si, se usa Tokin/Arcor.
+3. Si el Excel no trae precio, queda `Falta precio Excel`, aunque Tokin tenga precio.
 4. Si ambos faltan, la decision queda como `Falta precio propio`.
-5. No se puede guardar una carga si ningun articulo tiene precio de Excel ni
-   Tokin. Si la cobertura es parcial, se guarda como borrador y los faltantes
+5. No se puede guardar una carga si ningun articulo tiene precio Excel.
+   Si la cobertura es parcial, se guarda para revision y los faltantes
    quedan identificados.
 
 Cada carga nueva registra cuantos articulos tienen precio propio, cuantos
 provienen del Excel, cuantos tienen control Tokin y cuantos siguen pendientes.
-Tambien guarda el motivo de seleccion: Excel prioritario, solo Excel, fallback
-Tokin o faltante.
+Tokin nunca se convierte automaticamente en precio de venta.
 
 ## Como leer la comparacion
 
 La app separa tres conceptos:
 
 - `Precio Excel`: valor recibido en la lista semanal.
-- `Precio Tokin/Arcor`: valor propio detectado en el catalogo de Tokin.
+- `Precio Tokin/Arcor`: referencia publicada del proveedor, no venta propia ni costo final confirmado.
 - `Precio de competencia`: precio encontrado en fuentes externas.
 
 Colores y señales:
@@ -166,7 +168,12 @@ Colores y señales:
   oportunidad de margen.
 - Gris: falta referencia suficiente, falta precio propio o el match debe revisarse.
 
-Regla de orden visual de fuentes (despues de Aguiar/Tokin como fuente propia):
+El filtro `Excel arriba >5%` muestra posicion publicada incluso si falta confirmar
+costos. Eso no habilita una recomendacion de baja. Las promociones y compras
+minimas quedan como precios condicionados. Un dato sin fecha, antiguo, en moneda
+distinta de ARS o con match debil no se usa como referencia vigente confiable.
+
+Regla de orden visual de fuentes (despues de Tokin como proveedor separado):
 
 1. Maxiconsumo Chaco
 2. Maxiconsumo Web
@@ -191,12 +198,15 @@ La actualizacion diaria analiza automaticamente las familias principales y deja
 señales operativas. La pantalla separa:
 
 - Criticas: catalogo vencido o fuente propia/principal sin datos.
-- Precios: Aguiar por encima del mejor mayorista o minorista debajo del mayorista.
-- Oportunidades: Aguiar por debajo de una referencia mayorista comparable.
+- Precios: referencia Tokin por encima del mejor mayorista o minorista debajo del mayorista.
+- Proveedor debajo: Tokin por debajo del mayorista. No significa margen de Aguiar.
 - Fuentes: credenciales, timeouts o fuentes criticas pendientes.
 
 Una alerta no modifica precios. Si falta cobertura mayorista, el match es debil
 o no hay precio propio, la recomendacion queda limitada a revisar/validar.
+Las alertas del catalogo no usan la venta Excel. La decision de venta se revisa
+en Importacion, Historial o Revisiones. Las alertas antiguas sin origen explicito
+se muestran como referencias historicas por verificar, sin precio propio ni gap validado.
 
 Flujo recomendado:
 
@@ -225,6 +235,9 @@ Bulto: 40 unidades
 ```
 
 La comparacion de mercado se hace contra `$ 332,99`, pero el usuario tambien ve que el pedido real puede ser por bulto de 40 unidades.
+El valor preciso es 13.319,47 / 40 = 332,98675; el redondeo es visual.
+UxB acepta cantidades completas como `40` o `40 Uds`. `3 x 12`, `40 gr` o
+`40/48` requieren aclaracion y no producen un total de bulto inventado.
 
 ## Pagina: Evolucion
 
@@ -276,6 +289,11 @@ Ruta: `/configuracion`
 
 Sirve para validar sesiones de fuentes que no exponen precios publicos. El caso
 principal es Carrefour Comerciante.
+
+Primero revisar `Estado para decidir`: Excel activo, precios vigentes (hasta
+36 horas), antiguos y sin fecha. `Actualizar estado` relee lo guardado; no
+consulta tiendas ni renueva precios. Un cron reciente no acredita vigencia de
+todos los registros. El guardado del Excel tampoco certifica su fecha comercial.
 
 Estados posibles:
 
@@ -348,7 +366,7 @@ Principios tecnicos:
 - Si una fuente falla, no bloquea toda la busqueda.
 - Los resultados se normalizan antes de mostrarse.
 - Los productos sin stock se excluyen.
-- El historial se guarda solo cuando el usuario guarda una corrida.
+- El historial conserva importaciones manuales y evaluaciones diarias vinculadas al Excel activo cuando el cron logra completarlas.
 
 ## Comandos locales
 
@@ -394,6 +412,7 @@ Estos endpoints viven en Next.js y llaman al worker:
 - `GET /api/price-list/history`
 - `GET /api/price-list/evolution`
 - `GET /api/alerts`
+- `GET /api/catalog-status` (privado, sin cookies ni listado completo de productos)
 - `PATCH /api/alerts/:alertId`
 - `GET /api/source-sessions`
 - `POST /api/source-sessions/carrefour-comerciante/validate`
@@ -405,6 +424,7 @@ Estos endpoints viven en Next.js y llaman al worker:
 
 - `GET /health`
 - `GET /catalog`
+- `GET /catalog/status` (privado, metadatos y vigencia por fuente)
 - `POST /catalog/sync`
 - `POST /catalog/search`
 - `POST /catalog/category-search`
@@ -423,6 +443,9 @@ Frontend:
 
 ```bash
 WORKER_URL=http://127.0.0.1:4000
+APP_ACCESS_USERNAME=<usuario-privado>
+APP_ACCESS_PASSWORD=<clave-de-al-menos-24-caracteres>
+WORKER_API_SECRET=<clave-interna-igual-en-worker>
 CATEGORY_SEARCH_MODE=catalog
 CRON_SECRET=<clave-larga-aleatoria>
 WORKER_CRON_SECRET=<opcional-si-difiere-del-worker>
@@ -440,6 +463,7 @@ Worker:
 
 ```bash
 PORT=4000
+WORKER_API_SECRET=<clave-interna-igual-en-web>
 HEADLESS=true
 SOURCE_TIMEOUT_MS=20000
 MIN_CONFIDENCE_SCORE=60
@@ -475,7 +499,7 @@ OPENAI_API_KEY=
 
 ### Sesiones privadas
 
-En `/configuracion`, el administrador puede conectar Carrefour Comerciante desde el backend con los datos del comercio, validar el resultado y guardar la sesion solo si devuelve precios visibles. El usuario final no necesita ver cookies ni variables.
+En `/configuracion`, el administrador puede intentar conectar Carrefour Comerciante desde el backend. Solo se guarda si la fuente devuelve precios visibles. La renovacion desatendida no esta garantizada: puede requerir intervencion por la proteccion de la fuente. El gerente utiliza el catalogo ya guardado.
 
 Estados esperados:
 
@@ -513,6 +537,9 @@ Flujo:
 5. La ruta consolida el catalogo con `POST /catalog/rebuild`.
 6. Analiza las familias configuradas y guarda alertas en `pricing_alerts`.
 7. Las paginas consultan categorias en modo `catalog`.
+8. Cuando queda presupuesto de ejecucion, evalua el Excel manual activo y guarda
+   una captura diaria completa. Si no alcanza el tiempo, lo informa sin guardar
+   una carga truncada como completa.
 
 Si una actualizacion falla o devuelve menos del 20% de un catalogo grande, el
 worker conserva el ultimo snapshot valido. La interfaz muestra la fecha del
@@ -522,6 +549,10 @@ desactualizado.
 Horario configurado:
 
 - Todos los dias 12:00 Argentina: `0 15 * * *` UTC.
+
+Alcance actual: cuatro fuentes por corrida y dos terminos por fuente. Tokin y
+Maxiconsumo Chaco son diarios; el resto rota. NO renueva todos los productos de
+todas las empresas cada dia. El avance durable con reintentos sigue pendiente.
 
 Regla de uso:
 
@@ -533,8 +564,9 @@ Regla de uso:
 - `PRICE_LIST_DIRECT_AGUIAR_LOOKUP=false`: evita consultas directas a Tokin al evaluar listas importadas.
 - `CATALOG_SYNC_SEED_MAX_TERMS=160`: controla cuantas semillas de `worker/data/catalog-search-seeds.txt` se usan en la actualizacion diaria.
 
-Despues del cron, validar `GET /health` o `GET /catalog` y revisar
-`lastSyncedAt`, `productsCount` y estados de fuentes.
+Despues del cron, validar `GET /health`, consultar `/catalog/status` con la clave
+API y revisar vigencia individual, fuentes y captura diaria. `lastSyncedAt` y
+`productsCount` por si solos no acreditan renovacion de precios.
 Las categorias y la importacion de Excel deben consultar ese snapshot; no deben
 disparar scraping online durante el uso normal.
 
@@ -576,6 +608,9 @@ AI_MATCHING_TIMEOUT_MS=6000
 La IA no busca precios. Solo elige entre candidatos que ya devolvio una fuente.
 
 ## Checklist antes de publicar
+
+No publicar sin aprobacion posterior a la revision local. La demo es un piloto,
+no una validacion del catalogo completo ni de disponibilidad de cada proveedor.
 
 - Worker responde `GET /health`.
 - Frontend tiene `WORKER_URL` apuntando al worker publicado.

@@ -25,6 +25,6 @@ export function formatPriceObservation(observedAt?: string | null) {
   return Number.isFinite(date.getTime())
     ? new Intl.DateTimeFormat("es-AR", {
         dateStyle: "short", timeStyle: "short", timeZone: "America/Argentina/Cordoba",
-      }).format(date)
+      }).format(date).replace(/[\u00a0\u202f]/g, " ")
     : "Sin fecha";
 }

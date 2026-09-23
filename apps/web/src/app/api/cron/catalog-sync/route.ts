@@ -52,14 +52,19 @@ export async function GET(request: Request) {
   const startedAt = Date.now();
   const workerSecret = process.env.WORKER_CRON_SECRET ?? cronSecret;
   const baseWorkerUrl = workerUrl.replace(/\/$/, "");
-  const offset = getDailyCatalogSyncOffset();
-  const selectedSourceIds = getDailyCatalogSyncSourceIds();
+  const syncDate = new Date(startedAt);
+  const offset = getDailyCatalogSyncOffset(syncDate);
+  const selectedSourceIds = getDailyCatalogSyncSourceIds(syncDate);
+  const sourceOffsets = Object.fromEntries(selectedSourceIds.map(
+    (sourceId) => [sourceId, getDailyCatalogSyncOffset(syncDate, sourceId)],
+  ));
   console.info("[catalog-cron] started", {
     triggeredAt: new Date(startedAt).toISOString(),
     sourceCount: selectedSourceIds.length,
     selectedSourceIds,
     maxTerms: CATALOG_SYNC_MAX_TERMS,
     offset,
+    sourceOffsets,
   });
   const sources = await mapWithConcurrency(
     selectedSourceIds,
@@ -69,7 +74,7 @@ export async function GET(request: Request) {
         baseWorkerUrl,
         workerSecret,
         sourceId,
-        offset,
+        offset: sourceOffsets[sourceId],
       }),
   );
   const successfulSources = sources.filter((source) => source.ok).length;
@@ -132,13 +137,18 @@ export async function GET(request: Request) {
     );
   }
 
-  const [alerts, evolutionSnapshot] = await Promise.all([
+  const enoughTimeForAnalysis = Date.now() - startedAt < 190_000;
+  const [alerts, evolutionSnapshot] = enoughTimeForAnalysis ? await Promise.all([
     refreshPricingAlertsSafely(
       baseWorkerUrl,
       consolidation.catalog as CatalogMetadata | null,
+      startedAt + 270_000,
     ),
-    refreshDailyEvolutionSnapshotSafely(baseWorkerUrl),
-  ]);
+    refreshDailyEvolutionSnapshotSafely(baseWorkerUrl, startedAt + 270_000),
+  ]) : [null, {
+    enabled: true, attempted: false, saved: false,
+    errorMessage: "El catalogo se guardo, pero no quedo tiempo para evaluar la cartera. La evolucion anterior se conserva.",
+  }];
 
   console.info("[catalog-cron] completed", {
     durationMs: Date.now() - startedAt,
@@ -155,10 +165,12 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    analysisDeferred: !enoughTimeForAnalysis,
     triggeredAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
     block: {
       offset,
+      sourceOffsets,
       maxTerms: CATALOG_SYNC_MAX_TERMS,
       sourceIds: selectedSourceIds,
     },
@@ -172,9 +184,9 @@ export async function GET(request: Request) {
   });
 }
 
-async function refreshDailyEvolutionSnapshotSafely(baseWorkerUrl: string) {
+async function refreshDailyEvolutionSnapshotSafely(baseWorkerUrl: string, deadline: number) {
   try {
-    return await refreshDailyEvolutionSnapshot({ workerUrl: baseWorkerUrl });
+    return await refreshDailyEvolutionSnapshot({ workerUrl: baseWorkerUrl, deadline });
   } catch (error) {
     console.error("[catalog-cron] evolution-snapshot-failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -191,11 +203,13 @@ async function refreshDailyEvolutionSnapshotSafely(baseWorkerUrl: string) {
 async function refreshPricingAlertsSafely(
   baseWorkerUrl: string,
   catalog: CatalogMetadata | null,
+  deadline: number,
 ) {
   try {
     return await refreshPricingAlertsAfterCatalogSync({
       workerUrl: baseWorkerUrl,
       catalog,
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
     });
   } catch (error) {
     console.error("[catalog-cron] alert-refresh-failed", {

@@ -38,15 +38,17 @@ const DEFAULT_CATEGORY_FETCH_TIMEOUT_MS = 20_000;
 export async function refreshPricingAlertsAfterCatalogSync({
   workerUrl,
   catalog,
+  signal = AbortSignal.timeout(80_000),
 }: {
   workerUrl: string;
   catalog: CatalogMetadata | null;
+  signal?: AbortSignal;
 }): Promise<AlertRefreshResult> {
   const queries = getAlertCategoryQueries();
   const categoryResults = await mapWithConcurrency(
     queries,
     CATEGORY_FETCH_CONCURRENCY,
-    (query) => fetchCategory(workerUrl, query),
+    (query) => fetchCategory(workerUrl, query, signal),
   );
   const successfulResponses = categoryResults
     .filter(
@@ -64,10 +66,11 @@ export async function refreshPricingAlertsAfterCatalogSync({
   });
   const persistence = await persistPricingAlerts(candidates, {
     resolveMissing: failedCategories.length === 0,
+    signal,
   });
   const email =
     persistence.enabled && !persistence.errorMessage
-      ? await sendAlertDigest(candidates, persistence)
+      ? await sendAlertDigest(candidates, persistence, signal)
       : { enabled: false, sent: false };
 
   return {
@@ -82,6 +85,7 @@ export async function refreshPricingAlertsAfterCatalogSync({
 async function fetchCategory(
   workerUrl: string,
   query: string,
+  signal: AbortSignal,
 ): Promise<CategoryFetchResult> {
   const timeoutMs = getCategoryFetchTimeoutMs();
   const controller = new AbortController();
@@ -95,7 +99,7 @@ async function fetchCategory(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, mode: "catalog" }),
         cache: "no-store",
-        signal: controller.signal,
+        signal: AbortSignal.any([controller.signal, signal]),
       },
     );
     const payload = await response.json().catch(() => null);
@@ -127,6 +131,7 @@ async function fetchCategory(
 async function sendAlertDigest(
   candidates: PricingAlertCandidate[],
   sync: PricingAlertSyncResult,
+  signal: AbortSignal,
 ): Promise<AlertEmailResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const recipients = process.env.ALERT_EMAIL_TO?.split(",")
@@ -148,6 +153,7 @@ async function sendAlertDigest(
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
+      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",

@@ -207,6 +207,11 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
       return new Response(null, { status: 201 });
     }
 
+    if (method === "PATCH" && url.includes("price_list_runs")) {
+      assert.equal(JSON.parse(String(init?.body)).status, "review");
+      return new Response(null, { status: 204 });
+    }
+
     throw new Error(`Solicitud inesperada en test: ${method} ${url}`);
   };
 
@@ -222,6 +227,7 @@ test("el cron evalua la ultima lista manual y guarda una captura diaria", async 
     assert.equal(result.itemsCount, 21);
     assert.equal(workerRequests, 3);
     assert.equal(insertedRuns[0]?.list_name, "Actualizacion diaria 2026-08-01");
+    assert.equal(insertedRuns[0]?.status, "archived");
     assert.deepEqual(insertedRuns[0]?.metadata, {
       region: {
         id: "argentina",

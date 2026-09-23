@@ -1,5 +1,7 @@
 "use client";
 
+import { CatalogOperationsPanel } from "@/components/catalog/CatalogOperationsPanel";
+
 import {
   CheckCircle2,
   ClipboardCheck,
@@ -289,6 +291,7 @@ export default function ConfiguracionPage() {
       </section>
 
       <section className="flex w-full flex-col gap-4 px-3 py-4 sm:px-4 md:py-5 lg:px-6">
+        <CatalogOperationsPanel />
         <section className="rounded-md border border-[#eadbd3] bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
             <div>

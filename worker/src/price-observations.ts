@@ -16,14 +16,17 @@ export function stampObservedProducts(
 
 export function summarizePriceObservations(
   products: ProductSearchResult[],
+  now = Date.now(),
 ): PriceObservationSummary {
   let oldest = Infinity;
   let newest = -Infinity;
   let datedProducts = 0;
+  let currentProducts = 0;
   for (const product of products) {
     const timestamp = Date.parse(product.observedAt ?? "");
-    if (!Number.isFinite(timestamp)) continue;
+    if (!Number.isFinite(timestamp) || timestamp > now + 5 * 60_000) continue;
     datedProducts += 1;
+    if (isPriceObservationCurrent(product.observedAt, now)) currentProducts += 1;
     oldest = Math.min(oldest, timestamp);
     newest = Math.max(newest, timestamp);
   }
@@ -32,7 +35,21 @@ export function summarizePriceObservations(
     datedProducts,
     oldestObservedAt: datedProducts ? new Date(oldest).toISOString() : null,
     newestObservedAt: datedProducts ? new Date(newest).toISOString() : null,
+    currentProducts,
+    outdatedProducts: datedProducts - currentProducts,
+    undatedProducts: products.length - datedProducts,
+    calculatedAt: new Date(now).toISOString(),
   };
+}
+
+export function summarizeSourcePriceObservations(products: ProductSearchResult[], now = Date.now()) {
+  const groups = new Map<string, ProductSearchResult[]>();
+  for (const product of products) {
+    const group = groups.get(product.sourceId) ?? [];
+    group.push(product);
+    groups.set(product.sourceId, group);
+  }
+  return Object.fromEntries([...groups].map(([sourceId, group]) => [sourceId, summarizePriceObservations(group, now)]));
 }
 
 export function mergeLatestObservedProducts(products: ProductSearchResult[]) {

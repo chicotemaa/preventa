@@ -42,11 +42,18 @@ export function getDailyCatalogSyncSourceIds(now = new Date()) {
   return [...DAILY_PRIORITY_SOURCE_IDS, ...rotating];
 }
 
-export function getDailyCatalogSyncOffset(date = new Date()) {
+export function getDailyCatalogSyncOffset(date = new Date(), sourceId?: string) {
   const utcDay = Math.floor(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) /
       86_400_000,
   );
 
-  return utcDay * CATALOG_SYNC_MAX_TERMS;
+  // Rotating sources run once per cycle, not once per day. Advancing by calendar
+  // day skips the same term blocks forever when the term count shares a divisor.
+  const rotatingIndex = ROTATING_SOURCE_IDS.findIndex((id) => id === sourceId);
+  const cycleDays = ROTATING_SOURCE_IDS.length / 2;
+  const visit = rotatingIndex < 0
+    ? utcDay
+    : Math.floor((utcDay - Math.floor(rotatingIndex / 2)) / cycleDays);
+  return visit * CATALOG_SYNC_MAX_TERMS;
 }

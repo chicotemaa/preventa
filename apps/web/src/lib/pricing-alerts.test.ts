@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildPricingAlertCandidates,
   getAlertCategoryQueries,
+  normalizeHistoricalAlert,
+  type PersistedPricingAlert,
 } from "./pricing-alerts";
 import type {
   CatalogMetadata,
@@ -25,7 +27,7 @@ test("una diferencia alta queda limitada si faltan mayoristas críticos", () => 
   assert.match(alert.message, /Validar cobertura/);
 });
 
-test("detecta oportunidad cuando Aguiar está debajo del mayorista", () => {
+test("Tokin debajo del mayorista no se presenta como margen de Aguiar", () => {
   const response = createCategoryResponse(80, 100);
   const alerts = buildPricingAlertCandidates({
     catalog: createCatalog(response.sources),
@@ -37,6 +39,25 @@ test("detecta oportunidad cuando Aguiar está debajo del mayorista", () => {
   assert.equal(alert.severity, "info");
   assert.equal(alert.ownPrice, 80);
   assert.equal(alert.referencePrice, 100);
+  assert.equal(alert.metadata.referenceKind, "supplier_catalog");
+  assert.equal(alert.metadata.ownPriceSource, "tokin");
+  assert.match(alert.title, /Tokin/);
+  assert.doesNotMatch(alert.title, /oportunidad de margen|Aguiar/);
+  assert.match(alert.message, /no es margen/);
+});
+
+test("una alerta historica sin origen explicito no publica precio propio ni gap como validos", () => {
+  const response = createCategoryResponse(80, 100);
+  const candidate = buildPricingAlertCandidates({ catalog: createCatalog(response.sources), categoryResponses: [response] }).find(row => row.type === "margin_opportunity")!;
+  const alert = { ...candidate, id: "legacy", status: "new", firstSeenAt: response.searchedAt,
+    lastSeenAt: response.searchedAt, createdAt: response.searchedAt, updatedAt: response.searchedAt, resolvedAt: null } as PersistedPricingAlert;
+  assert.equal(normalizeHistoricalAlert(alert), alert);
+  const legacy = { ...alert, metadata: {} };
+  const normalized = normalizeHistoricalAlert(legacy);
+  assert.equal(normalized.ownPrice, null);
+  assert.equal(normalized.gapPercent, null);
+  assert.match(normalized.message, /no registro/);
+  assert.equal(legacy.ownPrice, 80);
 });
 
 test("calcula la diferencia contra mayorista aunque un minorista sea más barato", () => {

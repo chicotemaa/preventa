@@ -1,0 +1,7 @@
+.env
+.env.*
+data/source-sessions.json
+data/source-snapshots.json
+.demo
+output
+tmp

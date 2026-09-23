@@ -3,8 +3,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Save, X } from "lucide-react";
 import { calculateCostStructure, parseCostConditions, type CostConditions } from "@/lib/cost-structure";
-import { DEFAULT_TARGET_GROSS_MARGIN_RATIO } from "@/lib/price-list-commercial";
+import { analyzePriceListCommercial, DEFAULT_TARGET_GROSS_MARGIN_RATIO } from "@/lib/price-list-commercial";
 import type { PriceListItemResult } from "@/types/search";
+import { formatPriceObservation } from "@/lib/price-freshness";
 
 const fields = [
   ["purchaseVatPercent", "IVA compra %", 100],
@@ -41,7 +42,8 @@ export function CostConditionsEditor({ result, onSave, onClose }: {
     ...draft, version: 1, confirmedAt: new Date().toISOString(),
     ...Object.fromEntries(fields.map(([key]) => [key, draft[key]?.trim() ? Number(draft[key]) : null])),
   });
-  const preview = calculateCostStructure(result.ownPrice?.tokinPrice, result.ownPrice?.excelPrice ?? result.input.currentPrice, candidate);
+  const previewAnalysis = analyzePriceListCommercial({ ...result, costConditions: candidate });
+  const preview = previewAnalysis.costBreakdown;
   function change(key: string, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
     setConfirmed(false);
@@ -85,7 +87,7 @@ export function CostConditionsEditor({ result, onSave, onClose }: {
             <Metric label="Venta neta / unidad" value={money(preview.netSalePrice)} />
             <Metric label="Piso en base IVA del Excel" value={money(preview.targetExcelPrice)} />
           </dl>
-        ) : <p role="status" className="text-sm text-[#73510b]">Condiciones incompletas o referencia Tokin ausente. Sin margen calculado.</p>}
+        ) : <p role="status" className="text-sm text-[#73510b]">{previewAnalysis.economicsReason}</p>}
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} required className="mt-1" />
           Confirmo estas condiciones para este articulo y su unidad equivalente.
@@ -118,7 +120,7 @@ export function CostBreakdownDetail({ result }: { result: PriceListItemResult })
         <Metric label="Otros / unidad" value={money(b.otherCosts)} />
         <Metric label="Costo ajustado / unidad" value={money(b.effectiveUnitCost)} />
         <Metric label="Objetivo sobre venta neta" value={`${c.targetMarginPercent}%`} />
-        <Metric label="Condiciones confirmadas" value={new Date(c.confirmedAt).toLocaleString("es-AR", { timeZone: "America/Argentina/Cordoba" })} />
+        <Metric label="Condiciones confirmadas" value={formatPriceObservation(c.confirmedAt)} />
       </dl>
       <p className="mt-2">Desglose de las condiciones guardadas; no acredita vigencia del precio.</p>
     </details>

@@ -1,6 +1,7 @@
 "use client";
 
 import { PriceFreshnessLabel } from "@/components/catalog/PriceFreshnessLabel";
+import { formatPriceObservation } from "@/lib/price-freshness";
 import { CostConditionsEditor, CostBreakdownDetail } from "./CostConditionsEditor";
 import type { CostConditions } from "@/lib/cost-structure";
 import { analyzePricingImpact, comparePricingImpact, type PricingImpact } from "@/lib/pricing-impact";
@@ -13,9 +14,13 @@ import {
   TrendingDown,
   TrendingUp,
   Settings2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { isReliableSourcePrice } from "@/lib/price-list-commercial";
+import { getWholesalePosition, summarizeDecisionReadiness } from "@/lib/price-position";
+import { getPriceConditionWarning } from "@/lib/price-comparison-safety";
 import {
   analyzePriceListDecision,
   getPriceListComparablePrice,
@@ -60,15 +65,19 @@ const percentFormatter = new Intl.NumberFormat("es-AR", {
 export function ImportDecisionTable({
   response,
   onCostConditionsChange,
+  example = false,
 }: {
   response: Pick<PriceListResponse, "results" | "searchedAt">;
   onCostConditionsChange?: (rowNumber: number, value: CostConditions | null) => void;
+  example?: boolean;
 }) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const editingResult = response.results.find((row) => row.input.rowNumber === editingRow);
   const [filter, setFilter] = useState<ImportDecisionFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [sort, setSort] = useState<"impact" | "severity">("impact");
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [filter, searchTerm, sort, response.results]);
   const analyzedResults = useMemo(
     () =>
       response.results.map((result) => {
@@ -92,7 +101,7 @@ export function ImportDecisionTable({
         isCostRisk(decision.kind),
       ).length,
       aboveWholesale: analyzedResults.filter(({ decision }) =>
-        decision.kind.startsWith("above_wholesale"),
+        getWholesalePosition(decision) === "above",
       ).length,
       competitive: analyzedResults.filter(
         ({ decision }) => decision.kind === "competitive",
@@ -117,6 +126,10 @@ export function ImportDecisionTable({
       .filter(({ result }) => matchesSearch(result, normalizedSearch))
       .sort((a, b) => (sort === "impact" ? comparePricingImpact(a.impact, b.impact) : 0) || compareRows(a, b));
   }, [analyzedResults, filter, searchTerm, sort]);
+  const readiness = useMemo(() => summarizeDecisionReadiness(analyzedResults.map(row => row.decision)), [analyzedResults]);
+  const pageCount = Math.max(1, Math.ceil(visibleResults.length / 50));
+  const activePage = Math.min(page, pageCount - 1);
+  const pageRows = visibleResults.slice(activePage * 50, (activePage + 1) * 50);
 
   return (
     <section className="rounded-md border border-[#eadbd3] bg-white shadow-sm">
@@ -124,14 +137,14 @@ export function ImportDecisionTable({
         <h2 className="text-lg font-bold text-[#17202a]">
           Mesa de decisión de precios
         </h2>
-        <p className="mt-1 text-xs text-[#667789]">Evaluacion: {new Date(response.searchedAt).toLocaleString("es-AR")} · Venta Excel informada en esta carga</p>
-        <p className="mt-1 text-sm leading-5 text-[#667789]">
-          Referencia proveedor Tokin, precio de venta del Excel y referencias
-          mayoristas comparados por unidad equivalente.
-        </p>
-        <p className="mt-2 text-xs leading-5 text-[#73510b]">
-          Margen estimado sobre venta neta y costo ajustado, solo con condiciones
-          confirmadas. No representa rentabilidad neta ni incluye gastos no informados.
+        <p className="mt-1 text-xs text-[#667789]">{example ? "Escenario simulado" : "Evaluacion"}: {formatPriceObservation(response.searchedAt)} · {example ? "Sin datos comerciales reales" : "Venta Excel informada en esta carga"}</p>
+        <dl aria-label="Base de la comparacion" className="mt-3 grid gap-3 border-y border-[#e5e9ef] py-3 text-sm sm:grid-cols-3">
+          <div><dt className="text-[#526170]">Excel + mayorista vigente</dt><dd className="font-bold">{readiness.comparableWholesale} / {readiness.total}</dd></div>
+          <div><dt className="text-[#526170]">Tokin comparable vigente</dt><dd className="font-bold">{readiness.currentSupplier} / {readiness.total}</dd></div>
+          <div><dt className="text-[#526170]">Costo ajustado confirmado</dt><dd className="font-bold">{readiness.confirmedCosts} / {readiness.total}</dd></div>
+        </dl>
+        <p className="mt-2 text-xs leading-5 text-[#526170]">
+          Diferencia positiva: Excel más caro. Negativa: Excel más barato. Precios publicados por unidad equivalente; la diferencia no es margen ni autoriza un cambio automático.
         </p>
 
         <section aria-label="Semáforo de la importación" className="mt-4">
@@ -149,7 +162,7 @@ export function ImportDecisionTable({
             <SignalButton
               label="Revisar"
               value={counts.attention}
-              tone="danger"
+              tone="neutral"
               active={filter === "attention"}
               onClick={() => setFilter("attention")}
               icon={<AlertTriangle className="h-4 w-4" />}
@@ -163,7 +176,7 @@ export function ImportDecisionTable({
               icon={<AlertTriangle className="h-4 w-4" />}
             />
             <SignalButton
-              label="Mayorista más barato"
+              label="Excel arriba >5%"
               value={counts.aboveWholesale}
               tone="warning"
               active={filter === "above_wholesale"}
@@ -232,8 +245,16 @@ export function ImportDecisionTable({
 
       {visibleResults.length > 0 ? (
         <>
-          <DesktopDecisionTable rows={visibleResults} onEdit={onCostConditionsChange ? setEditingRow : undefined} />
-          <MobileDecisionCards rows={visibleResults} onEdit={onCostConditionsChange ? setEditingRow : undefined} />
+          <DesktopDecisionTable rows={pageRows} onEdit={onCostConditionsChange ? setEditingRow : undefined} />
+          <MobileDecisionCards rows={pageRows} onEdit={onCostConditionsChange ? setEditingRow : undefined} />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e9ef] p-4 text-sm">
+            <span role="status">{activePage * 50 + 1}-{Math.min((activePage + 1) * 50, visibleResults.length)} de {visibleResults.length} artículos</span>
+            <div className="flex items-center gap-2">
+              <button type="button" aria-label="Pagina anterior" title="Pagina anterior" disabled={activePage === 0} onClick={() => setPage(activePage - 1)} className="rounded border p-2 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+              <span>{activePage + 1} / {pageCount}</span>
+              <button type="button" aria-label="Pagina siguiente" title="Pagina siguiente" disabled={activePage + 1 >= pageCount} onClick={() => setPage(activePage + 1)} className="rounded border p-2 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+            </div>
+          </div>
         </>
       ) : (
         <div className="border-t border-[#e5e9ef] px-4 py-8 text-center text-sm text-[#667789]">
@@ -397,6 +418,7 @@ function MobileDecisionCards({ rows, onEdit }: { rows: AnalyzedResult[]; onEdit?
               <MobileMetric
                 label="Referencia Tokin · unidad"
                 value={formatCurrency(commercial.supplierCost)}
+                observedAt={result.ownPrice?.tokinObservedAt ?? null}
                 helper={formatPackageTotal(
                   commercial.unitsPerPackage,
                   commercial.supplierPackageCost,
@@ -416,6 +438,7 @@ function MobileDecisionCards({ rows, onEdit }: { rows: AnalyzedResult[]; onEdit?
               <MobileMetric
                 label={"Mayorista · " + (commercial.bestWholesale?.storeName ?? "-")}
                 value={formatCurrency(commercial.bestWholesalePrice)}
+                observedAt={commercial.bestWholesale?.observedAt ?? null}
               />
               <MobileMetric
                 label="Excel vs mayorista"
@@ -502,7 +525,7 @@ function DecisionChip({ decision }: { decision: PriceListDecisionAnalysis }) {
   return (
     <span
       className={
-        "inline-flex shrink-0 rounded border px-2 py-1 text-[10px] font-bold " +
+        "inline-flex max-w-[190px] rounded border px-2 py-1 text-[10px] font-bold " +
         decisionToneClassName(decision.tone)
       }
     >
@@ -542,7 +565,7 @@ function SourceDetails({
         {result.sourcePrices.length === 0 ? (
           <div className="text-xs text-[#667789]">Sin fuentes de mercado.</div>
         ) : (
-          result.sourcePrices.slice(0, 8).map((sourcePrice) => (
+          result.sourcePrices.map((sourcePrice) => (
             <SourceLine
               key={sourcePrice.sourceId + "-" + sourcePrice.productName}
               sourcePrice={sourcePrice}
@@ -572,6 +595,7 @@ function SourceLine({ sourcePrice }: { sourcePrice: PriceListSourcePrice }) {
       <PriceFreshnessLabel observedAt={sourcePrice.observedAt} />
       <div>{sourcePrice.availability === "in_stock" ? "En stock" : sourcePrice.availability === "out_of_stock" ? "Sin stock; excluido" : "Stock sin confirmar"}</div>
       {sourcePrice.priceCondition ? <div>Condicion: {sourcePrice.priceCondition}</div> : null}
+      {getPriceConditionWarning(sourcePrice) ? <div className="font-semibold text-[#73510b]">Precio condicionado: validar antes de decidir</div> : null}
       {hasPackagePrice || (sourcePrice.packageQuantity ?? 0) > 1 ? (
         <div className="mt-1 text-[#667789]">
           Bulto/lista: {formatCurrency(sourcePrice.price)} ·{" "}
@@ -635,10 +659,12 @@ function MobileMetric({
   label,
   value,
   helper,
+  observedAt,
 }: {
   label: string;
   value: string;
   helper?: string;
+  observedAt?: string | null;
 }) {
   return (
     <div className="rounded-md border border-[#e5e9ef] bg-[#f8fafc] px-3 py-2">
@@ -649,6 +675,7 @@ function MobileMetric({
       {helper ? (
         <dd className="mt-1 text-[11px] leading-4 text-[#667789]">{helper}</dd>
       ) : null}
+      {observedAt !== undefined && value !== "-" ? <dd><PriceFreshnessLabel observedAt={observedAt} /></dd> : null}
     </div>
   );
 }
@@ -661,7 +688,7 @@ function matchesFilter(
   if (filter === "attention") return isAttention(decision.kind);
   if (filter === "cost_risk") return isCostRisk(decision.kind);
   if (filter === "above_wholesale") {
-    return decision.kind.startsWith("above_wholesale");
+    return getWholesalePosition(decision) === "above";
   }
   if (filter === "competitive") return decision.kind === "competitive";
   if (filter === "opportunity") return decision.kind === "margin_opportunity";
@@ -695,6 +722,7 @@ function compareRows(first: AnalyzedResult, second: AnalyzedResult) {
     weak_match: 5,
     outdated_reference: 5,
     cost_unverified: 5,
+    conditional_reference: 5,
     missing_own_price: 6,
     no_reference: 7,
     retail_only: 8,

@@ -16,3 +16,5 @@ npm-debug.log*
 .codex-spreadsheet-work/
 .vercel
 .demo/
+/output/
+/tmp/

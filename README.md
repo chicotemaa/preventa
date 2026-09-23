@@ -6,6 +6,12 @@ La busqueda no scrapea desde el navegador del usuario. El frontend Next.js llama
 
 Manual completo: [MANUAL.md](./MANUAL.md)
 
+Actualizacion operativa y pendientes: [Estado para decisiones](./docs/actualizacion-operativa.md).
+
+Entrega del piloto: [Verificaciones y pendientes](./docs/entrega-piloto.md).
+Acceso web: https://preventa-web.vercel.app/guia. `/guia` ofrece los PDF de uso y presentacion; `/ejemplo` contiene diez
+escenarios simulados sin persistencia. La ficha privada de acceso no se publica.
+
 ## Estructura
 
 ```text

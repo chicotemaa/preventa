@@ -7,19 +7,13 @@ import { repairLegacyText } from "./legacy-text";
 import { savePriceListRun } from "./price-list-persistence";
 import { parseStoredPriceListDetail } from "./price-list-storage";
 import { isSupabaseConfigured, selectSupabaseRows } from "./supabase-admin";
+import { getLatestImportIds } from "./commercial-reference-data";
 
-const MAX_WATCHLIST_ITEMS = 1_500;
-const WATCHLIST_RUN_CANDIDATES = 20;
+const MAX_WATCHLIST_ITEMS = 10_000;
 const SNAPSHOT_BATCH_SIZE = 10;
 const SNAPSHOT_BATCH_CONCURRENCY = 2;
 const WORKER_SNAPSHOT_TIMEOUT_MS = 45_000;
 const ARGENTINA_TIME_ZONE = "America/Argentina/Cordoba";
-
-type WatchlistRunRow = {
-  id: string;
-  list_name: string;
-  metadata: unknown;
-};
 
 export type WatchlistItemRow = {
   row_number: number | null;
@@ -46,9 +40,11 @@ export type DailyEvolutionSnapshotResult = {
 export async function refreshDailyEvolutionSnapshot({
   workerUrl,
   now = new Date(),
+  deadline = Date.now() + 240_000,
 }: {
   workerUrl: string;
   now?: Date;
+  deadline?: number;
 }): Promise<DailyEvolutionSnapshotResult> {
   if (
     process.env.SUPABASE_PERSIST_PRICE_LISTS === "false" ||
@@ -61,11 +57,23 @@ export async function refreshDailyEvolutionSnapshot({
   const listName = `Actualizacion diaria ${dateKey}`;
 
   try {
+    const [activeRun] = await getLatestImportIds(1);
+    if (!activeRun) {
+      return {
+        enabled: true, attempted: false, saved: false,
+        skippedReason: "missing_watchlist",
+        errorMessage: "No hay un Excel activo. Importar y guardar la lista de venta para generar evolucion.",
+      };
+    }
     const existingRuns = await selectSupabaseRows<Array<{ id: string }>>(
       "price_list_runs",
       {
         select: "id",
-        filters: { list_name: `eq.${listName}` },
+        filters: {
+          list_name: `eq.${listName}`, status: "neq.archived",
+          "metadata->>origin": "eq.scheduled_catalog",
+          "metadata->>sourceRunId": `eq.${activeRun.id}`,
+        },
         limit: 1,
       },
     );
@@ -77,10 +85,11 @@ export async function refreshDailyEvolutionSnapshot({
         saved: false,
         skippedReason: "already_saved",
         runId: existingRuns[0]?.id,
+        sourceRunId: activeRun.id,
       };
     }
 
-    const watchlist = await loadLatestManualWatchlist();
+    const watchlist = await loadActiveWatchlist(activeRun.id, deadline);
 
     if (!watchlist) {
       return {
@@ -96,13 +105,18 @@ export async function refreshDailyEvolutionSnapshot({
     const response = await requestCatalogPriceListInBatches(
       workerUrl,
       watchlist.items,
+      deadline,
     );
     response.results = attachWatchlistContext(response.results, watchlist.rows);
+    if (Date.now() + 10_000 >= deadline) {
+      throw new Error("No queda tiempo para guardar una captura completa; se conserva la evaluacion anterior.");
+    }
     const persistence = await savePriceListRun(response, {
       origin: "scheduled_catalog",
       listName,
       sourceRunId: watchlist.runId,
       allowWithoutOwnPrice: true,
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
     });
 
     return {
@@ -127,38 +141,28 @@ export async function refreshDailyEvolutionSnapshot({
   }
 }
 
-async function loadLatestManualWatchlist() {
-  const runRows = await selectSupabaseRows<WatchlistRunRow[]>(
-    "price_list_runs",
-    {
-      select: "id,list_name,metadata",
-      filters: { status: "neq.archived", "metadata->>origin": "eq.manual_import" },
-      order: "created_at.desc",
-      limit: WATCHLIST_RUN_CANDIDATES,
-    },
-  );
-  const manualRuns = runRows.filter(
-    (run) => getRunOrigin(run.metadata) !== "scheduled_catalog",
-  );
-
-  for (const run of manualRuns) {
-    const itemRows: WatchlistItemRow[] = [];
-    while (itemRows.length < MAX_WATCHLIST_ITEMS) {
-      const page = await selectSupabaseRows<WatchlistItemRow[]>("price_list_run_items", {
-        select:
-          "row_number,rubro,description,code,ean13_di,ean13_bu,current_price,source_prices",
-        filters: { run_id: `eq.${run.id}` },
-        order: "row_number.asc,id.asc",
-        limit: 500, offset: itemRows.length,
-      });
-      itemRows.push(...page);
-      if (page.length < 500) break;
+async function loadActiveWatchlist(runId: string, deadline: number) {
+  const itemRows: WatchlistItemRow[] = [];
+  while (true) {
+    if (Date.now() >= deadline) throw new Error("La lectura del Excel activo excedio el tiempo disponible.");
+    const page = await selectSupabaseRows<WatchlistItemRow[]>("price_list_run_items", {
+      select:
+        "row_number,rubro,description,code,ean13_di,ean13_bu,current_price,source_prices",
+      filters: { run_id: `eq.${runId}` },
+      order: "row_number.asc,id.asc",
+      limit: 500, offset: itemRows.length,
+      signal: AbortSignal.timeout(Math.min(15_000, Math.max(1, deadline - Date.now()))),
+    });
+    itemRows.push(...page);
+    if (itemRows.length > MAX_WATCHLIST_ITEMS) {
+      throw new Error(`El Excel supera ${MAX_WATCHLIST_ITEMS} filas. Requiere procesamiento por trabajos; no se guardo una captura recortada.`);
     }
-    const items = buildWatchlistItems(itemRows);
+    if (page.length < 500) break;
+  }
+  const items = buildWatchlistItems(itemRows);
 
-    if (items.length > 0) {
-      return { runId: run.id, items, rows: itemRows };
-    }
+  if (items.length > 0) {
+    return { runId, items, rows: itemRows };
   }
 
   return null;
@@ -226,24 +230,16 @@ export function formatArgentinaDateKey(date: Date) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function getRunOrigin(metadata: unknown) {
-  if (!metadata || typeof metadata !== "object") {
-    return "legacy";
-  }
-
-  const origin = (metadata as Record<string, unknown>).origin;
-  return origin === "scheduled_catalog" ? origin : "manual_import";
-}
-
 async function requestCatalogPriceListInBatches(
   workerUrl: string,
   items: PriceListInputItem[],
+  deadline: number,
 ) {
   const startedAt = Date.now();
   const responses = await mapWithConcurrency(
     chunkItems(items, SNAPSHOT_BATCH_SIZE),
     SNAPSHOT_BATCH_CONCURRENCY,
-    (batch) => requestCatalogPriceListBatch(workerUrl, batch),
+    (batch) => requestCatalogPriceListBatch(workerUrl, batch, deadline),
   );
   const firstResponse = responses[0];
 
@@ -276,11 +272,13 @@ async function requestCatalogPriceListInBatches(
 async function requestCatalogPriceListBatch(
   workerUrl: string,
   items: PriceListInputItem[],
+  deadline: number,
 ) {
+  if (Date.now() >= deadline) throw new Error("La captura diaria excedio el tiempo disponible; no se guardaron resultados incompletos.");
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    WORKER_SNAPSHOT_TIMEOUT_MS,
+    Math.min(WORKER_SNAPSHOT_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
   );
 
   try {
@@ -338,25 +336,33 @@ async function mapWithConcurrency<T, R>(
 ) {
   const results = new Array<R>(values.length);
   let nextIndex = 0;
+  let stopped = false;
 
   async function worker() {
-    while (nextIndex < values.length) {
+    while (!stopped && nextIndex < values.length) {
       const index = nextIndex;
       nextIndex += 1;
       const value = values[index];
 
       if (value !== undefined) {
-        results[index] = await mapper(value);
+        try {
+          results[index] = await mapper(value);
+        } catch (error) {
+          stopped = true;
+          throw error;
+        }
       }
     }
   }
 
-  await Promise.all(
+  const settled = await Promise.allSettled(
     Array.from(
       { length: Math.min(Math.max(concurrency, 1), values.length) },
       () => worker(),
     ),
   );
+  const failure = settled.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
 
   return results;
 }

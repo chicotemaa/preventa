@@ -106,7 +106,7 @@ export async function updatePricingAlertStatus(
 
 export async function persistPricingAlerts(
   candidates: PricingAlertCandidate[],
-  options: { resolveMissing?: boolean; seenAt?: string } = {},
+  options: { resolveMissing?: boolean; seenAt?: string; signal?: AbortSignal } = {},
 ): Promise<PricingAlertSyncResult> {
   const baseResult = summarizeCandidates(candidates);
 
@@ -117,12 +117,14 @@ export async function persistPricingAlerts(
   const seenAt = options.seenAt ?? new Date().toISOString();
 
   try {
+    options.signal?.throwIfAborted();
     const existingRows = await selectSupabaseRows<PricingAlertRow[]>(
       "pricing_alerts",
       {
         select: ALERT_SELECT,
         order: "last_seen_at.desc",
         limit: 1_000,
+        signal: options.signal,
       },
     );
     const existingByFingerprint = new Map(
@@ -148,26 +150,28 @@ export async function persistPricingAlerts(
       await upsertSupabaseRows(
         "pricing_alerts",
         candidates.map((candidate) => mapPricingAlertCandidate(candidate, seenAt)),
-        { onConflict: "fingerprint" },
+        { onConflict: "fingerprint", signal: options.signal },
       );
     }
 
-    await Promise.all([
+    const updates = await Promise.allSettled([
       ...reactivatedRows.map((row) =>
         updateSupabaseRows(
           "pricing_alerts",
           { status: "new", resolved_at: null, updated_at: seenAt },
-          { filters: { id: `eq.${row.id}` } },
+          { filters: { id: `eq.${row.id}` }, signal: options.signal },
         ),
       ),
       ...rowsToResolve.map((row) =>
         updateSupabaseRows(
           "pricing_alerts",
           { status: "resolved", resolved_at: seenAt, updated_at: seenAt },
-          { filters: { id: `eq.${row.id}` } },
+          { filters: { id: `eq.${row.id}` }, signal: options.signal },
         ),
       ),
     ]);
+    const failedUpdate = updates.find(update => update.status === "rejected");
+    if (failedUpdate?.status === "rejected") throw failedUpdate.reason;
 
     return {
       ...baseResult,

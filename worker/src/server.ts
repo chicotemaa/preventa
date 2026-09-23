@@ -21,6 +21,7 @@ import {
   syncCatalogSource,
 } from "./catalog.js";
 import { config } from "./config.js";
+import { summarizeSourcePriceObservations } from "./price-observations.js";
 import { normalizeProductName } from "./normalizers.js";
 import { runLiveSearch } from "./search.js";
 import {
@@ -245,6 +246,16 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/health") {
     sendJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/catalog/status") {
+    await ensureCatalogLoaded();
+    const catalog = getCatalogSnapshot();
+    sendJson(response, 200, {
+      catalog: getCatalogMetadata(),
+      observationsBySource: summarizeSourcePriceObservations(catalog.products),
+    });
     return;
   }
 

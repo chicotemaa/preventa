@@ -18,6 +18,7 @@ import {
   deleteSupabaseRows,
   insertSupabaseRows,
   isSupabaseConfigured,
+  updateSupabaseRows,
 } from "./supabase-admin";
 
 const INSERT_CHUNK_SIZE = 20;
@@ -31,6 +32,7 @@ type PersistenceResult = {
 };
 
 export type PriceListRunSaveOptions = {
+  signal?: AbortSignal;
   origin?: "manual_import" | "scheduled_catalog";
   listName?: string;
   sourceRunId?: string | null;
@@ -80,7 +82,8 @@ export async function savePriceListRun(
     unmatched_count: response.unmatchedCount,
     catalog_status: response.catalog.status,
     catalog_last_synced_at: response.catalog.lastSyncedAt ?? null,
-    status: ownPriceSummary.coverageComplete ? "review" : "draft",
+    // Keep unfinished writes out of the active Excel and daily idempotency checks.
+    status: "archived",
     metadata: {
       origin,
       sourceRunId: options.sourceRunId ?? null,
@@ -107,7 +110,7 @@ export async function savePriceListRun(
     runRows = await insertSupabaseRows<Array<{ id: string }>>(
       "price_list_runs",
       runPayload,
-      { returning: "representation", select: "id" },
+      { returning: "representation", select: "id", signal: options.signal },
     );
   } catch (error) {
     return {
@@ -151,12 +154,15 @@ export async function savePriceListRun(
 
   try {
     if (sourcesPayload.length > 0) {
-      await insertSupabaseRows("price_list_run_sources", sourcesPayload);
+      await insertSupabaseRows("price_list_run_sources", sourcesPayload, { signal: options.signal });
     }
 
     if (itemsPayload.length > 0) {
-      await insertRowsInChunks("price_list_run_items", itemsPayload);
+      await insertRowsInChunks("price_list_run_items", itemsPayload, options.signal);
     }
+    await updateSupabaseRows("price_list_runs", {
+      status: ownPriceSummary.coverageComplete ? "review" : "draft",
+    }, { filters: { id: `eq.${runId}` }, signal: options.signal });
   } catch (error) {
     await rollbackPriceListRun(runId);
 
@@ -184,11 +190,12 @@ async function rollbackPriceListRun(runId: string) {
   }
 }
 
-async function insertRowsInChunks(table: string, rows: unknown[]) {
+async function insertRowsInChunks(table: string, rows: unknown[], signal?: AbortSignal) {
   for (let index = 0; index < rows.length; index += INSERT_CHUNK_SIZE) {
     await insertSupabaseRows(
       table,
       rows.slice(index, index + INSERT_CHUNK_SIZE),
+      { signal },
     );
   }
 }

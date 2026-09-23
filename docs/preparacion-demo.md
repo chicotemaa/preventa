@@ -1,7 +1,9 @@
 # Preparacion de la presentacion
 
 Revision: 22 de septiembre de 2026. Cambios locales sin commit, push ni deploy.
-Rama existente: `codex/migration-20260907`.
+Rama actual: `main`. La evidencia de deployments de esta primera inspeccion es
+historica; consultar `actualizacion-operativa.md` y `entrega-piloto.md` para el
+estado de la revision local posterior. No asumir que estos cambios ya estan publicados.
 
 ## Alcance
 
@@ -28,8 +30,9 @@ Es incremental: Tokin y Maxiconsumo Chaco tienen prioridad diaria; otras fuentes
 ## Excel disponible
 
 Fuente inspeccionada sin modificar: `Lista de Articulos - HUMAN.xlsx`, hoja `01-06-2026`, columnas A:K.
-Tiene 1.034 articulos con descripcion/codigo, precio unitario positivo y UxB. Hay 868 filas con EAN de unidad y 869 con EAN de display; dos repeticiones adicionales de EAN de unidad requieren revision, no asumir equivalencia unica.
-Nueve descripciones contienen "alfajor". No hay columnas de ventas, stock, condiciones impositivas ni fecha de observacion por precio.
+La relectura del archivo original confirma 1.034 articulos con precio unitario
+positivo y UxB, 923 EAN unitarios informados y 30 articulos del subrubro Alfajores.
+No hay columnas de ventas, stock, condiciones impositivas ni fecha de observacion por precio.
 No renombrar el archivo ni reimportarlo como si sus precios fueran de hoy. Solicitar Excel vigente al cliente para una demo comercial actual.
 
 ## Acceso y configuracion

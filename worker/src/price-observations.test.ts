@@ -25,10 +25,22 @@ test("un sync parcial solo renueva los productos realmente consultados", () => {
   const merged = mergeLatestObservedProducts([product("1", 100, OLD), retained, undated, ...incoming]);
   assert.equal(merged.find((p) => p.sku === "2")?.observedAt, OLD);
   assert.equal(merged.find((p) => p.sku === "3")?.observedAt, undefined);
-  assert.deepEqual(summarizePriceObservations(merged), {
+  assert.deepEqual(summarizePriceObservations(merged, Date.parse(NEW)), {
     totalProducts: 3, datedProducts: 2, oldestObservedAt: OLD, newestObservedAt: NEW,
+    currentProducts: 1, outdatedProducts: 1, undatedProducts: 1, calculatedAt: NEW,
   });
   assert.deepEqual(mergeLatestObservedProducts(merged), merged);
+});
+
+test("una fecha futura o invalida no cuenta como precio vigente", () => {
+  const summary = summarizePriceObservations([
+    product("1", 100, "2099-01-01T00:00:00Z"), product("2", 100, "invalid"),
+    product("3", 100, NEW), product("4", 100, OLD),
+  ], Date.parse(NEW));
+  assert.equal(summary.currentProducts, 1);
+  assert.equal(summary.outdatedProducts, 1);
+  assert.equal(summary.undatedProducts, 2);
+  assert.equal(summary.newestObservedAt, NEW);
 });
 
 test("no reemplaza un precio fechado con una copia sin fecha ni mezcla bulto y unidad", () => {

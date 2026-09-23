@@ -561,6 +561,10 @@ export type PriceObservationSummary = {
   datedProducts: number;
   oldestObservedAt: string | null;
   newestObservedAt: string | null;
+  currentProducts?: number;
+  outdatedProducts?: number;
+  undatedProducts?: number;
+  calculatedAt?: string;
 };
 
 export type CatalogSyncProgress = {

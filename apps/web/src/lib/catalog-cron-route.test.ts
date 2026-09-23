@@ -6,6 +6,8 @@ import {
   CATALOG_SOURCE_SYNC_TIMEOUT_MS,
   CATALOG_SYNC_MAX_TERMS,
   CATALOG_SYNC_SOURCE_IDS,
+  CATALOG_SYNC_CONCURRENCY,
+  getDailyCatalogSyncOffset,
   getDailyCatalogSyncSourceIds,
 } from "./catalog-sync-sources";
 
@@ -104,6 +106,9 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
         .deferCatalogRebuild,
       true,
     );
+    for (const source of sourceBodies as Array<{ sourceId: string; offset: number }>) {
+      assert.equal(source.offset, getDailyCatalogSyncOffset(new Date(), source.sourceId));
+    }
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv("CRON_SECRET", originalCronSecret);
@@ -115,7 +120,7 @@ test("el cron sincroniza cada fuente y consolida el catalogo", async () => {
 
 test("reserva tiempo para consolidar antes del limite de Vercel", () => {
   assert.ok(
-    CATALOG_SOURCE_SYNC_TIMEOUT_MS + CATALOG_REBUILD_TIMEOUT_MS <=
+    Math.ceil(getDailyCatalogSyncSourceIds().length / CATALOG_SYNC_CONCURRENCY) * CATALOG_SOURCE_SYNC_TIMEOUT_MS + CATALOG_REBUILD_TIMEOUT_MS <=
       260_000,
   );
 });

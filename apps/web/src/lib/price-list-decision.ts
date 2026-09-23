@@ -10,6 +10,7 @@ import {
   isReliableSourcePrice,
   type PriceListCommercialAnalysis,
 } from "./price-list-commercial";
+import { getPriceConditionWarning } from "./price-comparison-safety";
 
 export { comparePriceListSourcePrices } from "./price-list-commercial";
 
@@ -33,6 +34,7 @@ export type PriceListDecisionKind =
   | "weak_match"
   | "outdated_reference"
   | "cost_unverified"
+  | "conditional_reference"
   | "no_reference";
 
 export type PriceListDecisionAnalysis = {
@@ -129,14 +131,14 @@ export function analyzePriceListDecision(
     commercial,
   };
 
-  if (!currentPrice && (result.sourcePrices.length > 0 || commercial.supplierCost)) {
+  if (!currentPrice) {
     return {
       kind: "missing_own_price",
       tone: "warning",
       label: "Falta precio Excel",
       action: "Cargar precio en Excel",
       helper:
-        "Hay costo proveedor o referencia de mercado, pero falta el precio de venta del Excel para decidir.",
+        "Falta el precio de venta del Excel para evaluar la posicion comercial. Tokin no lo reemplaza.",
       ...shared,
       gapRatio: null,
     };
@@ -241,6 +243,15 @@ export function analyzePriceListDecision(
       ...shared, kind: "cost_unverified", tone: "neutral",
       label: "Costo final sin confirmar", action: "Completar condiciones de costo",
       helper: commercial.economicsReason + " La diferencia con el mayorista es de precios publicados, no de rentabilidad.",
+    };
+  }
+
+  const condition = getPriceConditionWarning(referenceSource);
+  if (condition) {
+    return {
+      ...shared, kind: "conditional_reference", tone: "neutral",
+      label: "Precio mayorista condicionado", action: "Validar promo o compra minima",
+      helper: `La diferencia usa un precio condicionado: ${condition}. Confirmar que aplica antes de modificar el precio de venta.`,
     };
   }
 
